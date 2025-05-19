@@ -1,0 +1,45 @@
+on:
+  push:
+    tags:
+      - 'v*'  
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@master
+    - name: Archive Release
+      uses: thedoctor0/zip-release@0.7.1
+      with:
+        type: 'zip'
+        filename: 'smartphone.zip'
+        path: './smartphone/'
+
+    - name: Create Release
+      uses: ncipollo/release-action@v1.12.0
+      with:
+        artifacts: "smartphone.zip"
+        tag: ${{ github.ref }}
+        name: "Smartphone ${{ github.ref_name }}"
+        body: |
+          **Oldest Supported CSP Version: CSP 0.2.2 (2744)**
+
+          ## Added:
+
+          ## Changes:
+
+          ## Known Issues:
+          - When using the AssettoServer PatreonTwitchChatPlugin, some Twitch features like Announcements are not be displayed correctly and will result in empty lines
+
+          ## Updating & Installation:
+
+          ### Automatic Installation via Content Manager: 
+          1. Download `smartphone.zip`
+          2. Drag & Drop `smartphone.zip` into Content Manager and click `Install`
+
+          ### Manual Installation: 
+          1. Download `smartphone.zip`
+          2. Extract and place the `smartphone` folder inside the `\apps\lua` folder of your Assetto Corsa installation.
+          (By default: `C:\Steam\steamapps\common\assettocorsa\apps\lua`)
