@@ -41,7 +41,7 @@ local colors = {
         black50 = rgbm(0, 0, 0, 0.5),
         white50 = rgbm(1, 1, 1, 0.5),
     },
-    glowColor = rgbm(1,1,1,0.65),
+    glowColor = rgbm(1, 1, 1, 0.65),
     displayColorLight = rgb.colors.white,
     displayColorDark = rgb.colors.black,
     headerColorLight = rgbm(0, 0, 0, 0.033),
@@ -114,7 +114,8 @@ local songInfo = {
     final = '',
     length = 0,
     isPaused = false,
-    isLoading = false,
+    static = false,
+    align = ui.Alignment.Center,
     spaces = '',
     scrollInterval = nil,
     updateInterval = nil,
@@ -346,6 +347,8 @@ end
 
 --#region SONG INFO FUNCTIONS
 
+---@param enable boolean @sets the width of the island
+---@return vec2 @updated size of the island
 local function setDynamicIslandSize(enable)
     local width = enable and 80 or 40
     return songInfo.dynamicIslandSize:set(width, 20)
@@ -363,28 +366,34 @@ local function updateSongInfo(forced)
     end
 
     if artist == '' and title == '' and not current.isPlaying then
+        songInfo.final = ''
+        if songInfo.dynamicIslandSize.x == 80 then setDynamicIslandSize(false) end
         songInfo.isPaused = true
     else
-        songInfo.isPaused = false
         if artist ~= songInfo.artist or title ~= songInfo.title or forced then
             songInfo.artist = artist
             songInfo.title = title
-            songInfo.scroll = (songInfo.artist ~= '' and songInfo.artist:lower() ~= 'unknown artist') and (songInfo.artist .. ' - ' .. songInfo.title .. songInfo.spaces) or (songInfo.title .. songInfo.spaces)
+            songInfo.scroll = (songInfo.artist ~= '' and songInfo.artist:lower() ~= 'unknown artist') and (songInfo.artist .. ' - ' .. songInfo.title) or (songInfo.title)
 
-            local minlen = 24
-            if utf8len(songInfo.scroll) < minlen then
-                songInfo.scroll = songInfo.scroll .. string.rep(' ', minlen - utf8len(songInfo.scroll))
+            if utf8len(songInfo.scroll) < 20 then
+                songInfo.static = true
+                songInfo.align = ui.Alignment.Center
+            else
+                songInfo.static = false
+                songInfo.align = ui.Alignment.Start
+                songInfo.scroll = songInfo.scroll .. songInfo.spaces
             end
 
             songInfo.length = utf8len(songInfo.scroll)
             songInfo.final = songInfo.scroll
         end
         if songInfo.dynamicIslandSize.x == 40 then setDynamicIslandSize(true) end
+        songInfo.isPaused = false
     end
 end
 
 local function scrollText()
-    if songInfo.isPaused or songInfo.isLoading then return end
+    if songInfo.isPaused or songInfo.static then return end
 
     local firstLetter, restString
 
@@ -448,7 +457,6 @@ local function stopSongInfo()
     songInfo.artist = ''
     songInfo.title = ''
     songInfo.isPaused = false
-    songInfo.isLoading = false
 
     setDynamicIslandSize(false)
 end
@@ -661,12 +669,12 @@ local function drawSongInfo()
             ui.setCursor(vec2(20, 100):scale(app.scale))
             ui.drawImageRounded(ac.currentlyPlaying(), vec2((ui.windowWidth() / 2) - scale(74), scale(23) + movement.smooth), vec2((ui.windowWidth() / 2) - scale(60), scale(37) + movement.smooth), scale(3), ui.CornerFlags.All)
         end
-        local songSize = scale(12)
+        local songFontSize = scale(12)
         local songPosition = vec2(ui.windowWidth() / 2, scale(22))
         ui.pushDWriteFont(app.font.bold)
         local songTextSize = vec2(133, 15):scale(app.scale)
         ui.setCursor(vec2(math.round(ui.windowWidth() / 2 - songTextSize.x / 2.3), songPosition.y + movement.smooth))
-        ui.dwriteTextAligned(songInfo.final, songSize, ui.Alignment.Start, ui.Alignment.End, songTextSize, false, rgb.colors.white)
+        ui.dwriteTextAligned(songInfo.final, songFontSize, songInfo.align, ui.Alignment.End, songTextSize, false, rgb.colors.white)
         ui.popDWriteFont()
     end
 end
