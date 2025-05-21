@@ -28,7 +28,16 @@ local settings = ac.storage {
     chatHideAnnoying = true,
     chatLatestBold = false,
     hideCamera = false,
-    showTimestamp = true
+    showTimestamp = false,
+    enableAudio = false,
+    enableKeyboard = false,
+    enableMessage = false,
+    enableNotification = false,
+    volumeKeyboard = 1,
+    volumeMessage = 1,
+    volumeNotification = 1,
+    messagesPlayAll = false,
+    notificationsPlayAll = false,
 }
 
 --#endregion
@@ -132,6 +141,7 @@ local chat = {
     input = {
         active = false,
         hovered = false,
+        sendHovered = false,
         placeholder = 'iMessage',
         text = '',
         offset = 0,
@@ -154,6 +164,22 @@ local chat = {
         'checksums',
         'teleported to pits',
     }
+}
+
+local audio = {
+    keyboard = {
+        keystroke = { file = './src/aud/keyboard-keystroke.mp3', volumeSetting = 'volumeKeyboard' },
+        enter = { file = './src/aud/keyboard-enter.mp3', volumeSetting = 'volumeKeyboard' },
+        delete = { file = './src/aud/keyboard-delete.mp3', volumeSetting = 'volumeKeyboard' },
+    },
+    message = {
+        recieve = { file = './src/aud/message-recieve.mp3', volumeSetting = 'volumeMessage' },
+        send = { file = './src/aud/message-send.mp3', volumeSetting = 'volumeMessage' },
+    },
+    notification = {
+        regular = { file = './src/aud/notif-regular.mp3', volumeSetting = 'volumeNotification' },
+        critical = { file = './src/aud/notif-critial.mp3', volumeSetting = 'volumeNotification' },
+    },
 }
 
 --#endregion
@@ -345,6 +371,49 @@ local function moveAppUp()
     end
 end
 
+---@param event table @audio event table (audio.category.event)
+local function playAudio(event)
+    local category = nil
+    for cat, catData in pairs(audio) do
+        for _, eventData in pairs(catData) do
+            if event == eventData then
+                category = cat
+                break
+            end
+        end
+        if category then break end
+    end
+
+    if settings.enableAudio and category and settings["enable" .. category:sub(1, 1):upper() .. category:sub(2)] then
+        local volume = settings[event.volumeSetting] or 1
+        local audio = ac.AudioEvent.fromFile({ filename = event.file, use3D = false, loop = false }, false):setVolumeChannel(ac.AudioChannel.Main)
+        audio.cameraInteriorMultiplier = 1
+        audio.cameraExteriorMultiplier = 1
+        audio.volume = 1 * volume
+        audio:start()
+        setTimeout(function()
+            audio:dispose()
+        end, 1, 'audio')
+    end
+end
+
+local audioIndexes = {}
+---@param tbl table @audio table (audio.category)
+local function playTestAudio(tbl)
+    local t = {}
+    for _, v in pairs(tbl) do
+        t[#t + 1] = v
+    end
+
+    local key = tbl
+    audioIndexes[key] = (audioIndexes[key] or 0) + 1
+    if audioIndexes[key] > #t then
+        audioIndexes[key] = 1
+    end
+
+    return playAudio(t[audioIndexes[key]])
+end
+
 --#endregion
 
 --#region SONG INFO FUNCTIONS
@@ -485,10 +554,10 @@ local function matchMessage(isPlayer, message)
         for _, reason in ipairs(chat.serverHideStrings) do
             if lowerMessage:find(reason) then
                 if lowerMessage:find(lowerPlayerName) then
-                    --notification.allow = true
+                    playAudio(audio.notification.critical)
                 else
-                    if lowerMessage:find('^you') or lowerMessage:find('^it is currently night') then
-                        --notification.allow = true
+                    if (lowerMessage:find('^you') or lowerMessage:find('^it is currently night')) then
+                        playAudio(audio.notification.critical)
                     else
                         return true
                     end
@@ -520,12 +589,21 @@ local function handleKeyboardInput()
     local typed = keyboardInput:queue()
     local inputMaxLen = math.floor(490 * (13 / settings.chatFontSize) ^ 2)
 
+    if (ui.keyPressed(ui.Key.Backspace, true) or ui.keyPressed(ui.Key.Delete)) then
+        playAudio(audio.keyboard.delete)
+    elseif ui.keyPressed(ui.Key.Enter) or ui.keyPressed(ui.Key.Space) then
+        playAudio(audio.keyboard.enter)
+    elseif typed ~= '' then
+        playAudio(audio.keyboard.keystroke)
+    end
+
     if (ui.keyPressed(ui.Key.Backspace, true) or ui.keyPressed(ui.Key.Delete)) and msgLen then
         if chat.input.selected then
             chat.input.text = ''
             chat.input.selected = nil
         end
         chat.input.text = utf8sub(chat.input.text, 1, utf8len(chat.input.text) - 1)
+        return
     elseif ui.keyPressed(ui.Key.Enter) and msgLen and not chat.sendCd then
         ac.sendChatMessage(chat.input.text)
         chat.sendCd = true
@@ -540,23 +618,29 @@ local function handleKeyboardInput()
         chat.scrollBool = true
         setTimeout(function() chat.scrollBool = false end, 0.1)
         setTimeout(function() chat.sendCd = false end, 1)
+        return
     elseif ui.keyboardButtonDown(ui.KeyIndex.Control) and ui.keyboardButtonPressed(ui.KeyIndex.V, true) then
         if utf8len(chat.input.text .. ui.getClipboardText()) >= inputMaxLen then return end
         typed = typed .. ui.getClipboardText()
+        return
     elseif ui.keyboardButtonDown(ui.KeyIndex.Control) and ui.keyboardButtonPressed(ui.KeyIndex.A) and msgLen then
         if chat.input.selected then chat.input.selected = nil end
         chat.input.selected = chat.input.text
+        return
     elseif ui.keyboardButtonDown(ui.KeyIndex.Control) and ui.keyboardButtonPressed(ui.KeyIndex.C) and chat.input.selected then
         ac.setClipboardText(chat.input.selected)
+        return
     elseif ui.keyboardButtonDown(ui.KeyIndex.Control) and ui.keyboardButtonPressed(ui.KeyIndex.X) and chat.input.selected then
         ac.setClipboardText(chat.input.selected)
         chat.input.text = ''
         chat.input.selected = nil
+        return
     elseif ui.keyPressed(ui.Key.Up) and chat.input.active then
         if chat.input.historyIndex < #chat.input.history then
             chat.input.historyIndex = chat.input.historyIndex + 1
             chat.input.text = chat.input.history[#chat.input.history - chat.input.historyIndex + 1][3]
         end
+        return
     elseif ui.keyPressed(ui.Key.Down) and chat.input.active then
         if chat.input.historyIndex > 1 then
             chat.input.historyIndex = chat.input.historyIndex - 1
@@ -565,10 +649,12 @@ local function handleKeyboardInput()
             chat.input.historyIndex = 0
             chat.input.text = ''
         end
+        return
     end
 
     if typed == '' then return end
     typed = typed:gsub('[%c]', '')
+
     if typed ~= '' and chat.input.selected then
         chat.input.selected = nil
         chat.input.text = ''
@@ -701,7 +787,7 @@ local function drawMessages()
                 local messageTimestamp = settings.badTime and to12hTime(os.date("%H:%M", chat.messages[i][4])) or os.date("%H:%M", chat.messages[i][4])
                 local fontWeight = app.font.regular
 
-                if (i == #chat.messages and settings.chatLatestBold) or messageTextcontent:lower():find('%f[%a_]' .. ac.getDriverName(0):lower() .. '%f[%A_]') then
+                if (i == #chat.messages and settings.chatLatestBold) or (messageTextcontent:lower():find('%f[%a_]' .. ac.getDriverName(0):lower() .. '%f[%A_]') and messageUserIndex > 0) then
                     fontWeight = app.font.bold
                 else
                     fontWeight = app.font.regular
@@ -852,15 +938,17 @@ local function drawInputCustom()
                 ui.setMouseCursor(ui.MouseCursor.TextInput)
             end
 
-            if inputClicked or chat.mentioned ~= '' then
-                if not chat.input.active then chat.input.text = '' end
-                chat.input.active = true
-                chat.input.text = chat.mentioned
-            elseif ui.mouseClicked(ui.MouseButton.Left) then
-                chat.input.active = false
-                chat.input.text = chat.input.placeholder
-                chat.input.selected = nil
-                chat.input.historyIndex = 0
+            if not chat.input.sendHovered then
+                if inputClicked or chat.mentioned ~= '' then
+                    if not chat.input.active then chat.input.text = '' end
+                    chat.input.active = true
+                    chat.input.text = chat.mentioned
+                elseif ui.mouseClicked(ui.MouseButton.Left) then
+                    chat.input.active = false
+                    chat.input.text = chat.input.placeholder
+                    chat.input.selected = nil
+                    chat.input.historyIndex = 0
+                end
             end
 
             if chat.input.active then
@@ -908,16 +996,23 @@ local function drawInputCustom()
             local buttonColor = rgb():set(colors.iMessageBlue)
 
             ui.setCursor(vec2(inputBoxSize.x - circlePadding, inputBoxSize.y - circlePadding))
-            local sendHovered = ui.rectHovered(ui.getCursor() - vec2(circleRad, circleRad), ui.getCursor() + vec2(circleRad, circleRad))
+            chat.input.sendHovered = ui.rectHovered(ui.getCursor() - vec2(circleRad, circleRad), ui.getCursor() + vec2(circleRad, circleRad))
 
-            if sendHovered then
+            if chat.input.sendHovered then
                 ui.setMouseCursor(ui.MouseCursor.Hand)
                 buttonColor:mul(rgb(0.6, 0.6, 0.8))
 
                 if ui.mouseClicked(ui.MouseButton.Left) then
+                    playAudio(audio.keyboard.enter)
                     ac.sendChatMessage(chat.input.text)
-                    chat.input.active = false
                     chat.sendCd = true
+
+                    if chat.input.hovered then
+                        chat.input.text = ''
+                    else
+                        chat.input.active = false
+                    end
+
                     chat.input.historyIndex = 0
                     chat.scrollBool = true
                     setTimeout(function() chat.scrollBool = false end, 0.1)
@@ -951,7 +1046,6 @@ ac.onChatMessage(function(message, senderCarIndex)
 
     if not hideMessage and message:len() > 0 then
         deleteOldestMessages()
-
         table.insert(chat.messages, { senderCarIndex, isPlayer and ac.getDriverName(senderCarIndex) or 'Server', message, os.time() })
 
         if senderCarIndex == 0 then
@@ -960,6 +1054,27 @@ ac.onChatMessage(function(message, senderCarIndex)
         end
 
         moveAppUp()
+
+        if isPlayer then
+            if isFriend or escapedMessage:lower():find('%f[%a_]' .. ac.getDriverName(0):lower() .. '%f[%A_]') then
+                playAudio(audio.message.recieve)
+                if not settings.notificationsPlayAll and senderCarIndex > 0 then
+                    setTimeout(function()
+                        playAudio(audio.notification.regular)
+                    end, 0.33)
+                end
+            end
+
+            if senderCarIndex == 0 then
+                return playAudio(audio.message.send)
+            elseif not settings.messagesPlayAll then
+                return playAudio(audio.message.recieve)
+            end
+        else
+            if not settings.messagesPlayAll then
+                return playAudio(audio.message.recieve)
+            end
+        end
     end
 end)
 
@@ -968,9 +1083,18 @@ if settings.connectionEvents then
     ---@param action string @joined/left string
     ---adds system messages for join/leave events.
     local function connectionHandler(connectedCarIndex, action)
-        if not settings.connectionEventsFriendsOnly or checkIfFriend(connectedCarIndex) then
+        local isFriend = checkIfFriend(connectedCarIndex)
+        if not settings.connectionEventsFriendsOnly or isFriend then
             deleteOldestMessages()
             table.insert(chat.messages, { -1, 'Server', ac.getDriverName(connectedCarIndex) .. action .. ' the Server', os.time() })
+
+            playAudio(audio.message.recieve)
+            if not settings.notificationsPlayAll and isFriend then
+                setTimeout(function()
+                    playAudio(audio.notification.regular)
+                end, 0.33)
+            end
+
             moveAppUp()
         end
     end
@@ -1113,6 +1237,45 @@ function script.windowMainSettings(dt)
         end)
 
         ui.tabItem('Audio', function()
+            if ui.checkbox('Enable Audio', settings.enableAudio) then settings.enableAudio = not settings.enableAudio end
+            ui.indent()
+            if settings.enableAudio then
+                if ui.checkbox('Enable Keystroke Audio', settings.enableKeyboard) then settings.enableKeyboard = not settings.enableKeyboard end
+                if settings.enableKeyboard then
+                    ui.text('\t')
+                    ui.sameLine()
+                    settings.volumeKeyboard = ui.slider('##keyboardVolume', settings.volumeKeyboard, 0.1, 10, 'Keystroke Volume: ' .. '%.1f')
+                    ui.text('\t')
+                    ui.sameLine()
+                    if ui.button('Play Test Keystroke') then playTestAudio(audio.keyboard) end
+                end
+
+                if ui.checkbox('Enable Message Audio', settings.enableMessage) then settings.enableMessage = not settings.enableMessage end
+                if settings.enableMessage then
+                    ui.text('\t')
+                    ui.sameLine()
+                    if ui.checkbox('Only Play for Friends', settings.messagesPlayAll) then settings.messagesPlayAll = not settings.messagesPlayAll end
+                    ui.text('\t')
+                    ui.sameLine()
+                    settings.volumeMessage = ui.slider('##messageVolume', settings.volumeMessage, 0.1, 10, 'Message Volume: ' .. '%.1f')
+                    ui.text('\t')
+                    ui.sameLine()
+                    if ui.button('Play Test Message') then playTestAudio(audio.message) end
+                end
+
+                if ui.checkbox('Enable Notification Audio', settings.enableNotification) then settings.enableNotification = not settings.enableNotification end
+                if settings.enableNotification then
+                    ui.text('\t')
+                    ui.sameLine()
+                    if ui.checkbox('Only Play for Server Alerts', settings.notificationsPlayAll) then settings.notificationsPlayAll = not settings.notificationsPlayAll end
+                    ui.text('\t')
+                    ui.sameLine()
+                    settings.volumeNotification = ui.slider('##notificationVolume', settings.volumeNotification, 0.1, 10, 'Notification Volume: ' .. '%.1f')
+                    ui.text('\t')
+                    ui.sameLine()
+                    if ui.button('Play Test Notification') then playTestAudio(audio.notification) end
+                end
+            end
         end)
     end)
 end
