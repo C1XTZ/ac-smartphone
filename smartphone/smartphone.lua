@@ -28,6 +28,7 @@ local settings = ac.storage {
     chatHideAnnoying = true,
     chatLatestBold = false,
     hideCamera = false,
+    showTimestamp = true
 }
 
 --#endregion
@@ -130,6 +131,7 @@ local chat = {
     mentioned = '',
     input = {
         active = false,
+        hovered = false,
         placeholder = 'iMessage',
         text = '',
         offset = 0,
@@ -516,7 +518,6 @@ local function handleKeyboardInput()
     local keyboardInput = ui.captureKeyboard(false, true, false)
     local msgLen = utf8len(chat.input.text) > 0
     local typed = keyboardInput:queue()
-    local inputHovered = ui.windowHovered(ui.HoveredFlags.AllowWhenOverlapped)
     local inputMaxLen = math.floor(490 * (13 / settings.chatFontSize) ^ 2)
 
     if (ui.keyPressed(ui.Key.Backspace, true) or ui.keyPressed(ui.Key.Delete)) and msgLen then
@@ -529,7 +530,7 @@ local function handleKeyboardInput()
         ac.sendChatMessage(chat.input.text)
         chat.sendCd = true
 
-        if inputHovered then
+        if chat.input.hovered then
             chat.input.text = ''
         else
             chat.input.active = false
@@ -680,11 +681,12 @@ local function drawSongInfo()
 end
 
 local function drawMessages()
-    ui.pushClipRect(vec2(0, 0), vec2(ui.windowWidth(), (scale(497) - chat.input.offset) + movement.smooth))
+    ui.pushClipRect(vec2(0, 0), vec2(ui.windowWidth(), (scale(500) - chat.input.offset) + movement.smooth))
     ui.setCursor(vec2(13, 100):scale(app.scale) + vec2(0, movement.smooth))
     ui.childWindow('Messages', vec2(266, 400 - chat.input.offset):scale(app.scale), false, WINDOWFLAGS, function()
         local messageFontSize = scale(settings.chatFontSize)
         local usernameFontSize = scale(settings.chatFontSize - 2)
+        local timestampFontSize = scale(settings.chatFontSize - 4)
         local usernameOffset = vec2(scale(10), usernameFontSize + scale(13))
         local messagePadding = vec2(15, 10):scale(app.scale)
         local messageMaxWidth = scale(250)
@@ -696,6 +698,7 @@ local function drawMessages()
                 local messageUserIndexLast = i >= 2 and chat.messages[i - 1][1] or nil
                 local messageUsername = chat.messages[i][2]
                 local messageTextcontent = chat.messages[i][3]
+                local messageTimestamp = settings.badTime and to12hTime(os.date("%H:%M", chat.messages[i][4])) or os.date("%H:%M", chat.messages[i][4])
                 local fontWeight = app.font.regular
 
                 if (i == #chat.messages and settings.chatLatestBold) or messageTextcontent:lower():find('%f[%a_]' .. ac.getDriverName(0):lower() .. '%f[%A_]') then
@@ -724,11 +727,21 @@ local function drawMessages()
                     ui.pushDWriteFont(fontWeight)
                     local messageTextSize = ui.measureDWriteText(messageTextcontent, messageFontSize, scale(190))
                     msgDist = math.ceil(msgDist + messageTextSize.y)
-                    ui.setCursor(vec2(ui.windowSize().x - scale(5), msgDist))
+                    ui.setCursor(vec2(ui.windowWidth() - scale(5), msgDist))
                     ui.drawRectFilled(ui.getCursor() - vec2(math.ceil(messageTextSize.x + messagePadding.x), math.ceil(messageTextSize.y + messagePadding.y)), ui.getCursor(), colors.iMessageBlue, messageRounding)
                     ui.setCursor(ui.getCursor() - vec2(math.ceil(messageTextSize.x + messagePadding.x / 2), math.ceil(messageTextSize.y + messagePadding.y / 2)))
                     ui.dwriteTextAligned(messageTextcontent, messageFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgb.colors.white)
                     ui.popDWriteFont()
+
+                    if settings.showTimestamp then
+                        ui.pushDWriteFont(app.font.bold)
+                        local timestampSize = ui.measureDWriteText(messageTimestamp, timestampFontSize)
+                        ui.setCursor(vec2(ui.windowWidth() - timestampSize.x - scale(6), msgDist))
+                        ui.dwriteTextAligned(messageTimestamp, timestampFontSize, ui.Alignment.Start, ui.Alignment.Start, timestampSize, true, rgb.colors.gray)
+                        ui.popDWriteFont()
+                        msgDist = math.ceil(msgDist + timestampSize.y)
+                    end
+
                     msgDist = math.ceil(msgDist + messagePadding.y + messagePadding.y / 2)
                 elseif messageUserIndex > 0 then
                     local bubbleColor, messageTextColor = colors.final.message, settings.darkMode and rgb.colors.white or rgb.colors.black
@@ -765,6 +778,15 @@ local function drawMessages()
                     ui.dwriteTextAligned(messageTextcontent, messageFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, messageTextColor)
                     ui.popDWriteFont()
 
+                    if settings.showTimestamp then
+                        ui.pushDWriteFont(app.font.bold)
+                        local timestampSize = ui.measureDWriteText(messageTimestamp, timestampFontSize)
+                        ui.setCursor(vec2(scale(5), msgDist))
+                        ui.dwriteTextAligned(messageTimestamp, timestampFontSize, ui.Alignment.Start, ui.Alignment.Start, timestampSize, true, rgb.colors.gray)
+                        ui.popDWriteFont()
+                        msgDist = math.ceil(msgDist + timestampSize.y)
+                    end
+
                     if chat.messageHovered[i] and ui.mouseClicked(ui.MouseButton.Right) then
                         chat.mentioned = '@' .. messageUsername .. ' '
                     end
@@ -796,7 +818,7 @@ local function drawMessages()
                     end
                 end
 
-                if (not app.hovered or chat.scrollBool) or (chat.input.active and app.hovered) and ui.getScrollY() ~= ui.getScrollMaxY() then ui.setScrollHereY(-1) end
+                if (not app.hovered or chat.scrollBool) or (chat.input.active and chat.input.hovered) and ui.getScrollY() ~= ui.getScrollMaxY() then ui.setScrollHereY(-1) end
             end
         end
 
@@ -823,10 +845,10 @@ local function drawInputCustom()
         local lineHeight = ui.measureDWriteText('Line Height', inputFontSize, inputWrap).y
 
         if player.isOnline then
-            local inputHovered = ui.windowHovered(ui.HoveredFlags.RectOnly)
-            local inputClicked = inputHovered and ui.mouseClicked(ui.MouseButton.Left)
+            chat.input.hovered = ui.windowHovered(ui.HoveredFlags.RectOnly)
+            local inputClicked = chat.input.hovered and ui.mouseClicked(ui.MouseButton.Left)
 
-            if inputHovered then
+            if chat.input.hovered then
                 ui.setMouseCursor(ui.MouseCursor.TextInput)
             end
 
@@ -1075,6 +1097,8 @@ function script.windowMainSettings(dt)
             if ui.checkbox('Hide Kick and Ban Messages', settings.chatHideKickBan) then settings.chatHideKickBan = not settings.chatHideKickBan end
 
             if ui.checkbox('Hide Annoying App Messages', settings.chatHideAnnoying) then settings.chatHideAnnoying = not settings.chatHideAnnoying end
+
+            if ui.checkbox('Show Timestamps', settings.showTimestamp) then settings.showTimestamp = not settings.showTimestamp end
 
             if ui.checkbox('Chat History Settings', settings.chatPurge) then settings.chatPurge = not settings.chatPurge end
             if settings.chatPurge then
