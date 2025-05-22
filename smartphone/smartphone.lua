@@ -98,6 +98,7 @@ local player = {
     isOnline = ac.getSim().isOnlineRace,
     serverIP = ac.getServerIP(),
     serverCommunity = nil,
+    timePeriod = '',
 }
 
 local communityList = {
@@ -274,7 +275,9 @@ end
 local function to12hTime(timeString)
     local hour, minute = timeString:match('^(%d+):(%d+)$')
     hour, minute = tonumber(hour), tonumber(minute)
+    player.timePeriod = 'AM'
     if hour >= 12 then
+        player.timePeriod = 'PM'
         hour = hour % 12
         if hour == 0 then hour = 12 end
     end
@@ -536,6 +539,25 @@ end
 
 --#region CHAT LOGIC FUNCTIONS
 
+---@param message string? @Optional, message to be sent instead of input field text.
+local function sendChatMessage(message)
+    message = message and ac.sendChatMessage(message) or ac.sendChatMessage(chat.input.text)
+
+    chat.sendCd = true
+
+    if chat.input.hovered then
+        chat.input.text = ''
+    else
+        if chat.mentioned ~= '' then chat.mentioned = '' end
+        chat.input.active = false
+    end
+
+    chat.input.historyIndex = 0
+    chat.scrollBool = true
+    setTimeout(function() chat.scrollBool = false end, 0.1)
+    setTimeout(function() chat.sendCd = false end, 1)
+end
+
 ---@param isPlayer boolean @Indicates if the message originates from a player or the server.
 ---@param message string @The string content of the incoming chat message.
 ---@return boolean @Returns true if the message matches one of the hide patterns.
@@ -554,10 +576,14 @@ local function matchMessage(isPlayer, message)
         for _, reason in ipairs(chat.serverHideStrings) do
             if lowerMessage:find(reason) then
                 if lowerMessage:find(lowerPlayerName) then
-                    playAudio(audio.notification.critical)
+                    setTimeout(function()
+                        playAudio(audio.notification.critical)
+                    end, 0.4)
                 else
                     if (lowerMessage:find('^you') or lowerMessage:find('^it is currently night')) then
-                        playAudio(audio.notification.critical)
+                        setTimeout(function()
+                            playAudio(audio.notification.critical)
+                        end, 0.4)
                     else
                         return true
                     end
@@ -605,19 +631,7 @@ local function handleKeyboardInput()
         chat.input.text = utf8sub(chat.input.text, 1, utf8len(chat.input.text) - 1)
         return
     elseif ui.keyPressed(ui.Key.Enter) and msgLen and not chat.sendCd then
-        ac.sendChatMessage(chat.input.text)
-        chat.sendCd = true
-
-        if chat.input.hovered then
-            chat.input.text = ''
-        else
-            chat.input.active = false
-        end
-
-        chat.input.historyIndex = 0
-        chat.scrollBool = true
-        setTimeout(function() chat.scrollBool = false end, 0.1)
-        setTimeout(function() chat.sendCd = false end, 1)
+        sendChatMessage()
         return
     elseif ui.keyboardButtonDown(ui.KeyIndex.Control) and ui.keyboardButtonPressed(ui.KeyIndex.V, true) then
         if utf8len(chat.input.text .. ui.getClipboardText()) >= inputMaxLen then return end
@@ -713,6 +727,13 @@ local function drawTime()
     ui.setCursor(timePosition)
     ui.pushDWriteFont(app.font.bold)
     local timeTextSize = ui.measureDWriteText(timeText, timeSize)
+    if app.hovered then
+        local timeHovered = ui.rectHovered(ui.getCursor(), ui.getCursor() + timeTextSize, true)
+        if timeHovered and ui.mouseClicked(ui.MouseButton.Right) then
+            timeText = settings.badTime and timeText .. ' ' .. player.timePeriod or timeText
+            sendChatMessage('It\'s currently ' .. timeText .. ' my local time.')
+        end
+    end
     ui.dwriteTextAligned(timeText, timeSize, ui.Alignment.Start, ui.Alignment.Center, timeTextSize, false, colors.final.elements)
     ui.popDWriteFont()
 end
@@ -761,6 +782,12 @@ local function drawSongInfo()
         ui.pushDWriteFont(app.font.bold)
         local songTextSize = vec2(133, 15):scale(app.scale)
         ui.setCursor(vec2(math.round(ui.windowWidth() / 2 - songTextSize.x / 2.3), songPosition.y + movement.smooth))
+        if app.hovered then
+            local SongInfoHovered = ui.rectHovered(ui.getCursor(), ui.getCursor() + songTextSize, true)
+            if SongInfoHovered and ui.mouseClicked(ui.MouseButton.Right) then
+                sendChatMessage('I\'m currently listening to: ' .. songInfo.artist .. ' - ' .. songInfo.title)
+            end
+        end
         ui.dwriteTextAligned(songInfo.final, songFontSize, songInfo.align, ui.Alignment.End, songTextSize, false, rgb.colors.white)
         ui.popDWriteFont()
     end
@@ -784,7 +811,7 @@ local function drawMessages()
                 local messageUserIndexLast = i >= 2 and chat.messages[i - 1][1] or nil
                 local messageUsername = chat.messages[i][2]
                 local messageTextcontent = chat.messages[i][3]
-                local messageTimestamp = settings.badTime and to12hTime(os.date("%H:%M", chat.messages[i][4])) or os.date("%H:%M", chat.messages[i][4])
+                local messageTimestamp = settings.badTime and to12hTime(os.date("%H:%M", chat.messages[i][4])) .. ' ' .. player.timePeriod or os.date("%H:%M", chat.messages[i][4])
                 local fontWeight = app.font.regular
 
                 if (i == #chat.messages and settings.chatLatestBold) or (messageTextcontent:lower():find('%f[%a_]' .. ac.getDriverName(0):lower() .. '%f[%A_]') and messageUserIndex > 0) then
@@ -822,7 +849,7 @@ local function drawMessages()
                     if settings.showTimestamp then
                         ui.pushDWriteFont(app.font.bold)
                         local timestampSize = ui.measureDWriteText(messageTimestamp, timestampFontSize)
-                        ui.setCursor(vec2(ui.windowWidth() - timestampSize.x - scale(6), msgDist))
+                        ui.setCursor(vec2(math.ceil(ui.windowWidth() - timestampSize.x - scale(6)), msgDist))
                         ui.dwriteTextAligned(messageTimestamp, timestampFontSize, ui.Alignment.Start, ui.Alignment.Start, timestampSize, true, rgb.colors.gray)
                         ui.popDWriteFont()
                         msgDist = math.ceil(msgDist + timestampSize.y)
@@ -1004,19 +1031,7 @@ local function drawInputCustom()
 
                 if ui.mouseClicked(ui.MouseButton.Left) then
                     playAudio(audio.keyboard.enter)
-                    ac.sendChatMessage(chat.input.text)
-                    chat.sendCd = true
-
-                    if chat.input.hovered then
-                        chat.input.text = ''
-                    else
-                        chat.input.active = false
-                    end
-
-                    chat.input.historyIndex = 0
-                    chat.scrollBool = true
-                    setTimeout(function() chat.scrollBool = false end, 0.1)
-                    setTimeout(function() chat.sendCd = false end, 1)
+                    sendChatMessage()
                 end
             end
 
@@ -1056,17 +1071,16 @@ ac.onChatMessage(function(message, senderCarIndex)
         moveAppUp()
 
         if isPlayer then
-            if isFriend or escapedMessage:lower():find('%f[%a_]' .. ac.getDriverName(0):lower() .. '%f[%A_]') then
+            if senderCarIndex == 0 then
+                return playAudio(audio.message.send)
+            elseif senderCarIndex > 0 and (isFriend or escapedMessage:lower():find('%f[%a_]' .. ac.getDriverName(0):lower() .. '%f[%A_]')) then
                 playAudio(audio.message.recieve)
                 if not settings.notificationsPlayAll and senderCarIndex > 0 then
                     setTimeout(function()
                         playAudio(audio.notification.regular)
-                    end, 0.33)
+                    end, 0.4)
+                    return
                 end
-            end
-
-            if senderCarIndex == 0 then
-                return playAudio(audio.message.send)
             elseif not settings.messagesPlayAll then
                 return playAudio(audio.message.recieve)
             end
@@ -1088,11 +1102,11 @@ if settings.connectionEvents then
             deleteOldestMessages()
             table.insert(chat.messages, { -1, 'Server', ac.getDriverName(connectedCarIndex) .. action .. ' the Server', os.time() })
 
-            playAudio(audio.message.recieve)
-            if not settings.notificationsPlayAll and isFriend then
+            if not settings.messagesPlayAll or isFriend then playAudio(audio.message.recieve) end
+            if not settings.notificationsPlayAll then
                 setTimeout(function()
                     playAudio(audio.notification.regular)
-                end, 0.33)
+                end, 0.4)
             end
 
             moveAppUp()
@@ -1254,7 +1268,7 @@ function script.windowMainSettings(dt)
                 if settings.enableMessage then
                     ui.text('\t')
                     ui.sameLine()
-                    if ui.checkbox('Only Play for Friends', settings.messagesPlayAll) then settings.messagesPlayAll = not settings.messagesPlayAll end
+                    if ui.checkbox('Only play "recieve" sound for friends', settings.messagesPlayAll) then settings.messagesPlayAll = not settings.messagesPlayAll end
                     ui.text('\t')
                     ui.sameLine()
                     settings.volumeMessage = ui.slider('##messageVolume', settings.volumeMessage, 0.1, 10, 'Message Volume: ' .. '%.1f')
@@ -1267,7 +1281,7 @@ function script.windowMainSettings(dt)
                 if settings.enableNotification then
                     ui.text('\t')
                     ui.sameLine()
-                    if ui.checkbox('Only Play for Server Alerts', settings.notificationsPlayAll) then settings.notificationsPlayAll = not settings.notificationsPlayAll end
+                    if ui.checkbox('Only Play for Server Warnings', settings.notificationsPlayAll) then settings.notificationsPlayAll = not settings.notificationsPlayAll end
                     ui.text('\t')
                     ui.sameLine()
                     settings.volumeNotification = ui.slider('##notificationVolume', settings.volumeNotification, 0.1, 10, 'Notification Volume: ' .. '%.1f')
