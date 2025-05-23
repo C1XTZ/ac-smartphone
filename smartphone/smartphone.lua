@@ -402,14 +402,14 @@ local function playAudio(event)
 
     if settings.enableAudio and category and settings["enable" .. category:sub(1, 1):upper() .. category:sub(2)] then
         local volume = settings[event.volumeSetting] or 1
-        local audio = ac.AudioEvent.fromFile({ filename = event.file, use3D = false, loop = false }, false):setVolumeChannel(ac.AudioChannel.Main)
-        audio.cameraInteriorMultiplier = 1
-        audio.cameraExteriorMultiplier = 1
-        audio.volume = 1 * volume
-        audio:start()
+        local audioToPlay = ac.AudioEvent.fromFile({ filename = event.file, use3D = false, loop = false }, false):setVolumeChannel(ac.AudioChannel.Main)
+        audioToPlay.cameraInteriorMultiplier = 1
+        audioToPlay.cameraExteriorMultiplier = 1
+        audioToPlay.volume = 1 * volume
+        audioToPlay:start()
         setTimeout(function()
-            audio:dispose()
-        end, 1, 'audio')
+            audioToPlay:dispose()
+        end, audioToPlay:getDuration(), 'audioToPlay')
     end
 end
 
@@ -645,6 +645,7 @@ local function handleKeyboardInput()
         return
     elseif ui.keyPressed(ui.Key.Enter) and msgLen and not chat.sendCd then
         sendChatMessage()
+        chat.emojiPicker = false
         return
     elseif ui.keyboardButtonDown(ui.KeyIndex.Control) and ui.keyboardButtonPressed(ui.KeyIndex.V, true) then
         if utf8len(chat.input.text .. ui.getClipboardText()) >= inputMaxLen then return end
@@ -1134,6 +1135,7 @@ local function drawInputCustom()
                     playAudio(audio.keyboard.enter)
                     sendChatMessage()
                     chat.emojiPicker = false
+                    chat.input.sendHovered = false
                 end
             end
 
@@ -1303,8 +1305,12 @@ function script.windowMainSettings(dt)
             end
         end)
         ui.tabItem('Chat', function()
+            ui.text('\t')
+            ui.sameLine()
             settings.chatFontSize = ui.slider('##ChatFontSize', settings.chatFontSize, 6, 36, 'Chat Fontsize: ' .. '%.0f')
 
+            ui.text('\t')
+            ui.sameLine()
             settings.chatScrollDistance = ui.slider('##chatScrollDistance', settings.chatScrollDistance, 1, 100, 'Chat Scroll Distance: ' .. '%.0f')
 
             if ui.checkbox('Chat Inactivity Minimizes Phone', settings.appMove) then
