@@ -63,6 +63,8 @@ local colors = {
     iMessageDarkGray = rgb(0.15, 0.15, 0.15),
     iMessageGreen = rgb(0.2, 0.75, 0.3),
     iMessageSelected = rgbm(0, 0.49, 1, 0.33),
+    emojiPickerButtonLight = rgbm(0, 0, 0, 0.1),
+    emojiPickerButtonDark = rgbm(0, 0, 0, 0.2),
     final = {
         display = rgb(),
         header = rgbm(),
@@ -70,6 +72,7 @@ local colors = {
         elements = rgb(),
         message = rgb(),
         input = rgbm(),
+        emojiPicker = rgbm(),
     },
 }
 
@@ -139,6 +142,8 @@ local chat = {
     sendCd = false,
     scrollBool = false,
     mentioned = '',
+    emojiPicker = false,
+    emojiPickerHovered = false,
     input = {
         active = false,
         hovered = false,
@@ -164,7 +169,14 @@ local chat = {
         'banned',
         'checksums',
         'teleported to pits',
-    }
+    },
+    emojis = {
+        "😎", "😄", "😅", "😁", "😂", "😍", "🤩", "😳", "🤠", "🥳",
+        "😱", "😤", "😭", "🥴", "🥺", "😡", "🙌", "👍", "👎", "👋",
+        "✌️", "🤝", "🙏", "🤷‍♂️", "🤦‍♂️", "🏆", "🎉", "🥇", "🏁", "🚗",
+        "🚦", "🛑", "⛽", "⏱️", "🌍", "💡", "❓", "❗", "💬", "🍀",
+        "🚀", "💥", "🐢", "🐇", "💀"
+    },
 }
 
 local audio = {
@@ -319,6 +331,7 @@ local function updateColors()
     colors.final.headerLine:set(settings.darkMode and colors.headerLineColorDark or colors.headerLineColorLight)
     colors.final.input:set(settings.darkMode and colors.transparent.white50 or colors.transparent.black50)
     colors.final.message:set(settings.darkMode and colors.iMessageDarkGray or colors.iMessageLightGray)
+    colors.final.emojiPicker:set(settings.darkMode and colors.emojiPickerButtonDark or colors.emojiPickerButtonLight)
 end
 
 local appWindow, windowHeight, appBottom = ac.accessAppWindow('IMGUI_LUA_Smartphone_main')
@@ -707,6 +720,13 @@ local function drawPing()
         local pingSize = vec2(20, 20):scale(app.scale)
         local pingPosition = vec2(scale(238), pingSize.y + movement.smooth)
 
+        if ui.rectHovered(pingPosition, pingPosition + pingSize, true) then
+            ui.setMouseCursor(ui.MouseCursor.Hand)
+            if ui.mouseClicked(ui.MouseButton.Left) then
+                sendChatMessage('I currently have a ping of ' .. ping .. ' ms.')
+            end
+        end
+
         if ping < 100 then
             ui.drawImage(app.images.pingAtlasPath, pingPosition, pingPosition + pingSize, colors.final.elements, vec2(0 / 4, 0), vec2(1 / 4, 1))
         elseif ping >= 100 and ping < 200 then
@@ -728,10 +748,12 @@ local function drawTime()
     ui.pushDWriteFont(app.font.bold)
     local timeTextSize = ui.measureDWriteText(timeText, timeSize)
     if app.hovered then
-        local timeHovered = ui.rectHovered(ui.getCursor(), ui.getCursor() + timeTextSize, true)
-        if timeHovered and ui.mouseClicked(ui.MouseButton.Right) then
-            timeText = settings.badTime and timeText .. ' ' .. player.timePeriod or timeText
-            sendChatMessage('It\'s currently ' .. timeText .. ' my local time.')
+        if ui.rectHovered(ui.getCursor(), ui.getCursor() + timeTextSize, true) then
+            ui.setMouseCursor(ui.MouseCursor.Hand)
+            if ui.mouseClicked(ui.MouseButton.Left) then
+                timeText = settings.badTime and timeText .. ' ' .. player.timePeriod or timeText
+                sendChatMessage('It\'s currently ' .. timeText .. ' my local time.')
+            end
         end
     end
     ui.dwriteTextAligned(timeText, timeSize, ui.Alignment.Start, ui.Alignment.Center, timeTextSize, false, colors.final.elements)
@@ -740,7 +762,7 @@ end
 
 local function drawDynamicIsland()
     ui.drawRectFilled(vec2((ui.windowWidth() / 2 - scale(songInfo.dynamicIslandSize.x)), scale(songInfo.dynamicIslandSize.y) + movement.smooth), vec2((ui.windowWidth() / 2 + scale(songInfo.dynamicIslandSize.x)), scale(songInfo.dynamicIslandSize.y * 2) + movement.smooth), rgb.colors.black, scale(10))
-    if not settings.hideCamera then
+    if not settings.hideCamera or not settings.songInfo then
         local camSize = scale(songInfo.dynamicIslandSize.y - 2)
         local camPos = math.ceil(ui.windowWidth() / 2 + scale(30))
         ui.drawImage(app.images.phoneCamera, vec2(camPos - camSize / 2, scale(songInfo.dynamicIslandSize.y * 1.5) - (camSize / 2) + movement.smooth), vec2(camPos + camSize / 2, scale(songInfo.dynamicIslandSize.y * 1.5) + (camSize / 2) + movement.smooth))
@@ -784,8 +806,11 @@ local function drawSongInfo()
         ui.setCursor(vec2(math.round(ui.windowWidth() / 2 - songTextSize.x / 2.3), songPosition.y + movement.smooth))
         if app.hovered then
             local SongInfoHovered = ui.rectHovered(ui.getCursor(), ui.getCursor() + songTextSize, true)
-            if SongInfoHovered and ui.mouseClicked(ui.MouseButton.Right) then
-                sendChatMessage('I\'m currently listening to: ' .. songInfo.artist .. ' - ' .. songInfo.title)
+            if ui.rectHovered(ui.getCursor(), ui.getCursor() + songTextSize, true) then
+                ui.setMouseCursor(ui.MouseCursor.Hand)
+                if ui.mouseClicked(ui.MouseButton.Left) then
+                    sendChatMessage('I\'m currently listening to: ' .. songInfo.artist .. ' - ' .. songInfo.title)
+                end
             end
         end
         ui.dwriteTextAligned(songInfo.final, songFontSize, songInfo.align, ui.Alignment.End, songTextSize, false, rgb.colors.white)
@@ -900,8 +925,13 @@ local function drawMessages()
                         msgDist = math.ceil(msgDist + timestampSize.y)
                     end
 
-                    if chat.messageHovered[i] and ui.mouseClicked(ui.MouseButton.Right) then
-                        chat.mentioned = '@' .. messageUsername .. ' '
+                    if chat.messageHovered[i] then
+                        ui.setMouseCursor(ui.MouseCursor.Hand)
+                        if ui.mouseClicked(ui.MouseButton.Right) then
+                            if chat.input.text == chat.input.placeholder then chat.input.text = '' end
+                            chat.input.active = true
+                            chat.input.text = chat.input.text .. '@' .. messageUsername .. ' '
+                        end
                     end
 
                     msgDist = math.ceil(msgDist + messagePadding.y + messagePadding.y / 2)
@@ -943,6 +973,76 @@ local function drawMessages()
     ui.popClipRect()
 end
 
+local function drawEmojiPicker()
+    local windowSize = vec2(200, 230):scale(app.scale)
+    local windowPos = vec2(8, 257):scale(app.scale)
+    local buttonPos = vec2(13, 33):scale(app.scale)
+    local buttonBgPos = vec2(28, 18):scale(app.scale)
+    local buttonBgRad = scale(12)
+    local popupPadding = scale(10)
+    local popupSize = vec2(190, 220):scale(app.scale)
+    local rounding = scale(10)
+    local emojiOffset = vec2(0, 2):scale(app.scale)
+    local emojiSizePicker = scale(20)
+    ui.pushDWriteFont(app.font.regular)
+    local emojiSize = ui.measureDWriteText('😀', emojiSizePicker)
+    if movement.distance > 0 and chat.emojiPicker then chat.emojiPicker = false end
+
+    ui.setCursor(vec2(buttonPos.x, ui.windowHeight() - buttonPos.y + movement.smooth))
+    ui.beginOutline()
+    ui.dwriteText('😀', scale(22))
+    ui.endOutline(settings.darkMode and colors.transparent.white10 or colors.transparent.black10, math.max(1, math.round(1 * app.scale, 1)))
+    ui.popDWriteFont()
+
+    if ui.itemClicked(ui.MouseButton.Left, true) then
+        chat.emojiPicker = not chat.emojiPicker
+        playAudio(audio.keyboard.enter)
+    end
+
+    chat.emojiPickerHovered = ui.itemHovered(ui.HoveredFlags.None)
+    if chat.emojiPickerHovered then
+        ui.setMouseCursor(ui.MouseCursor.Hand)
+        ui.drawEllipseFilled(vec2(buttonBgPos.x, ui.windowHeight() - buttonBgPos.y), buttonBgRad, colors.final.emojiPicker, 100)
+    end
+
+    ui.setCursor(vec2(windowPos.x, ui.windowHeight() - windowPos.y - chat.input.offset))
+    ui.childWindow('EmojiPicker', windowSize, false, WINDOWFLAGS, function()
+        if chat.emojiPicker then
+            ui.setCursor(vec2(popupPadding, ui.windowHeight() - windowSize.y))
+            ui.drawRectFilled(ui.getCursor(), ui.getCursor() + popupSize, colors.final.message, rounding)
+
+            ui.newLine(0)
+            ui.setCursor(vec2(15, 3))
+            ui.beginGroup(popupSize.x)
+            for i = 1, #chat.emojis do
+                local emojiHovered = ui.rectHovered(ui.getCursor(), ui.getCursor() + emojiSize)
+                if emojiHovered then
+                    chat.emojiPickerHovered = true
+                    ui.setMouseCursor(ui.MouseCursor.Hand)
+                    ui.drawRectFilled(ui.getCursor() + emojiOffset, ui.getCursor() + emojiSize + emojiOffset, colors.iMessageSelected, scale(5))
+                    if ui.mouseClicked(ui.MouseButton.Left) then
+                        playAudio(audio.keyboard.keystroke)
+                        if not chat.input.active then chat.input.active = true end
+                        if chat.input.text == chat.input.placeholder then chat.input.text = '' end
+                        chat.input.text = chat.input.text .. chat.emojis[i]
+                    end
+                end
+
+                ui.beginOutline()
+                ui.dwriteText(chat.emojis[i], emojiSizePicker)
+                ui.endOutline(colors.transparent.black10, scale(2))
+                ui.sameLine(0, 3)
+
+                if i % 6 == 0 and i ~= #chat.emojis then
+                    ui.newLine(0)
+                end
+            end
+            ui.endGroup()
+        end
+        ui.popDWriteFont()
+    end)
+end
+
 local function drawInputCustom()
     local inputSize = vec2(235, 32):scale(app.scale) + vec2(0, chat.input.offset)
     local inputBoxSize = inputSize - vec2(5, 5):scale(app.scale)
@@ -959,7 +1059,7 @@ local function drawInputCustom()
 
         if player.isOnline then
             chat.input.hovered = ui.windowHovered(ui.HoveredFlags.RectOnly)
-            local inputClicked = chat.input.hovered and ui.mouseClicked(ui.MouseButton.Left)
+            inputClicked = chat.input.hovered and ui.mouseClicked(ui.MouseButton.Left)
 
             if chat.input.hovered then
                 ui.setMouseCursor(ui.MouseCursor.TextInput)
@@ -969,12 +1069,13 @@ local function drawInputCustom()
                 if inputClicked or chat.mentioned ~= '' then
                     if not chat.input.active then chat.input.text = '' end
                     chat.input.active = true
-                    chat.input.text = chat.mentioned
-                elseif ui.mouseClicked(ui.MouseButton.Left) then
+                    if chat.emojiPicker then chat.emojiPicker = false end
+                elseif ui.mouseClicked(ui.MouseButton.Left) and not chat.emojiPickerHovered and not chat.input.hovered then
                     chat.input.active = false
                     chat.input.text = chat.input.placeholder
                     chat.input.selected = nil
                     chat.input.historyIndex = 0
+                    chat.emojiPicker = false
                 end
             end
 
@@ -1009,10 +1110,10 @@ local function drawInputCustom()
             ui.drawRectFilled(ui.getCursor(), ui.getCursor() + selectedTextSize, colors.iMessageSelected)
         end
 
-        local inputTextSize = ui.measureDWriteText(displayText, inputFontSize, inputWrap)
+        local inputTextSize = ui.measureDWriteText(displayText, inputFontSize, inputWrap):max(vec2(0, 17.291))
         ui.setCursor(vec2(10, 6):scale(app.scale))
         ui.pushClipRect(ui.getCursor(), ui.getCursor() + inputBoxSize - vec2(0, 9):scale(app.scale) + movement.smooth)
-        ui.dwriteTextAligned(displayText, inputFontSize, ui.Alignment.Start, ui.Alignment.Center, inputTextSize, true, colors.final.input)
+        ui.dwriteTextAligned(displayText, inputFontSize, ui.Alignment.Start, ui.Alignment.End, inputTextSize, true, colors.final.input)
         ui.popDWriteFont()
         ui.popClipRect()
 
@@ -1032,6 +1133,7 @@ local function drawInputCustom()
                 if ui.mouseClicked(ui.MouseButton.Left) then
                     playAudio(audio.keyboard.enter)
                     sendChatMessage()
+                    chat.emojiPicker = false
                 end
             end
 
@@ -1039,7 +1141,7 @@ local function drawInputCustom()
             ui.drawIcon(ui.Icons.ArrowUp, ui.getCursor() - arrowRad, ui.getCursor() + arrowRad, rgb.colors.white)
         end
 
-        chat.input.offset = math.min(math.floor(inputTextSize.y - scale(15)), scale(390))
+        chat.input.offset = math.min(math.floor(inputTextSize.y - scale(17)), scale(390))
     end)
 end
 
@@ -1162,8 +1264,6 @@ function script.windowMainSettings(dt)
 
             if ui.checkbox('Use 12h Clock', settings.badTime) then settings.badTime = not settings.badTime end
 
-            if ui.checkbox('Hide Selfie Camera', settings.hideCamera) then settings.hideCamera = not settings.hideCamera end
-
             if ui.checkbox('Show Music Information', settings.songInfo) then
                 settings.songInfo = not settings.songInfo
                 if settings.songInfo then
@@ -1171,6 +1271,12 @@ function script.windowMainSettings(dt)
                 else
                     stopSongInfo()
                 end
+            end
+
+            if settings.songInfo then
+                ui.text('\t')
+                ui.sameLine()
+                if ui.checkbox('Hide Selfie Camera', settings.hideCamera) then settings.hideCamera = not settings.hideCamera end
             end
 
             if settings.songInfo then
@@ -1305,7 +1411,7 @@ function script.windowMain(dt)
     player.car = ac.getCar(0)
 
     if app.images.phoneAtlasSize == vec2(0, 0) then app.images.phoneAtlasSize = ui.imageSize(app.images.phoneAtlasPath):scale(app.scale) end
-    if app.hovered then moveAppUp() end
+    if app.hovered or chat.input.active then moveAppUp() end
     if player.cspVersion >= 3044 and settings.forceBottom then forceAppToBottom() end
 
     ui.childWindow('Phone', vec2(app.images.phoneAtlasSize.x / 2, app.images.phoneAtlasSize.y), false, WINDOWFLAGS, function()
@@ -1318,6 +1424,7 @@ function script.windowMain(dt)
         drawSongInfo()
 
         drawMessages()
+        drawEmojiPicker()
         drawInputCustom()
 
         drawiPhone()
