@@ -1,14 +1,22 @@
 # Smartphone App for AC
 Chat replacement app in the style of an iPhone and iMessage.
 
+If you're looking for a more "oldschool" look, try my [Mobilephone](https://github.com/C1XTZ/ac-mobilephone/) app.
+
 ### Current Features:
 - **Dark Mode**
-- **Displays current reallife time (24h/12h formats)**
-- **Displays currently playing music information**
+- **Displays current reallife time (24h/12h formats) - Left click to send it to chat**
+- **Displays currently playing music information - Left click to send it to chat**
+- **Displays your ping - Left click to send it to chat**
 - **Ingame chat - Right click a message to @mention the sender**
+- **iOS 18 Sounds - Keystrokes, Messages, Notifications**
 - **Hides annoying messages from other apps**
     - Example: `PLP: running version 1.21, 2-60-3-True-3.3-0.9-3-2-8-5-0|C1XTZ`
-- **Many adjustable settings to suit your preferences as seen below - images might be outdated, always check ingame**
+- **Many adjustable settings as seen below - images might be outdated, always check ingame**
+
+<p align="center">
+<img width="185" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/main/.github/img/appsettings.png"> <img width="185" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/main/.github/img/preview.gif"> <img width="185" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/main/.github/img/chatsettings.png"> <img width="185" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/main/.github/img/audiosettings.png">
+</p>
 
 If you have any questions or suggestions, feel free to open an issue or pull request.  
 You can also reach me on Discord [@c1xtz](https://discord.com/users/856601560728207371) or Twitter [@C1XTZ](https://twitter.com/C1XTZ).
