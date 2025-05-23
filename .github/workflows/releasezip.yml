@@ -31,6 +31,8 @@ jobs:
           ## Changes:
 
           ## Known Issues:
+          - Song Information will sometimes be picked up from the wrong source (e.g. Browser instead of Spotify), or not at all.  
+            Try adding unwanted programs to the `Ignored processes` in the your CSP Music module settings.
           - When using the AssettoServer PatreonTwitchChatPlugin, some Twitch features like Announcements are not be displayed correctly and will result in empty lines
 
           ## Updating & Installation:
