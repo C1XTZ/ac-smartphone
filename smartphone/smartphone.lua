@@ -63,8 +63,10 @@ local colors = {
     iMessageDarkGray = rgb(0.15, 0.15, 0.15),
     iMessageGreen = rgb(0.2, 0.75, 0.3),
     iMessageSelected = rgbm(0, 0.49, 1, 0.33),
-    emojiPickerButtonLight = rgbm(0, 0, 0, 0.1),
-    emojiPickerButtonDark = rgbm(0, 0, 0, 0.2),
+    emojiPickerButtonLight = rgbm(0, 0, 0, 0.33),
+    emojiPickerButtonDark = rgbm(1, 1, 1, 0.33),
+    emojiPickerButtonBGLight = rgbm(0, 0, 0, 0.1),
+    emojiPickerButtonBGDark = rgbm(1, 1, 1, 0.15),
     final = {
         display = rgb(),
         header = rgbm(),
@@ -73,6 +75,7 @@ local colors = {
         message = rgb(),
         input = rgbm(),
         emojiPicker = rgbm(),
+        emojiPickerBG = rgbm(),
     },
 }
 
@@ -85,6 +88,7 @@ local app = {
         phoneCamera = './src/img/app/cam.png',
         pingAtlasPath = './src/img/app/connection.png',
         contactDefault = './src/img/app/default.png',
+        emojiPicker = './src/img/app/picker.png',
         communities = {
             srpLogo = './src/img/communities/srp-logo-socials.png',
         },
@@ -332,6 +336,7 @@ local function updateColors()
     colors.final.input:set(settings.darkMode and colors.transparent.white50 or colors.transparent.black50)
     colors.final.message:set(settings.darkMode and colors.iMessageDarkGray or colors.iMessageLightGray)
     colors.final.emojiPicker:set(settings.darkMode and colors.emojiPickerButtonDark or colors.emojiPickerButtonLight)
+    colors.final.emojiPickerBG:set(settings.darkMode and colors.emojiPickerButtonBGDark or colors.emojiPickerButtonBGLight)
 end
 
 local appWindow, windowHeight, appBottom = ac.accessAppWindow('IMGUI_LUA_Smartphone_main')
@@ -977,8 +982,8 @@ end
 local function drawEmojiPicker()
     local windowSize = vec2(200, 230):scale(app.scale)
     local windowPos = vec2(8, 257):scale(app.scale)
-    local buttonPos = vec2(13, 33):scale(app.scale)
-    local buttonBgPos = vec2(28, 18):scale(app.scale)
+    local buttonPos = vec2(29, 17):scale(app.scale)
+    local buttonSize = vec2(24, 24):scale(app.scale)
     local buttonBgRad = scale(12)
     local popupPadding = scale(10)
     local popupSize = vec2(190, 220):scale(app.scale)
@@ -990,20 +995,19 @@ local function drawEmojiPicker()
     if movement.distance > 0 and chat.emojiPicker then chat.emojiPicker = false end
 
     ui.setCursor(vec2(buttonPos.x, ui.windowHeight() - buttonPos.y + movement.smooth))
-    ui.beginOutline()
-    ui.dwriteText('😀', scale(22))
-    ui.endOutline(settings.darkMode and colors.transparent.white10 or colors.transparent.black10, math.max(1, math.round(1 * app.scale, 1)))
+
+    ui.drawImage(app.images.emojiPicker, ui.getCursor() - buttonSize / 2, ui.getCursor() + buttonSize / 2, colors.final.emojiPicker)
+    chat.emojiPickerHovered = ui.rectHovered(ui.getCursor() - buttonSize / 2, ui.getCursor() + buttonSize / 2)
     ui.popDWriteFont()
 
-    if ui.itemClicked(ui.MouseButton.Left, true) then
+    if chat.emojiPickerHovered and ui.mouseClicked(ui.MouseButton.Left) then
         chat.emojiPicker = not chat.emojiPicker
         playAudio(audio.keyboard.enter)
     end
 
-    chat.emojiPickerHovered = ui.itemHovered(ui.HoveredFlags.None)
     if chat.emojiPickerHovered then
         ui.setMouseCursor(ui.MouseCursor.Hand)
-        ui.drawEllipseFilled(vec2(buttonBgPos.x, ui.windowHeight() - buttonBgPos.y), buttonBgRad, colors.final.emojiPicker, 100)
+        ui.drawEllipseFilled(vec2(buttonPos.x, ui.windowHeight() - buttonPos.y), buttonBgRad, colors.final.emojiPickerBG, 100)
     end
 
     ui.setCursor(vec2(windowPos.x, ui.windowHeight() - windowPos.y - chat.input.offset))
@@ -1207,7 +1211,7 @@ if settings.connectionEvents then
             table.insert(chat.messages, { -1, 'Server', ac.getDriverName(connectedCarIndex) .. action .. ' the Server', os.time() })
 
             if not settings.messagesPlayAll or isFriend then playAudio(audio.message.recieve) end
-            if not settings.notificationsPlayAll then
+            if not settings.notificationsPlayAll and isFriend then
                 setTimeout(function()
                     playAudio(audio.notification.regular)
                 end, 0.4)
