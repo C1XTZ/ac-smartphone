@@ -24,7 +24,7 @@ jobs:
         tag: ${{ github.ref }}
         name: "Smartphone ${{ github.ref_name }}"
         body: |
-          **Oldest Supported CSP Version: CSP 0.2.2 (2744)**
+          **Oldest Supported CSP Version: CSP 0.2.3 (3044)**
 
           ## Added:
 

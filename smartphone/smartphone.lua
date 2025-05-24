@@ -27,6 +27,7 @@ local settings = ac.storage {
     chatHideKickBan = false,
     chatHideAnnoying = true,
     chatLatestBold = false,
+    chatUsernameColor = true,
     hideCamera = false,
     showTimestamp = false,
     enableAudio = false,
@@ -38,6 +39,7 @@ local settings = ac.storage {
     volumeNotification = 1,
     messagesPlayAll = false,
     notificationsPlayAll = false,
+    messagesIgnoreServer = false,
 }
 
 --#endregion
@@ -407,7 +409,7 @@ local function playAudio(event)
 
     if settings.enableAudio and category and settings["enable" .. category:sub(1, 1):upper() .. category:sub(2)] then
         local volume = settings[event.volumeSetting] or 1
-        local audioToPlay = ac.AudioEvent.fromFile({ filename = event.file, use3D = false, loop = false }, false):setVolumeChannel(ac.AudioChannel.Main)
+        local audioToPlay = ac.AudioEvent.fromFile({ filename = event.file, use3D = false, loop = false }, false)
         audioToPlay.cameraInteriorMultiplier = 1
         audioToPlay.cameraExteriorMultiplier = 1
         audioToPlay.volume = 1 * volume
@@ -719,7 +721,7 @@ local function drawiPhone()
 end
 
 local function drawPing()
-    ping = player.cspVersion < 3044 and 999 or player.car.ping
+    ping = player.car.ping
 
     if ping > -1 then
         local pingAtlasSize = ui.imageSize(app.images.pingAtlasPath):scale(app.scale)
@@ -841,9 +843,17 @@ local function drawMessages()
                 local messageUserIndex = chat.messages[i][1]
                 local messageUserIndexLast = i >= 2 and chat.messages[i - 1][1] or nil
                 local messageUsername = chat.messages[i][2]
+                local messageUsernameColor
                 local messageTextcontent = chat.messages[i][3]
                 local messageTimestamp = settings.badTime and to12hTime(os.date("%H:%M", chat.messages[i][4])) .. ' ' .. player.timePeriod or os.date("%H:%M", chat.messages[i][4])
                 local fontWeight = app.font.regular
+
+                if settings.chatUsernameColor then
+                    messageUsernameColor = ac.DriverTags(messageUsername).color
+                    if (messageUserIndex == 0 and messageUsernameColor == rgbm.colors.yellow) or (messageUserIndex ~= 0 and messageUsernameColor == rgbm.colors.white) then messageUsernameColor = rgb.colors.gray end
+                else
+                    messageUsernameColor = rgb.colors.gray
+                end
 
                 if (i == #chat.messages and settings.chatLatestBold) or (messageTextcontent:lower():find('%f[%a_]' .. ac.getDriverName(0):lower() .. '%f[%A_]') and messageUserIndex > 0) then
                     fontWeight = app.font.bold
@@ -857,13 +867,13 @@ local function drawMessages()
 
                     if not messageUserIndexLast then
                         ui.setCursor(vec2(usernameOffset.x, msgDist))
-                        ui.dwriteTextAligned(messageUsername, usernameFontSize, ui.Alignment.End, ui.Alignment.Start, vec2(messageMaxWidth, userNameTextSize.y), false, rgb.colors.gray)
+                        ui.dwriteTextAligned(messageUsername, usernameFontSize, ui.Alignment.End, ui.Alignment.Start, vec2(messageMaxWidth, userNameTextSize.y), false, messageUsernameColor)
                         msgDist = math.ceil(msgDist + usernameOffset.y)
                     else
                         if messageUserIndexLast ~= messageUserIndex then
                             if messageUserIndexLast ~= -1 then msgDist = math.ceil(msgDist - usernameOffset.y / 2) end
                             ui.setCursor(vec2(usernameOffset.x, msgDist))
-                            ui.dwriteTextAligned(messageUsername, usernameFontSize, ui.Alignment.End, ui.Alignment.Start, vec2(messageMaxWidth, userNameTextSize.y), false, rgb.colors.gray)
+                            ui.dwriteTextAligned(messageUsername, usernameFontSize, ui.Alignment.End, ui.Alignment.Start, vec2(messageMaxWidth, userNameTextSize.y), false, messageUsernameColor)
                             msgDist = math.ceil(msgDist + usernameOffset.y)
                         end
                     end
@@ -901,13 +911,13 @@ local function drawMessages()
 
                     if not messageUserIndexLast then
                         ui.setCursor(vec2(usernameOffset.x / 2, msgDist))
-                        ui.dwriteTextAligned(messageUsername, usernameFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(messageMaxWidth, userNameTextSize.y), false, rgb.colors.gray)
+                        ui.dwriteTextAligned(messageUsername, usernameFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(messageMaxWidth, userNameTextSize.y), false, messageUsernameColor)
                         msgDist = math.ceil(msgDist + usernameOffset.y)
                     else
                         if messageUserIndexLast ~= messageUserIndex then
                             if messageUserIndexLast ~= -1 then msgDist = math.ceil(msgDist - usernameOffset.y / 2) end
                             ui.setCursor(vec2(usernameOffset.x / 2, msgDist))
-                            ui.dwriteTextAligned(messageUsername, usernameFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(messageMaxWidth, userNameTextSize.y), false, rgb.colors.gray)
+                            ui.dwriteTextAligned(messageUsername, usernameFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(messageMaxWidth, userNameTextSize.y), false, messageUsernameColor)
                             msgDist = math.ceil(msgDist + usernameOffset.y)
                         end
                     end
@@ -1193,7 +1203,7 @@ ac.onChatMessage(function(message, senderCarIndex)
                 return playAudio(audio.message.recieve)
             end
         else
-            if not settings.messagesPlayAll then
+            if not settings.messagesIgnoreServer then
                 return playAudio(audio.message.recieve)
             end
         end
@@ -1259,9 +1269,7 @@ function script.windowMainSettings(dt)
                 app.images.phoneAtlasSize = ui.imageSize(app.images.phoneAtlasPath):scale(app.scale)
             end
 
-            if player.cspVersion >= 3044 then
-                if ui.checkbox('Force App to Bottom', settings.forceBottom) then settings.forceBottom = not settings.forceBottom end
-            end
+            if ui.checkbox('Force App to Bottom', settings.forceBottom) then settings.forceBottom = not settings.forceBottom end
 
             if ui.checkbox('Dark Mode', settings.darkMode) then
                 settings.darkMode = not settings.darkMode
@@ -1339,6 +1347,8 @@ function script.windowMainSettings(dt)
             ui.drawSimpleLine(ui.getCursor(), vec2(ui.windowWidth(), ui.getCursorY()), ac.getUI().accentColor)
             ui.newLine(-9)
 
+            if ui.checkbox('Enable Colored Usernames', settings.chatUsernameColor) then settings.chatUsernameColor = not settings.chatUsernameColor end
+
             if ui.checkbox('Show Join/Leave Messages', settings.connectionEvents) then settings.connectionEvents = not settings.connectionEvents end
             if settings.connectionEvents then
                 ui.text('\t')
@@ -1365,7 +1375,6 @@ function script.windowMainSettings(dt)
                 settings.chatOlderThan = ui.slider('##ChatOlderThan', settings.chatOlderThan, 1, 60, 'Remove if older than %.0f min')
             end
         end)
-
         ui.tabItem('Audio', function()
             if ui.checkbox('Enable Audio', settings.enableAudio) then settings.enableAudio = not settings.enableAudio end
             ui.indent()
@@ -1384,7 +1393,10 @@ function script.windowMainSettings(dt)
                 if settings.enableMessage then
                     ui.text('\t')
                     ui.sameLine()
-                    if ui.checkbox('Only play "recieve" sound for friends', settings.messagesPlayAll) then settings.messagesPlayAll = not settings.messagesPlayAll end
+                    if ui.checkbox('Don\'t play for non-friends', settings.messagesPlayAll) then settings.messagesPlayAll = not settings.messagesPlayAll end
+                    ui.text('\t')
+                    ui.sameLine()
+                    if ui.checkbox('Don\'t play for server messages', settings.messagesIgnoreServer) then settings.messagesIgnoreServer = not settings.messagesIgnoreServer end
                     ui.text('\t')
                     ui.sameLine()
                     settings.volumeMessage = ui.slider('##messageVolume', settings.volumeMessage, 0.1, 10, 'Message Volume: ' .. '%.1f')
@@ -1422,7 +1434,7 @@ function script.windowMain(dt)
 
     if app.images.phoneAtlasSize == vec2(0, 0) then app.images.phoneAtlasSize = ui.imageSize(app.images.phoneAtlasPath):scale(app.scale) end
     if app.hovered or chat.input.active then moveAppUp() end
-    if player.cspVersion >= 3044 and settings.forceBottom then forceAppToBottom() end
+    if settings.forceBottom then forceAppToBottom() end
 
     ui.childWindow('Phone', vec2(app.images.phoneAtlasSize.x / 2, app.images.phoneAtlasSize.y), false, WINDOWFLAGS, function()
         drawDisplay()
