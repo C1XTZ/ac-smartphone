@@ -727,9 +727,8 @@ local function drawPing()
 
         if ui.rectHovered(pingPosition, pingPosition + pingSize, true) then
             ui.setMouseCursor(ui.MouseCursor.Hand)
-            if ui.mouseClicked(ui.MouseButton.Left) then
-                sendChatMessage('I currently have a ping of ' .. ping .. ' ms.')
-            end
+            if ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Arrow) end
+            if ui.mouseReleased(ui.MouseButton.Left) then sendChatMessage('I currently have a ping of ' .. ping .. ' ms.') end
         end
 
         if ping < 100 then
@@ -752,17 +751,18 @@ local function drawTime()
     ui.setCursor(timePosition)
     ui.pushDWriteFont(app.font.bold)
     local timeTextSize = ui.measureDWriteText(timeText, timeSize)
-    if app.hovered then
-        if ui.rectHovered(ui.getCursor(), ui.getCursor() + timeTextSize, true) then
-            ui.setMouseCursor(ui.MouseCursor.Hand)
-            if ui.mouseClicked(ui.MouseButton.Left) then
-                timeText = settings.badTime and timeText .. ' ' .. player.timePeriod or timeText
-                sendChatMessage('It\'s currently ' .. timeText .. ' my local time.')
-            end
-        end
-    end
     ui.dwriteTextAligned(timeText, timeSize, ui.Alignment.Start, ui.Alignment.Center, timeTextSize, false, colors.final.elements)
     ui.popDWriteFont()
+
+    if app.hovered then
+        if ui.itemHovered() then
+            ui.setMouseCursor(ui.MouseCursor.Hand)
+        end
+        if ui.itemClicked(ui.MouseButton.Left) then
+            timeText = settings.badTime and timeText .. ' ' .. player.timePeriod or timeText
+            sendChatMessage('It\'s currently ' .. timeText .. ' my local time.')
+        end
+    end
 end
 
 local function drawDynamicIsland()
@@ -806,20 +806,20 @@ local function drawSongInfo()
         end
         local songFontSize = scale(12)
         local songPosition = vec2(ui.windowWidth() / 2, scale(22))
-        ui.pushDWriteFont(app.font.bold)
         local songTextSize = vec2(133, 15):scale(app.scale)
+        ui.pushDWriteFont(app.font.bold)
         ui.setCursor(vec2(math.round(ui.windowWidth() / 2 - songTextSize.x / 2.3), songPosition.y + movement.smooth))
-        if app.hovered then
-            local SongInfoHovered = ui.rectHovered(ui.getCursor(), ui.getCursor() + songTextSize, true)
-            if ui.rectHovered(ui.getCursor(), ui.getCursor() + songTextSize, true) then
-                ui.setMouseCursor(ui.MouseCursor.Hand)
-                if ui.mouseClicked(ui.MouseButton.Left) then
-                    sendChatMessage('I\'m currently listening to: ' .. songInfo.artist .. ' - ' .. songInfo.title)
-                end
-            end
-        end
         ui.dwriteTextAligned(songInfo.final, songFontSize, songInfo.align, ui.Alignment.End, songTextSize, false, rgb.colors.white)
         ui.popDWriteFont()
+
+        if app.hovered and songInfo.final ~= '' then
+            if ui.itemHovered() then
+                ui.setMouseCursor(ui.MouseCursor.Hand)
+            end
+            if ui.itemClicked(ui.MouseButton.Left) then
+                sendChatMessage('I\'m currently listening to: ' .. songInfo.artist .. ' - ' .. songInfo.title)
+            end
+        end
     end
 end
 
@@ -940,6 +940,7 @@ local function drawMessages()
 
                     if chat.messageHovered[i] then
                         ui.setMouseCursor(ui.MouseCursor.Hand)
+                        if ui.isMouseDragging(ui.MouseButton.Right, 0) then ui.setMouseCursor(ui.MouseCursor.Arrow) end
                         if ui.mouseClicked(ui.MouseButton.Right) then
                             if chat.input.text == chat.input.placeholder then chat.input.text = '' end
                             chat.input.active = true
@@ -1000,7 +1001,7 @@ local function drawEmojiPicker()
     ui.drawImage(app.images.emojiPicker, ui.getCursor() - buttonSize / 2, ui.getCursor() + buttonSize / 2, colors.final.emojiPicker)
     chat.emojiPickerHovered = ui.rectHovered(ui.getCursor() - buttonSize / 2, ui.getCursor() + buttonSize / 2 + movement.smooth)
 
-    if chat.emojiPickerHovered and ui.mouseClicked(ui.MouseButton.Left) then
+    if chat.emojiPickerHovered and ui.mouseReleased(ui.MouseButton.Left) then
         chat.emojiPicker = not chat.emojiPicker
         playAudio(audio.keyboard.enter)
     end
@@ -1008,6 +1009,7 @@ local function drawEmojiPicker()
     if chat.emojiPickerHovered then
         ui.setMouseCursor(ui.MouseCursor.Hand)
         ui.drawEllipseFilled(vec2(buttonPos.x, ui.windowHeight() - buttonPos.y + movement.smooth), buttonBgRad, colors.final.emojiPickerBG, 100)
+        if ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Arrow) end
     end
 
     if chat.emojiPicker then
@@ -1029,6 +1031,7 @@ local function drawEmojiPicker()
                 if ui.rectHovered(ui.getCursor(), ui.getCursor() + emojiSize) then
                     chat.emojiPickerHovered = true
                     ui.setMouseCursor(ui.MouseCursor.Hand)
+                    if ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Arrow) end
                     ui.drawRectFilled(ui.getCursor() + emojiOffset, ui.getCursor() + emojiSize + emojiOffset, colors.iMessageSelected, scale(5))
                 end
 
@@ -1314,6 +1317,7 @@ function script.windowMainSettings(dt)
                 settings.scrollDirection = ui.slider('##ScrollDirection', settings.scrollDirection, 0, 1, 'Scroll Direction: ' .. scrollDirStr, true)
             end
         end)
+
         ui.tabItem('Chat', function()
             ui.text('\t')
             ui.sameLine()
@@ -1373,8 +1377,10 @@ function script.windowMainSettings(dt)
                 settings.chatOlderThan = ui.slider('##ChatOlderThan', settings.chatOlderThan, 1, 60, 'Remove if older than %.0f min')
             end
         end)
+
         ui.tabItem('Audio', function()
             if ui.checkbox('Enable Audio', settings.enableAudio) then settings.enableAudio = not settings.enableAudio end
+
             ui.indent()
             if settings.enableAudio then
                 if ui.checkbox('Enable Keystroke Audio', settings.enableKeyboard) then settings.enableKeyboard = not settings.enableKeyboard end
