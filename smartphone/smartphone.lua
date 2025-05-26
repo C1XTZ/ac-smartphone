@@ -12,11 +12,12 @@ local settings = ac.storage {
     darkMode = false,
     appMove = false,
     appMoveTimer = 10,
-    appMoveSpeed = 7,
+    appMoveSpeed = 10,
     badTime = false,
     spaces = 5,
     scrollSpeed = 2,
     scrollDirection = 0,
+    scrollAlways = false,
     chatKeepSize = 100,
     chatOlderThan = 15,
     chatScrollDistance = 20,
@@ -30,10 +31,10 @@ local settings = ac.storage {
     chatUsernameColor = true,
     hideCamera = false,
     showTimestamp = false,
-    enableAudio = false,
-    enableKeyboard = false,
-    enableMessage = false,
-    enableNotification = false,
+    enableAudio = true,
+    enableKeyboard = true,
+    enableMessage = true,
+    enableNotification = true,
     volumeKeyboard = 1,
     volumeMessage = 1,
     volumeNotification = 1,
@@ -85,19 +86,19 @@ local app = {
     scale = 1,
     hovered = false,
     images = {
-        phoneAtlasPath = './src/img/app/phone.png',
+        phoneAtlasPath = '.\\src\\img\\app\\phone.png',
         phoneAtlasSize = vec2(),
-        phoneCamera = './src/img/app/cam.png',
-        pingAtlasPath = './src/img/app/connection.png',
-        contactDefault = './src/img/app/default.png',
-        emojiPicker = './src/img/app/picker.png',
+        phoneCamera = '.\\src\\img\\app\\cam.png',
+        pingAtlasPath = '.\\src\\img\\app\\connection.png',
+        contactDefault = '.\\src\\img\\app\\default.png',
+        emojiPicker = '.\\src\\img\\app\\picker.png',
         communities = {
-            srpLogo = './src/img/communities/srp-logo-socials.png',
+            srpLogo = '.\\src\\img\\communities\\srp-logo-socials.png',
         },
     },
     font = {
-        regular = ui.DWriteFont('Inter Variable Text', './src/ttf'):weight(ui.DWriteFont.Weight.Medium),
-        bold = ui.DWriteFont('Inter Variable Text', './src/ttf'):weight(ui.DWriteFont.Weight.Bold),
+        regular = ui.DWriteFont('Inter Variable Text', '.\\src\\ttf'):weight(ui.DWriteFont.Weight.Medium),
+        bold = ui.DWriteFont('Inter Variable Text', '.\\src\\ttf'):weight(ui.DWriteFont.Weight.Bold),
     }
 }
 
@@ -187,17 +188,17 @@ local chat = {
 
 local audio = {
     keyboard = {
-        keystroke = { file = './src/aud/keyboard-keystroke.mp3' },
-        enter = { file = './src/aud/keyboard-enter.mp3' },
-        delete = { file = './src/aud/keyboard-delete.mp3' },
+        keystroke = { file = '.\\src\\aud\\keyboard-keystroke.mp3' },
+        enter = { file = '.\\src\\aud\\keyboard-enter.mp3' },
+        delete = { file = '.\\src\\aud\\keyboard-delete.mp3' },
     },
     message = {
-        recieve = { file = './src/aud/message-recieve.mp3' },
-        send = { file = './src/aud/message-send.mp3' },
+        recieve = { file = '.\\src\\aud\\message-recieve.mp3' },
+        send = { file = '.\\src\\aud\\message-send.mp3' },
     },
     notification = {
-        regular = { file = './src/aud/notif-regular.mp3' },
-        critical = { file = './src/aud/notif-critial.mp3' },
+        regular = { file = '.\\src\\aud\\notif-regular.mp3' },
+        critical = { file = '.\\src\\aud\\notif-critial.mp3' },
     },
 }
 
@@ -466,10 +467,13 @@ local function updateSongInfo(forced)
             songInfo.title = title
             songInfo.scroll = (songInfo.artist ~= '' and songInfo.artist:lower() ~= 'unknown artist') and (songInfo.artist .. ' - ' .. songInfo.title) or (songInfo.title)
 
-            if utf8len(songInfo.scroll) < 20 then
+            if utf8len(songInfo.scroll) < 20 and not settings.scrollAlways then
                 songInfo.static = true
                 songInfo.align = ui.Alignment.Center
             else
+                if utf8len(songInfo.scroll) < 20 then
+                    string.rep(' ', 20 - utf8len(songInfo.scroll))
+                end
                 songInfo.static = false
                 songInfo.align = ui.Alignment.Start
                 songInfo.scroll = songInfo.scroll .. songInfo.spaces
@@ -767,7 +771,7 @@ end
 
 local function drawDynamicIsland()
     ui.drawRectFilled(vec2((ui.windowWidth() / 2 - scale(songInfo.dynamicIslandSize.x)), scale(songInfo.dynamicIslandSize.y) + movement.smooth), vec2((ui.windowWidth() / 2 + scale(songInfo.dynamicIslandSize.x)), scale(songInfo.dynamicIslandSize.y * 2) + movement.smooth), rgb.colors.black, scale(10))
-    if not settings.hideCamera or not settings.songInfo then
+    if not settings.hideCamera or not settings.songInfo or songInfo.isPaused then
         local camSize = scale(songInfo.dynamicIslandSize.y - 2)
         local camPos = math.ceil(ui.windowWidth() / 2 + scale(30))
         ui.drawImage(app.images.phoneCamera, vec2(camPos - camSize / 2, scale(songInfo.dynamicIslandSize.y * 1.5) - (camSize / 2) + movement.smooth), vec2(camPos + camSize / 2, scale(songInfo.dynamicIslandSize.y * 1.5) + (camSize / 2) + movement.smooth))
@@ -1270,31 +1274,32 @@ function script.windowMainSettings(dt)
                 app.images.phoneAtlasSize = ui.imageSize(app.images.phoneAtlasPath):scale(app.scale)
             end
 
-            if ui.checkbox('Force App to Bottom', settings.forceBottom) then settings.forceBottom = not settings.forceBottom end
-
             if ui.checkbox('Dark Mode', settings.darkMode) then
                 settings.darkMode = not settings.darkMode
                 updateColors()
             end
 
+            if ui.checkbox('Force App to Bottom', settings.forceBottom) then settings.forceBottom = not settings.forceBottom end
+
             if ui.checkbox('Use 12h Clock', settings.badTime) then settings.badTime = not settings.badTime end
 
             if ui.checkbox('Show Music Information', settings.songInfo) then
                 settings.songInfo = not settings.songInfo
-                if settings.songInfo then
-                    startSongInfo()
-                else
-                    stopSongInfo()
-                end
+                if settings.songInfo then startSongInfo() else stopSongInfo() end
             end
 
             if settings.songInfo then
                 ui.text('\t')
                 ui.sameLine()
-                if ui.checkbox('Hide Selfie Camera', settings.hideCamera) then settings.hideCamera = not settings.hideCamera end
-            end
+                if ui.checkbox('Always Scroll Text', settings.scrollAlways) then
+                    settings.scrollAlways = not settings.scrollAlways
+                    updateSpacing()
+                end
 
-            if settings.songInfo then
+                ui.text('\t')
+                ui.sameLine()
+                if ui.checkbox('Hide Selfie Camera', settings.hideCamera) then settings.hideCamera = not settings.hideCamera end
+
                 ui.text('\t')
                 ui.sameLine()
                 local spacesChanged
@@ -1346,26 +1351,6 @@ function script.windowMainSettings(dt)
                 settings.appMoveSpeed = ui.slider('##appMoveSpeed', settings.appMoveSpeed, 1, 20, 'Speed: ' .. '%.0f')
             end
 
-            ui.drawSimpleLine(ui.getCursor(), vec2(ui.windowWidth(), ui.getCursorY()), ac.getUI().accentColor)
-            ui.newLine(-9)
-
-            if ui.checkbox('Enable Colored Usernames', settings.chatUsernameColor) then settings.chatUsernameColor = not settings.chatUsernameColor end
-
-            if ui.checkbox('Show Join/Leave Messages', settings.connectionEvents) then settings.connectionEvents = not settings.connectionEvents end
-            if settings.connectionEvents then
-                ui.text('\t')
-                ui.sameLine()
-                if ui.checkbox('Friends Only', settings.connectionEventsFriendsOnly) then settings.connectionEventsFriendsOnly = not settings.connectionEventsFriendsOnly end
-            end
-
-            if ui.checkbox('Highlight Latest Message', settings.chatLatestBold) then settings.chatLatestBold = not settings.chatLatestBold end
-
-            if ui.checkbox('Hide Kick and Ban Messages', settings.chatHideKickBan) then settings.chatHideKickBan = not settings.chatHideKickBan end
-
-            if ui.checkbox('Hide Annoying App Messages', settings.chatHideAnnoying) then settings.chatHideAnnoying = not settings.chatHideAnnoying end
-
-            if ui.checkbox('Show Timestamps', settings.showTimestamp) then settings.showTimestamp = not settings.showTimestamp end
-
             if ui.checkbox('Chat History Settings', settings.chatPurge) then settings.chatPurge = not settings.chatPurge end
             if settings.chatPurge then
                 ui.text('\t')
@@ -1376,6 +1361,26 @@ function script.windowMainSettings(dt)
                 ui.sameLine()
                 settings.chatOlderThan = ui.slider('##ChatOlderThan', settings.chatOlderThan, 1, 60, 'Remove if older than %.0f min')
             end
+
+            ui.drawSimpleLine(ui.getCursor(), vec2(ui.windowWidth(), ui.getCursorY()), ac.getUI().accentColor)
+            ui.newLine(-10 * ac.getUI().uiScale)
+
+            if ui.checkbox('Use Colored Usernames', settings.chatUsernameColor) then settings.chatUsernameColor = not settings.chatUsernameColor end
+
+            if ui.checkbox('Show Timestamps', settings.showTimestamp) then settings.showTimestamp = not settings.showTimestamp end
+
+            if ui.checkbox('Show Join/Leave Messages', settings.connectionEvents) then settings.connectionEvents = not settings.connectionEvents end
+            if settings.connectionEvents then
+                ui.text('\t')
+                ui.sameLine()
+                if ui.checkbox('Friends Only', settings.connectionEventsFriendsOnly) then settings.connectionEventsFriendsOnly = not settings.connectionEventsFriendsOnly end
+            end
+
+            if ui.checkbox('Highlight Latest Message', settings.chatLatestBold) then settings.chatLatestBold = not settings.chatLatestBold end
+
+            if ui.checkbox('Hide Kick Ban Messages', settings.chatHideKickBan) then settings.chatHideKickBan = not settings.chatHideKickBan end
+
+            if ui.checkbox('Hide Annoying Messages', settings.chatHideAnnoying) then settings.chatHideAnnoying = not settings.chatHideAnnoying end
         end)
 
         ui.tabItem('Audio', function()
@@ -1397,10 +1402,10 @@ function script.windowMainSettings(dt)
                 if settings.enableMessage then
                     ui.text('\t')
                     ui.sameLine()
-                    if ui.checkbox('Don\'t play for non-friends', settings.messagesPlayAll) then settings.messagesPlayAll = not settings.messagesPlayAll end
+                    if ui.checkbox('Don\'t Play for Non-Friends', settings.messagesPlayAll) then settings.messagesPlayAll = not settings.messagesPlayAll end
                     ui.text('\t')
                     ui.sameLine()
-                    if ui.checkbox('Don\'t play for server messages', settings.messagesIgnoreServer) then settings.messagesIgnoreServer = not settings.messagesIgnoreServer end
+                    if ui.checkbox('Don\'t Play for Server Messages', settings.messagesIgnoreServer) then settings.messagesIgnoreServer = not settings.messagesIgnoreServer end
                     ui.text('\t')
                     ui.sameLine()
                     settings.volumeMessage = ui.slider('##messageVolume', settings.volumeMessage, 0.1, 10, 'Message Volume: ' .. '%.1f')
