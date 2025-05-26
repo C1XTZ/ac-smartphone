@@ -987,15 +987,9 @@ local function drawMessages()
 end
 
 local function drawEmojiPicker()
-    local windowSize = vec2(200, 230):scale(app.scale)
-    local windowPos = vec2(8, 257):scale(app.scale)
     local buttonPos = vec2(29, 17):scale(app.scale)
     local buttonSize = vec2(24, 24):scale(app.scale)
     local buttonBgRad = scale(12)
-    local popupPadding = scale(10)
-    local popupSize = vec2(190, 220):scale(app.scale)
-    local rounding = scale(10)
-    local emojiOffset = vec2(0, 2):scale(app.scale)
     local emojiSizePicker = scale(20)
     ui.pushDWriteFont(app.font.regular)
     local emojiSize = ui.measureDWriteText('😀', emojiSizePicker)
@@ -1004,8 +998,7 @@ local function drawEmojiPicker()
     ui.setCursor(vec2(buttonPos.x, ui.windowHeight() - buttonPos.y + movement.smooth))
 
     ui.drawImage(app.images.emojiPicker, ui.getCursor() - buttonSize / 2, ui.getCursor() + buttonSize / 2, colors.final.emojiPicker)
-    chat.emojiPickerHovered = ui.rectHovered(ui.getCursor() - buttonSize / 2, ui.getCursor() + buttonSize / 2)
-    ui.popDWriteFont()
+    chat.emojiPickerHovered = ui.rectHovered(ui.getCursor() - buttonSize / 2, ui.getCursor() + buttonSize / 2 + movement.smooth)
 
     if chat.emojiPickerHovered and ui.mouseClicked(ui.MouseButton.Left) then
         chat.emojiPicker = not chat.emojiPicker
@@ -1014,45 +1007,53 @@ local function drawEmojiPicker()
 
     if chat.emojiPickerHovered then
         ui.setMouseCursor(ui.MouseCursor.Hand)
-        ui.drawEllipseFilled(vec2(buttonPos.x, ui.windowHeight() - buttonPos.y), buttonBgRad, colors.final.emojiPickerBG, 100)
+        ui.drawEllipseFilled(vec2(buttonPos.x, ui.windowHeight() - buttonPos.y + movement.smooth), buttonBgRad, colors.final.emojiPickerBG, 100)
     end
 
-    ui.setCursor(vec2(windowPos.x, ui.windowHeight() - windowPos.y - chat.input.offset))
-    ui.childWindow('EmojiPicker', windowSize, false, WINDOWFLAGS, function()
-        if chat.emojiPicker then
-            ui.setCursor(vec2(popupPadding, ui.windowHeight() - windowSize.y))
-            ui.drawRectFilled(ui.getCursor(), ui.getCursor() + popupSize, colors.final.message, rounding)
+    if chat.emojiPicker then
+        local windowSize = vec2(185, 233):scale(app.scale)
+        local windowPos = vec2(18, 270):scale(app.scale)
+        local rounding = scale(10)
+        local emojiStartPos = vec2(5, 3):scale(app.scale)
+        local emojiOffset = vec2(0, 2):scale(app.scale)
+
+        ui.setCursor(vec2(windowPos.x, ui.windowHeight() - windowPos.y - chat.input.offset))
+        ui.childWindow('EmojiPicker', windowSize, false, WINDOWFLAGS, function()
+            ui.setCursor(vec2(0, ui.windowHeight() - windowSize.y))
+            ui.drawRectFilled(ui.getCursor(), windowSize, colors.final.message, rounding)
 
             ui.newLine(0)
-            ui.setCursor(vec2(15, 3))
-            ui.beginGroup(popupSize.x)
+            ui.setCursor(emojiStartPos)
+            ui.beginGroup(windowSize.x)
             for i = 1, #chat.emojis do
-                local emojiHovered = ui.rectHovered(ui.getCursor(), ui.getCursor() + emojiSize)
-                if emojiHovered then
+                if ui.rectHovered(ui.getCursor(), ui.getCursor() + emojiSize) then
                     chat.emojiPickerHovered = true
                     ui.setMouseCursor(ui.MouseCursor.Hand)
                     ui.drawRectFilled(ui.getCursor() + emojiOffset, ui.getCursor() + emojiSize + emojiOffset, colors.iMessageSelected, scale(5))
-                    if ui.mouseClicked(ui.MouseButton.Left) then
-                        playAudio(audio.keyboard.keystroke)
-                        if not chat.input.active then chat.input.active = true end
-                        if chat.input.text == chat.input.placeholder then chat.input.text = '' end
-                        chat.input.text = chat.input.text .. chat.emojis[i]
-                    end
                 end
 
                 ui.beginOutline()
                 ui.dwriteText(chat.emojis[i], emojiSizePicker)
                 ui.endOutline(colors.transparent.black10, scale(2))
-                ui.sameLine(0, 3)
+
+                if ui.itemClicked(ui.MouseButton.Left, true) then
+                    playAudio(audio.keyboard.keystroke)
+                    if not chat.input.active then chat.input.active = true end
+                    if chat.input.text == chat.input.placeholder then chat.input.text = '' end
+                    chat.input.text = chat.input.text .. chat.emojis[i]
+                end
+
+
+                ui.sameLine(0, emojiOffset.y)
 
                 if i % 6 == 0 and i ~= #chat.emojis then
-                    ui.newLine(0)
+                    ui.newLine(emojiOffset.y)
                 end
             end
             ui.endGroup()
-        end
-        ui.popDWriteFont()
-    end)
+        end)
+    end
+    ui.popDWriteFont()
 end
 
 local function drawInputCustom()
@@ -1063,7 +1064,7 @@ local function drawInputCustom()
     ui.setCursor(vec2(scale(42), (ui.windowHeight() - scale(32) - chat.input.offset) + movement.smooth))
     ui.childWindow('ChatInput', inputSize, false, WINDOWFLAGSINPUT, function()
         ui.beginOutline()
-        ui.drawRectFilled(vec2(2, 2), inputBoxSize, colors.final.display, scale(10))
+        ui.drawRectFilled(vec2(2, 2):scale(app.scale), inputBoxSize, colors.final.display, scale(10))
         ui.endOutline(settings.darkMode and colors.transparent.white10 or colors.transparent.black10, math.max(1, math.round(1 * app.scale, 1)))
         local displayText = ''
         ui.pushDWriteFont(app.font.regular)
@@ -1122,7 +1123,7 @@ local function drawInputCustom()
             ui.drawRectFilled(ui.getCursor(), ui.getCursor() + selectedTextSize, colors.iMessageSelected)
         end
 
-        local inputTextSize = ui.measureDWriteText(displayText, inputFontSize, inputWrap):max(vec2(0, 17.291))
+        local inputTextSize = ui.measureDWriteText(displayText, inputFontSize, inputWrap):max(vec2(0, math.round(17.291 * app.scale, 3)))
         ui.setCursor(vec2(10, 6):scale(app.scale))
         ui.pushClipRect(ui.getCursor(), ui.getCursor() + inputBoxSize - vec2(0, 9):scale(app.scale) + movement.smooth)
         ui.dwriteTextAligned(displayText, inputFontSize, ui.Alignment.Start, ui.Alignment.End, inputTextSize, true, colors.final.input)
