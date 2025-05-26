@@ -187,17 +187,17 @@ local chat = {
 
 local audio = {
     keyboard = {
-        keystroke = { file = './src/aud/keyboard-keystroke.mp3', volumeSetting = 'volumeKeyboard' },
-        enter = { file = './src/aud/keyboard-enter.mp3', volumeSetting = 'volumeKeyboard' },
-        delete = { file = './src/aud/keyboard-delete.mp3', volumeSetting = 'volumeKeyboard' },
+        keystroke = { file = './src/aud/keyboard-keystroke.mp3' },
+        enter = { file = './src/aud/keyboard-enter.mp3' },
+        delete = { file = './src/aud/keyboard-delete.mp3' },
     },
     message = {
-        recieve = { file = './src/aud/message-recieve.mp3', volumeSetting = 'volumeMessage' },
-        send = { file = './src/aud/message-send.mp3', volumeSetting = 'volumeMessage' },
+        recieve = { file = './src/aud/message-recieve.mp3' },
+        send = { file = './src/aud/message-send.mp3' },
     },
     notification = {
-        regular = { file = './src/aud/notif-regular.mp3', volumeSetting = 'volumeNotification' },
-        critical = { file = './src/aud/notif-critial.mp3', volumeSetting = 'volumeNotification' },
+        regular = { file = './src/aud/notif-regular.mp3' },
+        critical = { file = './src/aud/notif-critial.mp3' },
     },
 }
 
@@ -396,27 +396,24 @@ end
 
 ---@param event table @audio event table (audio.category.event)
 local function playAudio(event)
-    local category = nil
-    for cat, catData in pairs(audio) do
-        for _, eventData in pairs(catData) do
+    if not settings.enableAudio then return end
+
+    for category, events in pairs(audio) do
+        for _, eventData in pairs(events) do
             if event == eventData then
-                category = cat
-                break
+                local enableSetting = "enable" .. category:sub(1, 1):upper() .. category:sub(2)
+                if settings[enableSetting] then
+                    local volumeSetting = "volume" .. category:sub(1, 1):upper() .. category:sub(2)
+                    local audioToPlay = ac.AudioEvent.fromFile({ filename = event.file, use3D = false, loop = false }, false)
+                    audioToPlay.cameraInteriorMultiplier = 1
+                    audioToPlay.cameraExteriorMultiplier = 1
+                    audioToPlay.volume = settings[volumeSetting]
+                    audioToPlay:start()
+                    setTimeout(function() audioToPlay:dispose() end, audioToPlay:getDuration(), 'audioToPlay')
+                end
+                return
             end
         end
-        if category then break end
-    end
-
-    if settings.enableAudio and category and settings["enable" .. category:sub(1, 1):upper() .. category:sub(2)] then
-        local volume = settings[event.volumeSetting] or 1
-        local audioToPlay = ac.AudioEvent.fromFile({ filename = event.file, use3D = false, loop = false }, false)
-        audioToPlay.cameraInteriorMultiplier = 1
-        audioToPlay.cameraExteriorMultiplier = 1
-        audioToPlay.volume = 1 * volume
-        audioToPlay:start()
-        setTimeout(function()
-            audioToPlay:dispose()
-        end, audioToPlay:getDuration(), 'audioToPlay')
     end
 end
 
