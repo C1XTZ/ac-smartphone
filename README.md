@@ -1,13 +1,19 @@
 # Smartphone App for AC
 Chat replacement app in the style of an iPhone and iMessage.
 
-If you're looking for a more "oldschool" look, try my [Mobilephone](https://github.com/C1XTZ/ac-mobilephone/) app.
+If you're looking for a more "oldschool" feel, try my [Mobilephone](https://github.com/C1XTZ/ac-mobilephone/) app.
 
 ### Current Features:
 - **Dark Mode**
 - **Displays current reallife time (24h/12h formats) - Left click to send it to chat**
 - **Displays currently playing music information - Left click to send it to chat**
 - **Displays your ping - Left click to send it to chat**
+- **Support for Custom Community Pictures, linking to a URL**
+  - Owners of communities that want to be added can contact me with the following information:
+    ```ini
+    Server IPs:     ;List of IP addresses of your servers. IP's should not change all the time.
+    Image:          ;Image that you want to be displayed. 
+    Tooltip Text:   ;Text that you want to be displayed in the tooltip.
 - **Ingame chat - Right click a message to @mention the sender**
 - **iOS 18 Sounds - Keystrokes, Messages, Notifications**
 - **Hides annoying messages from other apps**
@@ -19,7 +25,10 @@ If you're looking for a more "oldschool" look, try my [Mobilephone](https://gith
 </p>
 
 If you have any questions or suggestions, feel free to open an issue or pull request.  
-You can also reach me on Discord [@c1xtz](https://discord.com/users/856601560728207371) or Twitter [@C1XTZ](https://twitter.com/C1XTZ).
+You can also reach me here:
+- Discord [@c1xtz](https://discord.com/users/856601560728207371) 
+- Twitter [@C1XTZ](https://twitter.com/C1XTZ)
+- BlueSky [@c1xtz.bsky.social](https://bsky.app/profile/c1xtz.bsky.social)
 
 # License
 Unless otherwise noted in **[Exceptions](#exceptions)**, **all original source code** in this repository such as `.lua` scripts, build scripts, and any other code files, is licensed under the **GNU GPL v3.0 License**. 

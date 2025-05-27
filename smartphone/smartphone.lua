@@ -41,6 +41,7 @@ local settings = ac.storage {
     messagesPlayAll = false,
     notificationsPlayAll = false,
     messagesIgnoreServer = false,
+    lastCheck = 0,
 }
 
 --#endregion
@@ -85,21 +86,18 @@ local colors = {
 local app = {
     scale = 1,
     hovered = false,
+    tooltipPadding = vec2(5, 5),
     images = {
-        phoneAtlasPath = '.\\src\\img\\app\\phone.png',
+        phoneAtlasPath = '.\\src\\img\\phone.png',
         phoneAtlasSize = vec2(),
-        phoneCamera = '.\\src\\img\\app\\cam.png',
-        pingAtlasPath = '.\\src\\img\\app\\connection.png',
-        contactDefault = '.\\src\\img\\app\\default.png',
-        emojiPicker = '.\\src\\img\\app\\picker.png',
-        communities = {
-            srpLogo = '.\\src\\img\\communities\\srp-logo-socials.png',
-        },
+        phoneCamera = '.\\src\\img\\cam.png',
+        pingAtlasPath = '.\\src\\img\\connection.png',
+        emojiPicker = '.\\src\\img\\picker.png',
     },
     font = {
         regular = ui.DWriteFont('Inter Variable Text', '.\\src\\ttf'):weight(ui.DWriteFont.Weight.Medium),
         bold = ui.DWriteFont('Inter Variable Text', '.\\src\\ttf'):weight(ui.DWriteFont.Weight.Bold),
-    }
+    },
 }
 
 local player = {
@@ -111,13 +109,8 @@ local player = {
     timePeriod = '',
 }
 
-local communityList = {
-    srp = {
-        '5.161.43.117',
-        '65.108.176.35',
-        '15.235.162.98'
-    },
-}
+local communityData = io.load('.\\apps\\lua\\smartphone\\src\\communities\\data\\list.lua')
+local communities = stringify.parse(communityData)
 
 local movement = {
     maxDistance = 487,
@@ -178,11 +171,11 @@ local chat = {
         'teleported to pits',
     },
     emojis = {
-        "😎", "😄", "😅", "😁", "😂", "😍", "🤩", "😳", "🤠", "🥳",
-        "😱", "😤", "😭", "🥴", "🥺", "😡", "🙌", "👍", "👎", "👋",
-        "✌️", "🤝", "🙏", "🤷‍♂️", "🤦‍♂️", "🏆", "🎉", "🥇", "🏁", "🚗",
-        "🚦", "🛑", "⛽", "⏱️", "🌍", "💡", "❓", "❗", "💬", "🍀",
-        "🚀", "💥", "🐢", "🐇", "💀"
+        '😎', '😄', '😅', '😁', '😂', '😍', '🤩', '😳', '🤠', '🥳',
+        '😱', '😤', '😭', '🥴', '🥺', '😡', '🙌', '👍', '👎', '👋',
+        '✌️', '🤝', '🙏', '🤷‍♂️', '🤦‍♂️', '🏆', '🎉', '🥇', '🏁', '🚗',
+        '🚦', '🛑', '⛽', '⏱️', '🌍', '💡', '❓', '❗', '💬', '🍀',
+        '🚀', '💥', '🐢', '🐇', '💀'
     },
 }
 
@@ -314,17 +307,72 @@ local function checkIfFriend(carIndex)
 end
 
 local function getServerCommunity()
-    if not player.serverIP then return nil end
+    if not player.serverIP then return 'default' end
 
-    for community, ipTable in pairs(communityList) do
-        for _, ip in ipairs(ipTable) do
-            if ip == player.serverIP then
-                return community
+    for community, data in pairs(communities) do
+        if data.ips then
+            for _, ip in ipairs(data.ips) do
+                if ip == player.serverIP then
+                    return community
+                end
             end
         end
     end
 
-    return nil
+    return 'default'
+end
+
+---@param t1 table @The first table to compare.
+---@param t2 table @The second table to compare.
+---@return boolean @Returns true if both tables are identical.
+---Compares 2 tables.
+function tablesEqual(t1, t2)
+    if t1 == t2 then return true end
+    if type(t1) ~= 'table' or type(t2) ~= 'table' then return false end
+    for k, v in pairs(t1) do
+        if type(v) == 'table' then
+            if not tablesEqual(v, t2[k]) then return false end
+        else
+            if v ~= t2[k] then return false end
+        end
+    end
+    for k in pairs(t2) do
+        if t1[k] == nil then return false end
+    end
+    return true
+end
+
+local function updateCommunityData()
+    if os.time() - settings.lastCheck > 43200 then
+        web.get('https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/smartphone/src/communities/data/list.lua', function(err, response)
+            if err or response.status ~= 200 then return error('Couldn\'t get community data from github.') end
+
+            local data = stringify.parse(response.body)
+            settings.lastCheck = os.time()
+
+            if tablesEqual(data, communities) then
+                return ac.log('Already using latest data.')
+            else
+                local file = io.open('./apps/lua/smartphone/src/communities/data/list.lua', 'w+')
+                if file then
+                    file:write(stringify(data))
+                    file:close()
+                end
+
+                for name, community in pairs(data) do
+                    if name ~= 'default' and community.image then
+                        local filename = community.image:match('([^\\]+)$')
+                        local remoteImageUrl = 'https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/smartphone/src/communities/img/' .. filename
+                        web.get(remoteImageUrl, function(err, response)
+                            if err or response.status ~= 200 then return error('Couldn\'t get community image \'' .. filename .. '\' from github.') end
+                            io.save(community.image, response.body)
+                        end)
+                    end
+                end
+                return ac.log('Updated to latest data.')
+            end
+        end)
+    end
 end
 
 --#endregion
@@ -402,9 +450,9 @@ local function playAudio(event)
     for category, events in pairs(audio) do
         for _, eventData in pairs(events) do
             if event == eventData then
-                local enableSetting = "enable" .. category:sub(1, 1):upper() .. category:sub(2)
+                local enableSetting = 'enable' .. category:sub(1, 1):upper() .. category:sub(2)
                 if settings[enableSetting] then
-                    local volumeSetting = "volume" .. category:sub(1, 1):upper() .. category:sub(2)
+                    local volumeSetting = 'volume' .. category:sub(1, 1):upper() .. category:sub(2)
                     local audioToPlay = ac.AudioEvent.fromFile({ filename = event.file, use3D = false, loop = false }, false)
                     audioToPlay.cameraInteriorMultiplier = 1
                     audioToPlay.cameraExteriorMultiplier = 1
@@ -731,6 +779,7 @@ local function drawPing()
 
         if ui.rectHovered(pingPosition, pingPosition + pingSize, true) then
             ui.setMouseCursor(ui.MouseCursor.Hand)
+            ui.tooltip(app.tooltipPadding:scale(app.scale), function() ui.text('Current Ping: ' .. ping .. ' ms\nClick to send to chat') end)
             if ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Arrow) end
             if ui.mouseReleased(ui.MouseButton.Left) then sendChatMessage('I currently have a ping of ' .. ping .. ' ms.') end
         end
@@ -761,6 +810,7 @@ local function drawTime()
     if app.hovered then
         if ui.itemHovered() then
             ui.setMouseCursor(ui.MouseCursor.Hand)
+            ui.tooltip(app.tooltipPadding:scale(app.scale), function() ui.text('Current Time: ' .. timeText .. '\nClick to send to chat') end)
         end
         if ui.itemClicked(ui.MouseButton.Left) then
             timeText = settings.badTime and timeText .. ' ' .. player.timePeriod or timeText
@@ -785,20 +835,29 @@ local function drawHeader()
     local headerTextFontsize = scale(12)
     ui.pushDWriteFont(app.font.regular)
     local headerTextSize = ui.measureDWriteText(headerText, headerTextFontsize)
+
     ui.drawRectFilled(vec2(headerPadding.x, headerPadding.y + movement.smooth), headerSize, colors.final.header, scale(30), ui.CornerFlags.Top)
     ui.drawSimpleLine(vec2(headerPadding.x, headerSize.y), vec2(headerSize.x, headerSize.y), colors.final.headerLine)
     ui.setCursor(vec2(math.floor((ui.windowWidth() / 2) - (headerTextSize.x / 2)), scale(84) + movement.smooth))
     ui.dwriteTextAligned(headerText, headerTextFontsize, 0, 1, headerTextSize, false, colors.final.elements)
     ui.popDWriteFont()
 
-    local contactSize = vec2(36, 36):scale(app.scale)
-    local contactPosition = vec2(129, 47):scale(app.scale) + vec2(0, movement.smooth)
-    local contactRounding = scale(20)
+    local headerImageSize = vec2(36, 36):scale(app.scale)
+    local headerImagePosition = vec2(129, 47):scale(app.scale) + vec2(0, movement.smooth)
+    local headerImageRounding = scale(20)
 
-    if player.serverCommunity == nil then
-        ui.drawImage(app.images.contactDefault, contactPosition, contactPosition + contactSize)
-    elseif player.serverCommunity == 'srp' then
-        ui.drawImageRounded(app.images.communities.srpLogo, contactPosition, contactPosition + contactSize, contactRounding)
+    if ui.isImageReady(communities[player.serverCommunity].image) then
+        ui.drawImageRounded(communities[player.serverCommunity].image, headerImagePosition, headerImagePosition + headerImageSize, headerImageRounding)
+    else
+        local remoteUrl = 'https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/smartphone/src/communities/img/' .. communities[player.serverCommunity].image:match('([^\\]+)$')
+        ui.drawImageRounded(remoteUrl, headerImagePosition, headerImagePosition + headerImageSize, headerImageRounding)
+    end
+
+    if ui.rectHovered(headerImagePosition, headerImagePosition + headerImageSize) then
+        ui.setMouseCursor(ui.MouseCursor.Hand)
+        ui.tooltip(app.tooltipPadding:scale(app.scale), function() ui.text(communities[player.serverCommunity].text .. '\nClick to open in Browser.') end)
+        if ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Arrow) end
+        if ui.mouseReleased(ui.MouseButton.Left) then os.openURL(communities[player.serverCommunity].url, false) end
     end
 end
 
@@ -819,6 +878,7 @@ local function drawSongInfo()
         if app.hovered and songInfo.final ~= '' then
             if ui.itemHovered() then
                 ui.setMouseCursor(ui.MouseCursor.Hand)
+                ui.tooltip(app.tooltipPadding:scale(app.scale), function() ui.text('Current Song: ' .. songInfo.artist .. ' - ' .. songInfo.title .. '\nClick to send to chat') end)
             end
             if ui.itemClicked(ui.MouseButton.Left) then
                 sendChatMessage('I\'m currently listening to: ' .. songInfo.artist .. ' - ' .. songInfo.title)
@@ -846,7 +906,7 @@ local function drawMessages()
                 local messageUsername = chat.messages[i][2]
                 local messageUsernameColor
                 local messageTextcontent = chat.messages[i][3]
-                local messageTimestamp = settings.badTime and to12hTime(os.date("%H:%M", chat.messages[i][4])) .. ' ' .. player.timePeriod or os.date("%H:%M", chat.messages[i][4])
+                local messageTimestamp = settings.badTime and to12hTime(os.date('%H:%M', chat.messages[i][4])) .. ' ' .. player.timePeriod or os.date('%H:%M', chat.messages[i][4])
                 local fontWeight = app.font.regular
 
                 if settings.chatUsernameColor then
@@ -1247,6 +1307,7 @@ end
 
 function onShowWindow()
     updateColors()
+    updateCommunityData()
 
     if settings.songInfo then startSongInfo() end
 
