@@ -41,7 +41,8 @@ local settings = ac.storage {
     messagesPlayAll = false,
     notificationsPlayAll = false,
     messagesIgnoreServer = false,
-    lastCheck = 0,
+    dataCheckLast = 0,
+    dataCheckFailed = false,
 }
 
 --#endregion
@@ -343,13 +344,15 @@ function tablesEqual(t1, t2)
 end
 
 local function updateCommunityData()
-    if os.time() - settings.lastCheck > 43200 then
+    if (not settings.dataCheckFailed and os.time() - settings.dataCheckLast > 43200) or (settings.dataCheckFailed and os.time() - settings.dataCheckLast > 3600) then
         web.get('https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/smartphone/src/communities/data/list.lua', function(err, response)
-            if err or response.status ~= 200 then return error('Couldn\'t get community data from github.') end
+            if err or response.status ~= 200 then
+                settings.dataCheckLast = os.time()
+                settings.dataCheckFailed = true
+                return error('Couldn\'t get community data from github.')
+            end
 
             local data = stringify.parse(response.body)
-            settings.lastCheck = os.time()
-
             if tablesEqual(data, communities) then
                 return ac.log('Already using latest data.')
             else
@@ -364,11 +367,18 @@ local function updateCommunityData()
                         local filename = community.image:match('([^\\]+)$')
                         local remoteImageUrl = 'https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/smartphone/src/communities/img/' .. filename
                         web.get(remoteImageUrl, function(err, response)
-                            if err or response.status ~= 200 then return error('Couldn\'t get community image \'' .. filename .. '\' from github.') end
+                            if err or response.status ~= 200 then
+                                settings.dataCheckLast = os.time()
+                                settings.dataCheckFailed = true
+
+                                return error('Couldn\'t get community data from github.')
+                            end
                             io.save(community.image, response.body)
                         end)
                     end
                 end
+                settings.dataCheckLast = os.time()
+                settings.dataCheckFailed = false
                 return ac.log('Updated to latest data.')
             end
         end)
