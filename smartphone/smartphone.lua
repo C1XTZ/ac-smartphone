@@ -620,21 +620,26 @@ end
 
 ---@param message string? @Optional, message to be sent instead of input field text.
 local function sendChatMessage(message)
-    message = message and ac.sendChatMessage(message) or ac.sendChatMessage(chat.input.text)
+    if not chat.sendCd then
+        message = message and ac.sendChatMessage(message) or ac.sendChatMessage(chat.input.text)
 
-    chat.sendCd = true
+        table.insert(chat.input.history, { 0, ac.getDriverName(0), chat.input.text, os.time() })
+        if #chat.input.history > 15 then table.remove(chat.input.history, 1) end
 
-    if chat.input.hovered then
-        chat.input.text = ''
-    else
-        if chat.mentioned ~= '' then chat.mentioned = '' end
-        chat.input.active = false
+        chat.sendCd = true
+
+        if chat.input.hovered then
+            chat.input.text = ''
+        else
+            if chat.mentioned ~= '' then chat.mentioned = '' end
+            chat.input.active = false
+        end
+
+        chat.input.historyIndex = 0
+        chat.scrollBool = true
+        setTimeout(function() chat.scrollBool = false end, 0.1)
+        setTimeout(function() chat.sendCd = false end, 1)
     end
-
-    chat.input.historyIndex = 0
-    chat.scrollBool = true
-    setTimeout(function() chat.scrollBool = false end, 0.1)
-    setTimeout(function() chat.sendCd = false end, 1)
 end
 
 ---@param isPlayer boolean @Indicates if the message originates from a player or the server.
@@ -709,7 +714,7 @@ local function handleKeyboardInput()
         end
         chat.input.text = utf8sub(chat.input.text, 1, utf8len(chat.input.text) - 1)
         return
-    elseif ui.keyPressed(ui.Key.Enter) and msgLen and not chat.sendCd then
+    elseif ui.keyPressed(ui.Key.Enter) and msgLen then
         sendChatMessage()
         chat.emojiPicker = false
         return
@@ -1255,11 +1260,6 @@ ac.onChatMessage(function(message, senderCarIndex)
     if not hideMessage and message:len() > 0 then
         deleteOldestMessages()
         table.insert(chat.messages, { senderCarIndex, isPlayer and ac.getDriverName(senderCarIndex) or 'Server', message, os.time() })
-
-        if senderCarIndex == 0 then
-            table.insert(chat.input.history, { senderCarIndex, isPlayer and ac.getDriverName(senderCarIndex) or 'Server', message, os.time() })
-            if #chat.input.history > 15 then table.remove(chat.input.history, 1) end
-        end
 
         moveAppUp()
 
