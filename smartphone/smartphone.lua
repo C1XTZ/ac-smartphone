@@ -312,10 +312,10 @@ local function checkIfFriend(carIndex)
 end
 
 local function getServerCommunity()
-    if not player.serverIP then return 'default' end
+    if not player.isOnline then return 'default' end
 
     for community, data in pairs(communities) do
-        if data.ips then
+        if (community ~= 'default' or community ~= 'version') and data.ips then
             for _, ip in ipairs(data.ips) do
                 if ip == player.serverIP then
                     return community
@@ -325,26 +325,6 @@ local function getServerCommunity()
     end
 
     return 'default'
-end
-
----@param t1 table @The first table to compare.
----@param t2 table @The second table to compare.
----@return boolean @Returns true if both tables are identical.
----Compares 2 tables.
-function tablesEqual(t1, t2)
-    if t1 == t2 then return true end
-    if type(t1) ~= 'table' or type(t2) ~= 'table' then return false end
-    for k, v in pairs(t1) do
-        if type(v) == 'table' then
-            if not tablesEqual(v, t2[k]) then return false end
-        else
-            if v ~= t2[k] then return false end
-        end
-    end
-    for k in pairs(t2) do
-        if t1[k] == nil then return false end
-    end
-    return true
 end
 
 local function updateCommunityData()
@@ -357,7 +337,7 @@ local function updateCommunityData()
             end
 
             local data = stringify.parse(response.body)
-            if tablesEqual(data, communities) then
+            if communities.version[1] == data.version[1] then
                 return ac.log('Already using latest data.')
             else
                 local file = io.open('.\\apps\\lua\\smartphone\\src\\communities\\data\\list.lua', 'w+')
@@ -1247,48 +1227,50 @@ end
 
 --#region APP EVENTS
 
-ac.onChatMessage(function(message, senderCarIndex)
-    local escapedMessage = message:gsub('([%(%)%.%%%+%-%*%?%[%]%^%$])', '%%%1')
-    local isPlayer = senderCarIndex > -1
-    local isFriend = isPlayer and checkIfFriend(senderCarIndex)
-    local isMentioned = message:lower():find('%f[%a_]' .. player.driverName:lower() .. '%f[%A_]')
-    local hideMessage = false
-
-    if isPlayer then
-        hideMessage = matchMessage(isPlayer, escapedMessage) and settings.chatHideAnnoying
-    else
-        hideMessage = matchMessage(isPlayer, escapedMessage) and settings.chatHideKickBan
-    end
-
-    if not hideMessage and message:len() > 0 then
-        deleteOldestMessages()
-        table.insert(chat.messages, { senderCarIndex, isPlayer and ac.getDriverName(senderCarIndex) or 'Server', message, os.time() })
-
-        moveAppUp()
+if player.isOnline then
+    ac.onChatMessage(function(message, senderCarIndex)
+        local escapedMessage = message:gsub('([%(%)%.%%%+%-%*%?%[%]%^%$])', '%%%1')
+        local isPlayer = senderCarIndex > -1
+        local isFriend = isPlayer and checkIfFriend(senderCarIndex)
+        local isMentioned = message:lower():find('%f[%a_]' .. player.driverName:lower() .. '%f[%A_]')
+        local hideMessage = false
 
         if isPlayer then
-            if senderCarIndex == 0 then
-                return playAudio(audio.message.send)
-            else
-                if isFriend or settings.messagesNonFriends then
-                    playAudio(audio.message.recieve)
-                end
-                if (isFriend and settings.notificationsFriendMessages) or (isMentioned and settings.notificationsMentions) then
-                    setTimeout(function()
-                        playAudio(audio.notification.regular)
-                    end, 0.4)
-                    return
-                end
-            end
+            hideMessage = matchMessage(isPlayer, escapedMessage) and settings.chatHideAnnoying
         else
-            if settings.messagesServer then
-                return playAudio(audio.message.recieve)
+            hideMessage = matchMessage(isPlayer, escapedMessage) and settings.chatHideKickBan
+        end
+
+        if not hideMessage and message:len() > 0 then
+            deleteOldestMessages()
+            table.insert(chat.messages, { senderCarIndex, isPlayer and ac.getDriverName(senderCarIndex) or 'Server', message, os.time() })
+
+            moveAppUp()
+
+            if isPlayer then
+                if senderCarIndex == 0 then
+                    return playAudio(audio.message.send)
+                else
+                    if isFriend or settings.messagesNonFriends then
+                        playAudio(audio.message.recieve)
+                    end
+                    if (isFriend and settings.notificationsFriendMessages) or (isMentioned and settings.notificationsMentions) then
+                        setTimeout(function()
+                            playAudio(audio.notification.regular)
+                        end, 0.4)
+                        return
+                    end
+                end
+            else
+                if settings.messagesServer then
+                    return playAudio(audio.message.recieve)
+                end
             end
         end
-    end
-end)
+    end)
+end
 
-if settings.connectionEvents then
+if player.isOnline and settings.connectionEvents then
     ---@param connectedCarIndex number @Car index of the car that joined/left
     ---@param action string @joined/left string
     ---adds system messages for join/leave events.
@@ -1298,7 +1280,7 @@ if settings.connectionEvents then
             deleteOldestMessages()
             table.insert(chat.messages, { -1, 'Server', ac.getDriverName(connectedCarIndex) .. action .. ' the Server', os.time() })
 
-            if settings.messagesNonFriends or isFriend then playAudio(audio.message.recieve) end
+            if settings.messagesServer and (settings.messagesNonFriends or isFriend) then playAudio(audio.message.recieve) end
             if settings.notificationsFriendConnections and isFriend then
                 setTimeout(function()
                     playAudio(audio.notification.regular)

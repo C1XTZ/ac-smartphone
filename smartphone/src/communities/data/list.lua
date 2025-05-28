@@ -1,4 +1,5 @@
 {
+  version = { 28052025 },
   srp = {
     ips = { "5.161.43.117", "65.108.176.35", "15.235.162.98" },
     url = "https://discord.gg/shutokorevivalproject",
