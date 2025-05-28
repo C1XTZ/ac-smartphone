@@ -1,7 +1,8 @@
+--made by C1XTZ
+--if you're reading any of this let me preface this by saying: If you're going 'what the fuck is this idiot doing??' it's likely that I said the same thing while writing it.
 ui.setAsynchronousImagesLoading(true)
 local WINDOWFLAGS = bit.bor(ui.WindowFlags.NoDecoration, ui.WindowFlags.NoBackground, ui.WindowFlags.NoNav, ui.WindowFlags.NoInputs, ui.WindowFlags.NoScrollbar)
 local WINDOWFLAGSINPUT = bit.bor(ui.WindowFlags.NoDecoration, ui.WindowFlags.NoBackground, ui.WindowFlags.NoNav, ui.WindowFlags.NoScrollbar)
-
 
 --#region APP PERSISTENT SETTINGS
 
@@ -38,9 +39,11 @@ local settings = ac.storage {
     volumeKeyboard = 1,
     volumeMessage = 1,
     volumeNotification = 1,
-    messagesPlayAll = false,
-    notificationsPlayAll = false,
-    messagesIgnoreServer = false,
+    messagesNonFriends = true,
+    messagesServer = false,
+    notificationsMentions = true,
+    notificationsFriendConnections = true,
+    notificationsFriendMessages = true,
     dataCheckLast = 0,
     dataCheckFailed = false,
 }
@@ -103,6 +106,7 @@ local app = {
 
 local player = {
     car = ac.getCar(0),
+    driverName = ac.getDriverName(0),
     cspVersion = ac.getPatchVersionCode(),
     isOnline = ac.getSim().isOnlineRace,
     serverIP = ac.getServerIP(),
@@ -356,7 +360,7 @@ local function updateCommunityData()
             if tablesEqual(data, communities) then
                 return ac.log('Already using latest data.')
             else
-                local file = io.open('./apps/lua/smartphone/src/communities/data/list.lua', 'w+')
+                local file = io.open('.\\apps\\lua\\smartphone\\src\\communities\\data\\list.lua', 'w+')
                 if file then
                     file:write(stringify(data))
                     file:close()
@@ -623,7 +627,7 @@ local function sendChatMessage(message)
     if not chat.sendCd then
         message = message and ac.sendChatMessage(message) or ac.sendChatMessage(chat.input.text)
 
-        table.insert(chat.input.history, { 0, ac.getDriverName(0), chat.input.text, os.time() })
+        table.insert(chat.input.history, { 0, player.driverName, chat.input.text, os.time() })
         if #chat.input.history > 15 then table.remove(chat.input.history, 1) end
 
         chat.sendCd = true
@@ -648,7 +652,7 @@ end
 ---Determines whether a chat message should be hidden based on the pattern strings.
 local function matchMessage(isPlayer, message)
     local lowerMessage = message:lower()
-    local lowerPlayerName = ac.getDriverName(0):lower()
+    local lowerPlayerName = player.driverName:lower()
 
     if isPlayer then
         for _, pattern in ipairs(chat.playerHideStrings) do
@@ -931,7 +935,7 @@ local function drawMessages()
                     messageUsernameColor = rgb.colors.gray
                 end
 
-                if (i == #chat.messages and settings.chatLatestBold) or (messageTextcontent:lower():find('%f[%a_]' .. ac.getDriverName(0):lower() .. '%f[%A_]') and messageUserIndex > 0) then
+                if (i == #chat.messages and settings.chatLatestBold) or (messageTextcontent:lower():find('%f[%a_]' .. player.driverName:lower() .. '%f[%A_]') and messageUserIndex > 0) then
                     fontWeight = app.font.bold
                 else
                     fontWeight = app.font.regular
@@ -1125,7 +1129,6 @@ local function drawEmojiPicker()
                     chat.input.text = chat.input.text .. chat.emojis[i]
                 end
 
-
                 ui.sameLine(0, emojiOffset.y)
 
                 if i % 6 == 0 and i ~= #chat.emojis then
@@ -1198,7 +1201,6 @@ local function drawInputCustom()
             displayText = chat.input.placeholder
         end
 
-
         if chat.input.selected then
             local selectedTextSize = ui.measureDWriteText(chat.input.text, inputFontSize, inputWrap) + vec2(4, 0):scale(app.scale)
             ui.setCursor(vec2(8, 6):scale(app.scale))
@@ -1249,6 +1251,7 @@ ac.onChatMessage(function(message, senderCarIndex)
     local escapedMessage = message:gsub('([%(%)%.%%%+%-%*%?%[%]%^%$])', '%%%1')
     local isPlayer = senderCarIndex > -1
     local isFriend = isPlayer and checkIfFriend(senderCarIndex)
+    local isMentioned = message:lower():find('%f[%a_]' .. player.driverName:lower() .. '%f[%A_]')
     local hideMessage = false
 
     if isPlayer then
@@ -1266,19 +1269,19 @@ ac.onChatMessage(function(message, senderCarIndex)
         if isPlayer then
             if senderCarIndex == 0 then
                 return playAudio(audio.message.send)
-            elseif senderCarIndex > 0 and (isFriend or escapedMessage:lower():find('%f[%a_]' .. ac.getDriverName(0):lower() .. '%f[%A_]')) then
-                playAudio(audio.message.recieve)
-                if not settings.notificationsPlayAll and senderCarIndex > 0 then
+            else
+                if isFriend or settings.messagesNonFriends then
+                    playAudio(audio.message.recieve)
+                end
+                if (isFriend and settings.notificationsFriendMessages) or (isMentioned and settings.notificationsMentions) then
                     setTimeout(function()
                         playAudio(audio.notification.regular)
                     end, 0.4)
                     return
                 end
-            elseif not settings.messagesPlayAll then
-                return playAudio(audio.message.recieve)
             end
         else
-            if not settings.messagesIgnoreServer then
+            if settings.messagesServer then
                 return playAudio(audio.message.recieve)
             end
         end
@@ -1295,8 +1298,8 @@ if settings.connectionEvents then
             deleteOldestMessages()
             table.insert(chat.messages, { -1, 'Server', ac.getDriverName(connectedCarIndex) .. action .. ' the Server', os.time() })
 
-            if not settings.messagesPlayAll or isFriend then playAudio(audio.message.recieve) end
-            if not settings.notificationsPlayAll and isFriend then
+            if settings.messagesNonFriends or isFriend then playAudio(audio.message.recieve) end
+            if settings.notificationsFriendConnections and isFriend then
                 setTimeout(function()
                     playAudio(audio.notification.regular)
                 end, 0.4)
@@ -1349,15 +1352,19 @@ function script.windowMainSettings(dt)
                 settings.darkMode = not settings.darkMode
                 updateColors()
             end
+            if ui.itemHovered() then ui.tooltip(app.tooltipPadding, function() ui.text('If enabled, app will use dark mode.') end) end
 
             if ui.checkbox('Force App to Bottom', settings.forceBottom) then settings.forceBottom = not settings.forceBottom end
+            if ui.itemHovered() then ui.tooltip(app.tooltipPadding, function() ui.text('If enabled, app will be forced to the bottom of the screen.') end) end
 
             if ui.checkbox('Use 12h Clock', settings.badTime) then settings.badTime = not settings.badTime end
+            if ui.itemHovered() then ui.tooltip(app.tooltipPadding, function() ui.text('If enabled, uses 12 hour time format.\nMessage timestamps will include AM/PM.') end) end
 
             if ui.checkbox('Show Music Information', settings.songInfo) then
                 settings.songInfo = not settings.songInfo
                 if settings.songInfo then startSongInfo() else stopSongInfo() end
             end
+            if ui.itemHovered() then ui.tooltip(app.tooltipPadding, function() ui.text('If enabled, shows current song information if detected.\nCheck your CSP Music settings if there are issues.') end) end
 
             if settings.songInfo then
                 ui.text('\t')
@@ -1366,10 +1373,12 @@ function script.windowMainSettings(dt)
                     settings.scrollAlways = not settings.scrollAlways
                     updateSpacing()
                 end
+                if ui.itemHovered() then ui.tooltip(app.tooltipPadding, function() ui.text('If enabled, will scroll text even if it could be displayed in full.') end) end
 
                 ui.text('\t')
                 ui.sameLine()
                 if ui.checkbox('Hide Selfie Camera', settings.hideCamera) then settings.hideCamera = not settings.hideCamera end
+                if ui.itemHovered() then ui.tooltip(app.tooltipPadding, function() ui.text('If enabled, will hide the selfie camera below the song information.') end) end
 
                 ui.text('\t')
                 ui.sameLine()
@@ -1378,6 +1387,7 @@ function script.windowMainSettings(dt)
                 if spacesChanged then
                     updateSpacing()
                 end
+                if ui.itemHovered() then ui.tooltip(app.tooltipPadding, function() ui.text('The amount of spaces between the end and start of the song when scrolling.') end) end
 
                 ui.text('\t')
                 ui.sameLine()
@@ -1386,6 +1396,7 @@ function script.windowMainSettings(dt)
                 if speedChanged then
                     updateScrollInterval()
                 end
+                if ui.itemHovered() then ui.tooltip(app.tooltipPadding, function() ui.text('Interval that the text is scrolled at.') end) end
 
                 ui.text('\t')
                 ui.sameLine()
@@ -1402,6 +1413,7 @@ function script.windowMainSettings(dt)
             ui.text('\t')
             ui.sameLine()
             settings.chatScrollDistance = ui.slider('##chatScrollDistance', settings.chatScrollDistance, 1, 100, 'Chat Scroll Distance: ' .. '%.0f')
+            if ui.itemHovered() then ui.tooltip(app.tooltipPadding, function() ui.text('Distance to scroll the chat per mousewheel scroll') end) end
 
             if ui.checkbox('Chat Inactivity Minimizes Phone', settings.appMove) then
                 settings.appMove = not settings.appMove
@@ -1410,19 +1422,23 @@ function script.windowMainSettings(dt)
                     movement.timer = settings.appMoveTimer
                 end
             end
+            if ui.itemHovered() then ui.tooltip(app.tooltipPadding, function() ui.text('If enabled, the app will move down to free screen space.') end) end
 
             if settings.appMove then
                 ui.text('\t')
                 ui.sameLine()
                 settings.appMoveTimer, chatinactiveChange = ui.slider('##appMoveTimer', settings.appMoveTimer, 1, 120, 'Inactivity: ' .. '%.0f seconds')
                 if chatinactiveChange then movement.timer = settings.appMoveTimer end
+                if ui.itemHovered() then ui.tooltip(app.tooltipPadding, function() ui.text('Time before app moves down.') end) end
 
                 ui.text('\t')
                 ui.sameLine()
                 settings.appMoveSpeed = ui.slider('##appMoveSpeed', settings.appMoveSpeed, 1, 20, 'Speed: ' .. '%.0f')
+                if ui.itemHovered() then ui.tooltip(app.tooltipPadding, function() ui.text('How fast the app should move up/down.') end) end
             end
 
             if ui.checkbox('Chat History Settings', settings.chatPurge) then settings.chatPurge = not settings.chatPurge end
+            if ui.itemHovered() then ui.tooltip(app.tooltipPadding, function() ui.text('If enabled, allows you to change the chat message history settings') end) end
             if settings.chatPurge then
                 ui.text('\t')
                 ui.sameLine()
@@ -1437,29 +1453,38 @@ function script.windowMainSettings(dt)
             ui.newLine(-10 * ac.getUI().uiScale)
 
             if ui.checkbox('Use Colored Usernames', settings.chatUsernameColor) then settings.chatUsernameColor = not settings.chatUsernameColor end
+            if ui.itemHovered() then ui.tooltip(app.tooltipPadding, function() ui.text('If enabled, uses colored usernames if possible.\nServers can overwrite CM tag colors.') end) end
 
             if ui.checkbox('Show Timestamps', settings.showTimestamp) then settings.showTimestamp = not settings.showTimestamp end
+            if ui.itemHovered() then ui.tooltip(app.tooltipPadding, function() ui.text('If enabled, shows message timestamps.') end) end
 
             if ui.checkbox('Show Join/Leave Messages', settings.connectionEvents) then settings.connectionEvents = not settings.connectionEvents end
+            if ui.itemHovered() then ui.tooltip(app.tooltipPadding, function() ui.text('If enabled, shows server message when a player joins/leaves the server.') end) end
             if settings.connectionEvents then
                 ui.text('\t')
                 ui.sameLine()
                 if ui.checkbox('Friends Only', settings.connectionEventsFriendsOnly) then settings.connectionEventsFriendsOnly = not settings.connectionEventsFriendsOnly end
+                if ui.itemHovered() then ui.tooltip(app.tooltipPadding, function() ui.text('If enabled, only shows join/leave messages of friends.') end) end
             end
 
             if ui.checkbox('Highlight Latest Message', settings.chatLatestBold) then settings.chatLatestBold = not settings.chatLatestBold end
+            if ui.itemHovered() then ui.tooltip(app.tooltipPadding, function() ui.text('If enabled, text of the latest message will always be bold.') end) end
 
             if ui.checkbox('Hide Kick Ban Messages', settings.chatHideKickBan) then settings.chatHideKickBan = not settings.chatHideKickBan end
+            if ui.itemHovered() then ui.tooltip(app.tooltipPadding, function() ui.text('If enabled, hides kick and ban messages from other players.') end) end
 
             if ui.checkbox('Hide Annoying Messages', settings.chatHideAnnoying) then settings.chatHideAnnoying = not settings.chatHideAnnoying end
+            if ui.itemHovered() then ui.tooltip(app.tooltipPadding, function() ui.text('If enabled, hides annoying messages from apps such as Pit Lane Penalty and Real Penalty.') end) end
         end)
 
         ui.tabItem('Audio', function()
             if ui.checkbox('Enable Audio', settings.enableAudio) then settings.enableAudio = not settings.enableAudio end
+            if ui.itemHovered() then ui.tooltip(app.tooltipPadding, function() ui.text('Toggles all app audio.') end) end
 
             ui.indent()
             if settings.enableAudio then
                 if ui.checkbox('Enable Keystroke Audio', settings.enableKeyboard) then settings.enableKeyboard = not settings.enableKeyboard end
+                if ui.itemHovered() then ui.tooltip(app.tooltipPadding, function() ui.text('Toggles keystroke sounds when typing.') end) end
                 if settings.enableKeyboard then
                     ui.text('\t')
                     ui.sameLine()
@@ -1470,32 +1495,47 @@ function script.windowMainSettings(dt)
                 end
 
                 if ui.checkbox('Enable Message Audio', settings.enableMessage) then settings.enableMessage = not settings.enableMessage end
+                if ui.itemHovered() then ui.tooltip(app.tooltipPadding, function() ui.text('Toggles message sounds.') end) end
                 if settings.enableMessage then
-                    ui.text('\t')
-                    ui.sameLine()
-                    if ui.checkbox('Don\'t Play for Non-Friends', settings.messagesPlayAll) then settings.messagesPlayAll = not settings.messagesPlayAll end
-                    ui.text('\t')
-                    ui.sameLine()
-                    if ui.checkbox('Don\'t Play for Server Messages', settings.messagesIgnoreServer) then settings.messagesIgnoreServer = not settings.messagesIgnoreServer end
                     ui.text('\t')
                     ui.sameLine()
                     settings.volumeMessage = ui.slider('##messageVolume', settings.volumeMessage, 0.1, 10, 'Message Volume: ' .. '%.1f')
                     ui.text('\t')
                     ui.sameLine()
                     if ui.button('Play Test Message') then playTestAudio(audio.message) end
+                    ui.text('\t')
+                    ui.sameLine()
+                    if ui.checkbox('Non-Friend Messages', settings.messagesNonFriends) then settings.messagesNonFriends = not settings.messagesNonFriends end
+                    if ui.itemHovered() then ui.tooltip(app.tooltipPadding, function() ui.text('Plays message recieved sound for messages from non-friends.') end) end
+                    ui.text('\t')
+                    ui.sameLine()
+                    if ui.checkbox('Server Messages', settings.messagesServer) then settings.messagesServer = not settings.messagesServer end
+                    if ui.itemHovered() then ui.tooltip(app.tooltipPadding, function() ui.text('Plays message recieved sound for messages from the server.') end) end
                 end
 
                 if ui.checkbox('Enable Notification Audio', settings.enableNotification) then settings.enableNotification = not settings.enableNotification end
+                if ui.itemHovered() then ui.tooltip(app.tooltipPadding, function() ui.text('Toggles notification sounds.') end) end
                 if settings.enableNotification then
-                    ui.text('\t')
-                    ui.sameLine()
-                    if ui.checkbox('Only Play for Server Warnings', settings.notificationsPlayAll) then settings.notificationsPlayAll = not settings.notificationsPlayAll end
                     ui.text('\t')
                     ui.sameLine()
                     settings.volumeNotification = ui.slider('##notificationVolume', settings.volumeNotification, 0.1, 10, 'Notification Volume: ' .. '%.1f')
                     ui.text('\t')
                     ui.sameLine()
                     if ui.button('Play Test Notification') then playTestAudio(audio.notification) end
+                    ui.text('\t')
+                    ui.sameLine()
+                    if ui.checkbox('@' .. player.driverName .. ' mentions', settings.notificationsMentions) then settings.notificationsMentions = not settings.notificationsMentions end
+                    if ui.itemHovered() then ui.tooltip(app.tooltipPadding, function() ui.text('Plays notification when you are mentioned in chat.') end) end
+                    ui.text('\t')
+                    ui.sameLine()
+                    if ui.checkbox('Friend Messages', settings.notificationsFriendMessages) then settings.notificationsFriendMessages = not settings.notificationsFriendMessages end
+                    if ui.itemHovered() then ui.tooltip(app.tooltipPadding, function() ui.text('Plays notification when friend sends a chat message.') end) end
+                    if settings.connectionEvents then
+                        ui.text('\t')
+                        ui.sameLine()
+                        if ui.checkbox('Friend Join/Leave', settings.notificationsFriendConnections) then settings.notificationsFriendConnections = not settings.notificationsFriendConnections end
+                        if ui.itemHovered() then ui.tooltip(app.tooltipPadding, function() ui.text('Plays notification when friend joins/leaves the server.') end) end
+                    end
                 end
             end
         end)
