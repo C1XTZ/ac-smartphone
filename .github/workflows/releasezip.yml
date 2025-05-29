@@ -37,6 +37,13 @@ jobs:
 
           ## Updating & Installation:
 
+          ### Updating Ingame:
+            ![](https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/.github/img/updater.png)
+          1. Open the Smartphone Ingame
+          2. Select the `Update` Tab
+          3. Click the `Check for Update` button
+          4. Click the `Install Update` button
+
           ### Automatic Installation via Content Manager: 
           1. Download `smartphone.zip`
           2. Drag & Drop `smartphone.zip` into Content Manager and click `Install`
