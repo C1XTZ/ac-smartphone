@@ -916,17 +916,10 @@ local function drawMessages()
                 local messageUserIndex = chat.messages[i][1]
                 local messageUserIndexLast = i >= 2 and chat.messages[i - 1][1] or nil
                 local messageUsername = chat.messages[i][2]
-                local messageUsernameColor
+                local messageUsernameColor = chat.messages[i][5]
                 local messageTextcontent = chat.messages[i][3]
                 local messageTimestamp = settings.badTime and to12hTime(os.date('%H:%M', chat.messages[i][4])) .. ' ' .. player.timePeriod or os.date('%H:%M', chat.messages[i][4])
                 local fontWeight = app.font.regular
-
-                if settings.chatUsernameColor then
-                    messageUsernameColor = ac.DriverTags(messageUsername).color
-                    if (messageUserIndex == 0 and messageUsernameColor == rgbm.colors.yellow) or (messageUserIndex ~= 0 and messageUsernameColor == rgbm.colors.white) then messageUsernameColor = rgb.colors.gray end
-                else
-                    messageUsernameColor = rgb.colors.gray
-                end
 
                 if (i == #chat.messages and settings.chatLatestBold) or (messageTextcontent:lower():find('%f[%a_]' .. player.driverName:lower() .. '%f[%A_]') and messageUserIndex > 0) then
                     fontWeight = app.font.bold
@@ -1362,6 +1355,14 @@ if player.isOnline then
         local isFriend = isPlayer and checkIfFriend(senderCarIndex)
         local isMentioned = message:lower():find('%f[%a_]' .. player.driverName:lower() .. '%f[%A_]')
         local hideMessage = false
+        local userTagColor
+
+        if settings.chatUsernameColor then
+            userTagColor = ac.DriverTags(ac.getDriverName(senderCarIndex)).color
+            if (senderCarIndex == 0 and userTagColor == rgbm.colors.yellow) or (senderCarIndex ~= 0 and userTagColor == rgbm.colors.white) then userTagColor = rgb.colors.gray end
+        else
+            userTagColor = rgb.colors.gray
+        end
 
         if isPlayer then
             hideMessage = matchMessage(isPlayer, escapedMessage) and settings.chatHideAnnoying
@@ -1371,7 +1372,7 @@ if player.isOnline then
 
         if not hideMessage and message:len() > 0 then
             deleteOldestMessages()
-            table.insert(chat.messages, { senderCarIndex, isPlayer and ac.getDriverName(senderCarIndex) or 'Server', message, os.time() })
+            table.insert(chat.messages, { senderCarIndex, isPlayer and ac.getDriverName(senderCarIndex) or 'Server', message, os.time(), userTagColor })
 
             moveAppUp()
 
