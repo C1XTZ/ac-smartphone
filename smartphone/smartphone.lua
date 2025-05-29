@@ -110,7 +110,7 @@ local player = {
     cspVersion = ac.getPatchVersionCode(),
     isOnline = ac.getSim().isOnlineRace,
     serverIP = ac.getServerIP(),
-    serverCommunity = nil,
+    serverCommunity = 'default',
     timePeriod = '',
 }
 
@@ -143,7 +143,6 @@ local songInfo = {
 
 local chat = {
     messages = {},
-    messageHovered = {},
     sendCd = false,
     scrollBool = false,
     mentioned = '',
@@ -494,6 +493,7 @@ local function updateSongInfo(forced)
     local current = ac.currentlyPlaying()
     local artist = current.artist
     local title = current.title
+    local maxLength = 17
 
     if (current.artist:lower() == 'unknown artist' or current.artist == '') and current.title ~= '' then
         artist, title = splitTitle(current.title)
@@ -509,12 +509,12 @@ local function updateSongInfo(forced)
             songInfo.title = title
             songInfo.scroll = (songInfo.artist ~= '' and songInfo.artist:lower() ~= 'unknown artist') and (songInfo.artist .. ' - ' .. songInfo.title) or (songInfo.title)
 
-            if utf8len(songInfo.scroll) < 20 and not settings.scrollAlways then
+            if utf8len(songInfo.scroll) < maxLength and not settings.scrollAlways then
                 songInfo.static = true
                 songInfo.align = ui.Alignment.Center
             else
-                if utf8len(songInfo.scroll) < 20 then
-                    string.rep(' ', 20 - utf8len(songInfo.scroll))
+                if utf8len(songInfo.scroll) < maxLength then
+                    string.rep(' ', maxLength - utf8len(songInfo.scroll))
                 end
                 songInfo.static = false
                 songInfo.align = ui.Alignment.Start
@@ -685,9 +685,9 @@ local function handleKeyboardInput()
 
     if (ui.keyPressed(ui.Key.Backspace, true) or ui.keyPressed(ui.Key.Delete)) then
         playAudio(audio.keyboard.delete)
-    elseif ui.keyPressed(ui.Key.Enter) or ui.keyPressed(ui.Key.Space) then
+    elseif ui.keyboardButtonPressed(ui.getKeyIndex(ui.Key.Enter), false) or ui.keyboardButtonPressed(ui.getKeyIndex(ui.Key.Space), true) then
         playAudio(audio.keyboard.enter)
-    elseif typed ~= '' then
+    elseif typed:gsub('[%c]', '') ~= '' and typed ~= ' ' then
         playAudio(audio.keyboard.keystroke)
     end
 
@@ -777,9 +777,8 @@ local function drawPing()
         local pingPosition = vec2(scale(238), pingSize.y + movement.smooth)
 
         if ui.rectHovered(pingPosition, pingPosition + pingSize, true) then
-            ui.setMouseCursor(ui.MouseCursor.Hand)
             ui.tooltip(app.tooltipPadding:scale(app.scale), function() ui.text('Current Ping: ' .. ping .. ' ms\nClick to send to chat') end)
-            if ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Arrow) end
+            if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
             if ui.mouseReleased(ui.MouseButton.Left) then sendChatMessage('I currently have a ping of ' .. ping .. ' ms.') end
         end
 
@@ -848,14 +847,12 @@ local function drawHeader()
     if ui.isImageReady(communities[player.serverCommunity].image) then
         ui.drawImageRounded(communities[player.serverCommunity].image, headerImagePosition, headerImagePosition + headerImageSize, headerImageRounding)
     else
-        local remoteUrl = 'https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/smartphone/src/communities/img/' .. communities[player.serverCommunity].image:match('([^\\]+)$')
-        ui.drawImageRounded(remoteUrl, headerImagePosition, headerImagePosition + headerImageSize, headerImageRounding)
+        ui.drawImageRounded(communities['default'].image, headerImagePosition, headerImagePosition + headerImageSize, headerImageRounding)
     end
 
     if ui.rectHovered(headerImagePosition, headerImagePosition + headerImageSize) then
-        ui.setMouseCursor(ui.MouseCursor.Hand)
         ui.tooltip(app.tooltipPadding:scale(app.scale), function() ui.text(communities[player.serverCommunity].text .. '\nClick to open in Browser.') end)
-        if ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Arrow) end
+        if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
         if ui.mouseReleased(ui.MouseButton.Left) then os.openURL(communities[player.serverCommunity].url, false) end
     end
 end
@@ -971,23 +968,32 @@ local function drawMessages()
 
                     if not messageUserIndexLast then
                         ui.setCursor(vec2(usernameOffset.x / 2, msgDist))
-                        ui.dwriteTextAligned(messageUsername, usernameFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(messageMaxWidth, userNameTextSize.y), false, messageUsernameColor)
+                        ui.dwriteTextAligned(messageUsername, usernameFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(math.min(userNameTextSize.x, messageMaxWidth), userNameTextSize.y), false, messageUsernameColor)
                         msgDist = math.ceil(msgDist + usernameOffset.y)
                     else
                         if messageUserIndexLast ~= messageUserIndex then
                             if messageUserIndexLast ~= -1 then msgDist = math.ceil(msgDist - usernameOffset.y / 2) end
                             ui.setCursor(vec2(usernameOffset.x / 2, msgDist))
-                            ui.dwriteTextAligned(messageUsername, usernameFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(messageMaxWidth, userNameTextSize.y), false, messageUsernameColor)
+                            ui.dwriteTextAligned(messageUsername, usernameFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(math.min(userNameTextSize.x, messageMaxWidth), userNameTextSize.y), false, messageUsernameColor)
                             msgDist = math.ceil(msgDist + usernameOffset.y)
                         end
                     end
+
+                    if ui.itemHovered() and not ui.isMouseDragging(ui.MouseButton.Right, 0) then
+                        ui.setMouseCursor(ui.MouseCursor.Hand)
+                    end
+                    if ui.itemClicked(ui.MouseButton.Right) then
+                        if chat.input.text == chat.input.placeholder then chat.input.text = '' end
+                        chat.input.active = true
+                        chat.input.text = chat.input.text .. '@' .. messageUsername
+                    end
+
                     ui.popDWriteFont()
                     ui.pushDWriteFont(fontWeight)
                     local messageTextSize = ui.measureDWriteText(messageTextcontent, messageFontSize, scale(190))
                     msgDist = math.ceil(msgDist + messageTextSize.y)
                     ui.setCursor(vec2(math.ceil(messageTextSize.x + messagePadding.x + scale(5)), msgDist))
                     ui.drawRectFilled(ui.getCursor() - vec2(math.ceil(messageTextSize.x + messagePadding.x), math.ceil(messageTextSize.y + messagePadding.y)), ui.getCursor(), bubbleColor, messageRounding)
-                    chat.messageHovered[i] = ui.rectHovered(ui.getCursor() - vec2(math.ceil(messageTextSize.x + messagePadding.x), math.ceil(messageTextSize.y + messagePadding.y + userNameTextSize.y)), ui.getCursor(), true)
                     ui.setCursor(ui.getCursor() - vec2(math.ceil(messageTextSize.x + messagePadding.x / 2), math.ceil(messageTextSize.y + messagePadding.y / 2)))
                     ui.dwriteTextAligned(messageTextcontent, messageFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, messageTextColor)
                     ui.popDWriteFont()
@@ -999,16 +1005,6 @@ local function drawMessages()
                         ui.dwriteTextAligned(messageTimestamp, timestampFontSize, ui.Alignment.Start, ui.Alignment.Start, timestampSize, true, rgb.colors.gray)
                         ui.popDWriteFont()
                         msgDist = math.ceil(msgDist + timestampSize.y)
-                    end
-
-                    if chat.messageHovered[i] then
-                        ui.setMouseCursor(ui.MouseCursor.Hand)
-                        if ui.isMouseDragging(ui.MouseButton.Right, 0) then ui.setMouseCursor(ui.MouseCursor.Arrow) end
-                        if ui.mouseClicked(ui.MouseButton.Right) then
-                            if chat.input.text == chat.input.placeholder then chat.input.text = '' end
-                            chat.input.active = true
-                            chat.input.text = chat.input.text .. '@' .. messageUsername .. ' '
-                        end
                     end
 
                     msgDist = math.ceil(msgDist + messagePadding.y + messagePadding.y / 2)
@@ -1070,9 +1066,8 @@ local function drawEmojiPicker()
     end
 
     if chat.emojiPickerHovered then
-        ui.setMouseCursor(ui.MouseCursor.Hand)
+        if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
         ui.drawEllipseFilled(vec2(buttonPos.x, ui.windowHeight() - buttonPos.y + movement.smooth), buttonBgRad, colors.final.emojiPickerBG, 100)
-        if ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Arrow) end
     end
 
     if chat.emojiPicker then
@@ -1093,8 +1088,7 @@ local function drawEmojiPicker()
             for i = 1, #chat.emojis do
                 if ui.rectHovered(ui.getCursor(), ui.getCursor() + emojiSize) then
                     chat.emojiPickerHovered = true
-                    ui.setMouseCursor(ui.MouseCursor.Hand)
-                    if ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Arrow) end
+                    if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
                     ui.drawRectFilled(ui.getCursor() + emojiOffset, ui.getCursor() + emojiSize + emojiOffset, colors.iMessageSelected, scale(5))
                 end
 
