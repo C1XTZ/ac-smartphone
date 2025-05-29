@@ -8,13 +8,16 @@ If you're looking for a more "oldschool" feel, try my [Mobilephone](https://gith
 - **Displays current reallife time (24h/12h formats) - Left click to send it to chat**
 - **Displays currently playing music information - Left click to send it to chat**
 - **Displays your ping - Left click to send it to chat**
-- **Support for Custom Community Pictures, linking to a URL**
-  - Owners of communities that want to be added can contact me with the following information:
-    ```ini
-    Server IPs:     ;List of IP addresses of your servers. IP's should not change all the time.
-    Image:          ;Image that you want to be displayed. 
-    Tooltip Text:   ;Text that you want to be displayed in the tooltip.
+- **Support for Custom Community Pictures, linking to a URL**  
+    - Owners of communities that want to be added can contact me with the following information:
+      ```ini
+      Server IPs:     ;List of IP addresses of your servers. IP's should not change all the time.
+      Image:          ;Image that you want to be displayed. 
+      Tooltip Text:   ;Text that you want to be displayed in the tooltip.
+      ```
+      ![](https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/.github/img/communityexample.png)  
 - **Ingame chat - Right click a message to @mention the sender**
+- **Emoji Picker - Same Emojis as the regular chat app**
 - **iOS 18 Sounds - Keystrokes, Messages, Notifications**
 - **Hides annoying messages from other apps**
     - Example: `PLP: running version 1.21, 2-60-3-True-3.3-0.9-3-2-8-5-0|C1XTZ`
