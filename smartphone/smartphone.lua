@@ -1256,7 +1256,7 @@ local updateStatus = {
 }
 
 local appName = 'smartphone'
-local appFolder = ac.getFolder(ac.FolderID.ACAppsLua) .. '\\' .. appName .. '\\'
+local appFolder = ac.getFolder(ac.FolderID.ACApps) .. '\\lua\\' .. appName .. '\\'
 local manifest = ac.INIConfig.load(appFolder .. '\\manifest.ini', ac.INIFormat.Extended)
 local appVersion = manifest:get('ABOUT', 'VERSION', 0.01)
 local releaseURL = 'https://api.github.com/repos/C1XTZ/ac-smartphone/releases/latest'
@@ -1451,7 +1451,7 @@ end
 function script.windowMainSettings(dt)
     ui.tabBar('TabBar', function()
         ui.tabItem('Update', function()
-            ui.text('Currrently running version ' .. appVersion)
+            ui.text('Currrently running version ' .. string.format("%.2f", appVersion))
             if ui.checkbox('Automatically Check for Updates', settings.updateAutoCheck) then
                 settings.updateAutoCheck = not settings.updateAutoCheck
                 if settings.updateAutoCheck then updateCheckVersion() end
