@@ -24,19 +24,13 @@ jobs:
         tag: ${{ github.ref }}
         name: "Smartphone ${{ github.ref_name }}"
         body: |
-          **Oldest Supported CSP Version: CSP 0.2.3 (3044)**
-
+          <p align="center"><img src="https://github.com/C1XTZ/ac-smartphone/blob/main/.github/img/repopreview.png" width="700"/></p>
           ## Added:
 
           ## Changes:
 
-          ## Known Issues:
-          - Song Information will sometimes be picked up from the wrong source (e.g. Browser instead of Spotify), or not at all.  
-            Try adding unwanted programs to the `Ignored processes` in the your CSP Music module settings.
-          - When using the AssettoServer PatreonTwitchChatPlugin, some Twitch features like Announcements are not be displayed correctly and will result in empty lines
-
           ## Updating & Installation:
-
+          ### Oldest Supported CSP Version: CSP 0.2.3 (3044)
           ### Updating Ingame:
             ![](https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/.github/img/updater.png)
           1. Open the Smartphone Ingame
@@ -52,3 +46,9 @@ jobs:
           1. Download `smartphone.zip`
           2. Extract and place the `smartphone` folder inside the `\apps\lua` folder of your Assetto Corsa installation.
           (By default: `C:\Steam\steamapps\common\assettocorsa\apps\lua`)
+
+          ## Known Issues:
+          - Song Information will sometimes be picked up from the wrong source (e.g. Browser instead of Spotify), or not at all.  
+            Try adding unwanted programs to the `Ignored processes` in the your CSP Music module settings.
+          - When using the AssettoServer PatreonTwitchChatPlugin, some Twitch features like Announcements are not be displayed correctly and will result in empty lines
+
