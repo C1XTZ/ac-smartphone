@@ -8,30 +8,45 @@ local WINDOWFLAGSINPUT = bit.bor(ui.WindowFlags.NoDecoration, ui.WindowFlags.NoB
 
 local settings = ac.storage {
     appScale = 1,
-    songInfo = false,
-    forceBottom = true,
+
     darkMode = false,
+
+    forceBottom = true,
+
+    updateLastCheck = 0,
+    updateAutoCheck = false,
+    updateInterval = 7,
+    updateStatus = 0,
+    updateAvailable = false,
+    updateURL = '',
+
     appMove = false,
     appMoveTimer = 10,
     appMoveSpeed = 10,
+
     badTime = false,
+
+    songInfo = false,
     spaces = 5,
     scrollSpeed = 2,
     scrollDirection = 0,
     scrollAlways = false,
+    hideCamera = false,
+
     chatKeepSize = 100,
     chatOlderThan = 15,
     chatScrollDistance = 20,
-    connectionEvents = true,
-    connectionEventsFriendsOnly = true,
+    chatShowTimestamps = false,
     chatPurge = false,
     chatFontSize = 13,
     chatHideKickBan = false,
     chatHideAnnoying = true,
     chatLatestBold = false,
     chatUsernameColor = true,
-    hideCamera = false,
-    showTimestamp = false,
+
+    connectionEvents = true,
+    connectionEventsFriendsOnly = true,
+
     enableAudio = true,
     enableKeyboard = true,
     enableMessage = true,
@@ -44,6 +59,7 @@ local settings = ac.storage {
     notificationsMentions = true,
     notificationsFriendConnections = true,
     notificationsFriendMessages = true,
+
     dataCheckLast = 0,
     dataCheckFailed = false,
 }
@@ -339,7 +355,7 @@ local function updateCommunityData()
             if communities.version[1] == data.version[1] then
                 return ac.log('Already using latest data.')
             else
-                local file = io.open('.\\apps\\lua\\smartphone\\src\\communities\\data\\list.lua', 'w+')
+                local file = io.open(ac.getFolder(ac.FolderID.ACAppsLua) .. '\\smartphone\\src\\communities\\data\\list.lua', 'w+')
                 if file then
                     file:write(stringify(data))
                     file:close()
@@ -944,7 +960,7 @@ local function drawMessages()
                     ui.dwriteTextAligned(messageTextcontent, messageFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgb.colors.white)
                     ui.popDWriteFont()
 
-                    if settings.showTimestamp then
+                    if settings.chatShowTimestamps then
                         ui.pushDWriteFont(app.font.bold)
                         local timestampSize = ui.measureDWriteText(messageTimestamp, timestampFontSize)
                         ui.setCursor(vec2(math.ceil(ui.windowWidth() - timestampSize.x - scale(6)), msgDist))
@@ -998,7 +1014,7 @@ local function drawMessages()
                     ui.dwriteTextAligned(messageTextcontent, messageFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, messageTextColor)
                     ui.popDWriteFont()
 
-                    if settings.showTimestamp then
+                    if settings.chatShowTimestamps then
                         ui.pushDWriteFont(app.font.bold)
                         local timestampSize = ui.measureDWriteText(messageTimestamp, timestampFontSize)
                         ui.setCursor(vec2(scale(5), msgDist))
@@ -1219,6 +1235,124 @@ end
 
 --#endregion
 
+--#region APP UPDATER
+local updateStatus = {
+    text  = {
+        [0] = 'C1XTZ: You shouldnt be reading this',
+        [1] = 'Updated: App successfully updated',
+        [2] = 'No Change: Latest version was already installed',
+        [3] = 'No Change: A newer version was already installed',
+        [4] = 'Error: Something went wrong, aborted update',
+        [5] = 'Update Available to Download and Install'
+    },
+    color = {
+        [0] = rgbm.colors.white,
+        [1] = rgbm.colors.lime,
+        [2] = rgbm.colors.white,
+        [3] = rgbm.colors.white,
+        [4] = rgbm.colors.red,
+        [5] = rgbm.colors.lime
+    }
+}
+
+local appName = 'smartphone'
+local appFolder = ac.getFolder(ac.FolderID.ACAppsLua) .. '\\' .. appName .. '\\'
+local manifest = ac.INIConfig.load(appFolder .. '\\manifest.ini', ac.INIFormat.Extended)
+local appVersion = manifest:get('ABOUT', 'VERSION', 0.01)
+local releaseURL = 'https://api.github.com/repos/C1XTZ/ac-smartphone/releases/latest'
+local doUpdate = (os.time() - settings.updateLastCheck) / 86400 > settings.updateInterval
+local mainFile, assetFile = appName .. '.lua', appName .. '.zip'
+
+function updateCheckVersion(manual)
+    settings.updateLastCheck = os.time()
+
+    web.get(releaseURL, function(err, response)
+        if err then
+            settings.updateStatus = 4
+            error(err)
+            return
+        end
+
+        local latestRelease = JSON.parse(response.body)
+        local tagName, releaseAssets, getDownloadUrl = latestRelease.tag_name, latestRelease.assets, function(asset) return asset.browser_download_url end
+
+        if not (tagName and tagName:match('^v%d%d?%.%d%d?$')) then
+            settings.updateStatus = 4
+            error('URL unavailable or no Version recognized, aborted update')
+            return
+        end
+        local version = tonumber(tagName:sub(2))
+
+        if appVersion > version then
+            settings.updateStatus = 3
+            settings.updateAvailable = false
+            return
+        elseif appVersion == version then
+            settings.updateStatus = 2
+            settings.updateAvailable = false
+            return
+        else
+            local downloadUrl
+            for _, asset in ipairs(releaseAssets) do
+                if asset.name == assetFile then
+                    downloadUrl = getDownloadUrl(asset)
+                    break
+                end
+            end
+
+            if not downloadUrl then
+                settings.updateStatus = 4
+                error('No matching asset found, aborted update')
+                return
+            end
+
+            if manual then
+                updateApplyUpdate(downloadUrl)
+            else
+                settings.updateAvailable = true
+                settings.updateURL = downloadUrl
+                settings.updateStatus = 5
+            end
+        end
+    end)
+end
+
+function updateApplyUpdate(downloadUrl)
+    web.get(downloadUrl, function(downloadErr, downloadResponse)
+        if downloadErr then
+            settings.updateStatus = 4
+            error(downloadErr)
+            return
+        end
+
+        local mainFileContent
+        for _, file in ipairs(io.scanZip(downloadResponse.body)) do
+            local content = io.loadFromZip(downloadResponse.body, file)
+            if content then
+                local filePath = file:match('(.*)')
+                if filePath then
+                    filePath = filePath:gsub(appName .. '/', '')
+                    if filePath == mainFile then
+                        mainFileContent = content
+                    else
+                        if io.save(appFolder .. filePath, content) then print('Updating: ' .. file) end
+                    end
+                end
+            end
+        end
+
+        if mainFileContent then
+            if io.save(appFolder .. mainFile, mainFileContent) then print('Updating: ' .. mainFile) end
+        end
+
+        settings.updateStatus = 1
+        settings.updateAvailable = false
+        settings.updateURL = ''
+    end)
+end
+
+--#endregion
+
 --#region APP EVENTS
 
 if player.isOnline then
@@ -1298,6 +1432,8 @@ function onShowWindow()
     updateColors()
     updateCommunityData()
 
+    if (settings.updateAutoCheck and doUpdate) or settings.updateAvailable then updateCheckVersion() end
+
     if settings.songInfo then startSongInfo() end
 
     if app.scale ~= math.round(settings.appScale, 1) then
@@ -1314,6 +1450,43 @@ end
 
 function script.windowMainSettings(dt)
     ui.tabBar('TabBar', function()
+        ui.tabItem('Update', function()
+            ui.text('Currrently running version ' .. appVersion)
+            if ui.checkbox('Automatically Check for Updates', settings.updateAutoCheck) then
+                settings.updateAutoCheck = not settings.updateAutoCheck
+                if settings.updateAutoCheck then updateCheckVersion() end
+            end
+            if settings.updateAutoCheck then
+                ui.text('\t')
+                ui.sameLine()
+                settings.updateInterval = ui.slider('##UpdateInterval', settings.updateInterval, 1, 60, 'Check for Update every ' .. '%.0f days')
+            end
+
+            local updateButtonText = settings.updateAvailable and 'Install Update' or 'Check for Update'
+            if ui.button(updateButtonText) then
+                if settings.updateAvailable then
+                    updateCheckVersion(true)
+                else
+                    updateCheckVersion(false)
+                end
+            end
+            if settings.updateStatus > 0 then
+                ui.textColored(updateStatus.text[settings.updateStatus], updateStatus.color[settings.updateStatus])
+
+                local diff = os.time() - settings.updateLastCheck
+                if diff > 600 then settings.updateStatus = 0 end
+                local units = { 'seconds', 'minutes', 'hours', 'days' }
+                local values = { 1, 60, 3600, 86400 }
+
+                local i = #values
+                while i > 1 and diff < values[i] do
+                    i = i - 1
+                end
+
+                local timeAgo = math.floor(diff / values[i])
+                ui.text('Last checked ' .. timeAgo .. ' ' .. units[i] .. ' ago')
+            end
+        end)
         ui.tabItem('App', function()
             ui.text('\t')
             ui.sameLine()
@@ -1431,7 +1604,7 @@ function script.windowMainSettings(dt)
             if ui.checkbox('Use Colored Usernames', settings.chatUsernameColor) then settings.chatUsernameColor = not settings.chatUsernameColor end
             if ui.itemHovered() then ui.tooltip(app.tooltipPadding, function() ui.text('If enabled, uses colored usernames if possible.\nServers can overwrite CM tag colors.') end) end
 
-            if ui.checkbox('Show Timestamps', settings.showTimestamp) then settings.showTimestamp = not settings.showTimestamp end
+            if ui.checkbox('Show Timestamps', settings.chatShowTimestamps) then settings.chatShowTimestamps = not settings.chatShowTimestamps end
             if ui.itemHovered() then ui.tooltip(app.tooltipPadding, function() ui.text('If enabled, shows message timestamps.') end) end
 
             if ui.checkbox('Show Join/Leave Messages', settings.connectionEvents) then settings.connectionEvents = not settings.connectionEvents end
