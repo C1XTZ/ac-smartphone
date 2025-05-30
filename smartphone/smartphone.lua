@@ -353,6 +353,7 @@ local function updateCommunityData()
 
             local data = stringify.parse(response.body)
             if communities.version[1] == data.version[1] then
+                settings.dataCheckLast = os.time()
                 return ac.log('Already using latest data.')
             else
                 local file = io.open(ac.getFolder(ac.FolderID.ACAppsLua) .. '\\smartphone\\src\\communities\\data\\list.lua', 'w+')
@@ -1357,7 +1358,7 @@ if player.isOnline then
         local hideMessage = false
         local userTagColor
 
-        if settings.chatUsernameColor then
+        if settings.chatUsernameColor and isPlayer then
             userTagColor = ac.DriverTags(ac.getDriverName(senderCarIndex)).color
             if (senderCarIndex == 0 and userTagColor == rgbm.colors.yellow) or (senderCarIndex ~= 0 and userTagColor == rgbm.colors.white) then userTagColor = rgb.colors.gray end
         else
