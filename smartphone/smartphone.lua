@@ -10,6 +10,7 @@ local settings = ac.storage {
     appScale = 1,
 
     darkMode = false,
+    darkModeAuto = false,
 
     forceBottom = true,
 
@@ -128,6 +129,7 @@ local player = {
     serverIP = ac.getServerIP(),
     serverCommunity = 'default',
     timePeriod = '',
+    phoneMode = settings.darkMode
 }
 
 local communityData = io.load('.\\apps\\lua\\smartphone\\src\\communities\\data\\list.lua')
@@ -399,14 +401,14 @@ end
 --#region GENERAL LOGIC FUNCTIONS
 
 local function updateColors()
-    colors.final.display:set(settings.darkMode and colors.displayColorDark or colors.displayColorLight)
-    colors.final.header:set(settings.darkMode and colors.headerColorDark or colors.headerColorLight)
-    colors.final.elements:set(settings.darkMode and colors.displayColorLight or colors.displayColorDark)
-    colors.final.headerLine:set(settings.darkMode and colors.headerLineColorDark or colors.headerLineColorLight)
-    colors.final.input:set(settings.darkMode and colors.transparent.white50 or colors.transparent.black50)
-    colors.final.message:set(settings.darkMode and colors.iMessageDarkGray or colors.iMessageLightGray)
-    colors.final.emojiPicker:set(settings.darkMode and colors.emojiPickerButtonDark or colors.emojiPickerButtonLight)
-    colors.final.emojiPickerBG:set(settings.darkMode and colors.emojiPickerButtonBGDark or colors.emojiPickerButtonBGLight)
+    colors.final.display:set((settings.darkMode or player.phoneMode) and colors.displayColorDark or colors.displayColorLight)
+    colors.final.header:set((settings.darkMode or player.phoneMode) and colors.headerColorDark or colors.headerColorLight)
+    colors.final.elements:set((settings.darkMode or player.phoneMode) and colors.displayColorLight or colors.displayColorDark)
+    colors.final.headerLine:set((settings.darkMode or player.phoneMode) and colors.headerLineColorDark or colors.headerLineColorLight)
+    colors.final.input:set((settings.darkMode or player.phoneMode) and colors.transparent.white50 or colors.transparent.black50)
+    colors.final.message:set((settings.darkMode or player.phoneMode) and colors.iMessageDarkGray or colors.iMessageLightGray)
+    colors.final.emojiPicker:set((settings.darkMode or player.phoneMode) and colors.emojiPickerButtonDark or colors.emojiPickerButtonLight)
+    colors.final.emojiPickerBG:set((settings.darkMode or player.phoneMode) and colors.emojiPickerButtonBGDark or colors.emojiPickerButtonBGLight)
 end
 
 local appWindow, windowHeight, appBottom = ac.accessAppWindow('IMGUI_LUA_Smartphone_main')
@@ -500,6 +502,19 @@ local function playTestAudio(tbl)
     end
 
     return playAudio(t[audioIndexes[key]])
+end
+
+local function automaticModeSwitch()
+    if not settings.darkModeAuto then return end
+
+    local sunAngle = ac.getSunAngle()
+    if sunAngle > 82 and settings.darkModeAuto and not player.phoneMode then
+        player.phoneMode = true
+        updateColors()
+    elseif sunAngle < 82 and settings.darkModeAuto and player.phoneMode then
+        player.phoneMode = false
+        updateColors()
+    end
 end
 
 --#endregion
@@ -787,7 +802,7 @@ local function drawiPhone()
     ui.setCursor(vec2(0, 0))
     ui.childWindow('OnTopImages', vec2(app.images.phoneAtlasSize.x / 2, app.images.phoneAtlasSize.y), false, WINDOWFLAGS, function()
         ui.drawImage(app.images.phoneAtlasPath, vec2(0, movement.smooth), vec2(app.images.phoneAtlasSize.x / 2, app.images.phoneAtlasSize.y + movement.smooth), rgb.colors.white, vec2(0 / 2, 0), vec2(1 / 2, 1))
-        if not settings.darkMode then
+        if not (settings.darkMode or player.phoneMode) then
             local padding = scale(2)
             ui.drawImage(app.images.phoneAtlasPath, vec2(padding, movement.smooth), vec2(math.ceil(app.images.phoneAtlasSize.x / 2 - padding), app.images.phoneAtlasSize.y + movement.smooth), colors.glowColor, vec2(1 / 2, 0), vec2(2 / 2, 1))
         end
@@ -963,7 +978,7 @@ local function drawMessages()
 
                     msgDist = math.ceil(msgDist + messagePadding.y + messagePadding.y / 2)
                 elseif messageUserIndex > 0 then
-                    local bubbleColor, messageTextColor = colors.final.message, settings.darkMode and rgb.colors.white or rgb.colors.black
+                    local bubbleColor, messageTextColor = colors.final.message, (settings.darkMode or player.phoneMode) and rgb.colors.white or rgb.colors.black
                     local isFriend = checkIfFriend(messageUserIndex)
 
                     if isFriend then
@@ -1126,7 +1141,7 @@ local function drawInputCustom()
     ui.childWindow('ChatInput', inputSize, false, WINDOWFLAGSINPUT, function()
         ui.beginOutline()
         ui.drawRectFilled(vec2(2, 2):scale(app.scale), inputBoxSize, colors.final.display, scale(10))
-        ui.endOutline(settings.darkMode and colors.transparent.white10 or colors.transparent.black10, math.max(1, math.round(1 * app.scale, 1)))
+        ui.endOutline((settings.darkMode or player.phoneMode) and colors.transparent.white10 or colors.transparent.black10, math.max(1, math.round(1 * app.scale, 1)))
         local displayText = ''
         ui.pushDWriteFont(app.font.regular)
         local lineHeight = ui.measureDWriteText('Line Height', inputFontSize, inputWrap).y
@@ -1155,11 +1170,11 @@ local function drawInputCustom()
 
             if chat.input.active then
                 handleKeyboardInput()
-                colors.final.input:set(settings.darkMode and rgbm.colors.white or rgbm.colors.black)
+                colors.final.input:set((settings.darkMode or player.phoneMode) and rgbm.colors.white or rgbm.colors.black)
                 if chat.mentioned ~= '' and chat.input.text ~= chat.mentioned then chat.mentioned = '' end
             else
                 chat.input.text = chat.input.placeholder
-                colors.final.input:set(settings.darkMode and colors.transparent.white50 or colors.transparent.black50)
+                colors.final.input:set((settings.darkMode or player.phoneMode) and colors.transparent.white50 or colors.transparent.black50)
             end
 
             displayText = chat.input.text
@@ -1368,6 +1383,8 @@ if player.isOnline then
 
             table.insert(chat.messages, { senderCarIndex, isPlayer and ac.getDriverName(senderCarIndex) or 'Server', message, os.time(), userTagColor })
 
+            --ac.debug('chat.messages', chat.messages)
+
             moveAppUp()
 
             if isPlayer then
@@ -1495,9 +1512,15 @@ function script.windowMainSettings(dt)
 
             if ui.checkbox('Dark Mode', settings.darkMode) then
                 settings.darkMode = not settings.darkMode
+                if settings.darkMode then settings.darkModeAuto = false end
                 updateColors()
             end
             lastItemHoveredTooltip('If enabled, app will use dark mode.')
+
+            if not settings.darkMode then
+                if ui.checkbox('Automatic Light/Dark Mode', settings.darkModeAuto) then settings.darkModeAuto = not settings.darkModeAuto end
+                lastItemHoveredTooltip('If enabled, app will automatically switch between dark/light mode.')
+            end
 
             if ui.checkbox('Force App to Bottom', settings.forceBottom) then settings.forceBottom = not settings.forceBottom end
             lastItemHoveredTooltip('If enabled, app will be forced to the bottom of the screen.')
@@ -1693,6 +1716,7 @@ end
 
 function script.windowMain(dt)
     updateAppMovement(dt)
+    automaticModeSwitch()
 
     app.hovered = ui.windowHovered(ui.HoveredFlags.ChildWindows)
     player.car = ac.getCar(0)
