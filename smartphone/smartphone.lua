@@ -817,10 +817,12 @@ local function drawPing()
         local pingSize = vec2(20, 20):scale(app.scale)
         local pingPosition = vec2(scale(238), pingSize.y + movement.smooth)
 
-        if ui.rectHovered(pingPosition, pingPosition + pingSize, true) then
-            ui.tooltip(app.tooltipPadding:scale(app.scale), function() ui.text('Current Ping: ' .. ping .. ' ms\nClick to send to chat') end)
-            if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
-            if ui.mouseReleased(ui.MouseButton.Left) then sendChatMessage('I currently have a ping of ' .. ping .. ' ms.') end
+        if app.hovered then
+            if ui.rectHovered(pingPosition, pingPosition + pingSize, true) then
+                ui.tooltip(app.tooltipPadding:scale(app.scale), function() ui.text('Current Ping: ' .. ping .. ' ms\nClick to send to chat') end)
+                if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
+                if ui.mouseReleased(ui.MouseButton.Left) then sendChatMessage('I currently have a ping of ' .. ping .. ' ms.') end
+            end
         end
 
         if ping < 100 then
@@ -888,10 +890,12 @@ local function drawHeader()
         ui.drawImageRounded(communities['default'].image, headerImagePosition, headerImagePosition + headerImageSize, headerImageRounding)
     end
 
-    if ui.rectHovered(headerImagePosition, headerImagePosition + headerImageSize) then
-        ui.tooltip(app.tooltipPadding:scale(app.scale), function() ui.text(communities[player.serverCommunity].text .. '\nClick to open in Browser.') end)
-        if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
-        if ui.mouseReleased(ui.MouseButton.Left) then os.openURL(communities[player.serverCommunity].url, false) end
+    if app.hovered then
+        if ui.rectHovered(headerImagePosition, headerImagePosition + headerImageSize) then
+            ui.tooltip(app.tooltipPadding:scale(app.scale), function() ui.text(communities[player.serverCommunity].text .. '\nClick to open in Browser.') end)
+            if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
+            if ui.mouseReleased(ui.MouseButton.Left) then os.openURL(communities[player.serverCommunity].url, false) end
+        end
     end
 end
 
@@ -996,13 +1000,15 @@ local function drawMessages()
                         msgDist = math.ceil(msgDist + usernameOffset.y)
                     end
 
-                    if ui.itemHovered() and not ui.isMouseDragging(ui.MouseButton.Right, 0) then
-                        ui.setMouseCursor(ui.MouseCursor.Hand)
-                    end
-                    if ui.itemClicked(ui.MouseButton.Right) then
-                        if chat.input.text == chat.input.placeholder then chat.input.text = '' end
-                        chat.input.active = true
-                        chat.input.text = chat.input.text .. '@' .. messageUsername
+                    if app.hovered then
+                        if ui.itemHovered() and not ui.isMouseDragging(ui.MouseButton.Right, 0) then
+                            ui.setMouseCursor(ui.MouseCursor.Hand)
+                        end
+                        if ui.itemClicked(ui.MouseButton.Right) then
+                            if chat.input.text == chat.input.placeholder then chat.input.text = '' end
+                            chat.input.active = true
+                            chat.input.text = chat.input.text .. '@' .. messageUsername
+                        end
                     end
 
                     ui.popDWriteFont()
@@ -1075,16 +1081,19 @@ local function drawEmojiPicker()
     ui.setCursor(vec2(buttonPos.x, ui.windowHeight() - buttonPos.y + movement.smooth))
 
     ui.drawImage(app.images.emojiPicker, ui.getCursor() - buttonSize / 2, ui.getCursor() + buttonSize / 2, colors.final.emojiPicker)
-    chat.emojiPickerHovered = ui.rectHovered(ui.getCursor() - buttonSize / 2, ui.getCursor() + buttonSize / 2 + movement.smooth)
 
-    if chat.emojiPickerHovered and ui.mouseReleased(ui.MouseButton.Left) then
-        chat.emojiPicker = not chat.emojiPicker
-        playAudio(audio.keyboard.enter)
-    end
+    if app.hovered then
+        chat.emojiPickerHovered = ui.rectHovered(ui.getCursor() - buttonSize / 2, ui.getCursor() + buttonSize / 2 + movement.smooth)
 
-    if chat.emojiPickerHovered then
-        if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
-        ui.drawEllipseFilled(vec2(buttonPos.x, ui.windowHeight() - buttonPos.y + movement.smooth), buttonBgRad, colors.final.emojiPickerBG, 100)
+        if chat.emojiPickerHovered and ui.mouseReleased(ui.MouseButton.Left) then
+            chat.emojiPicker = not chat.emojiPicker
+            playAudio(audio.keyboard.enter)
+        end
+
+        if chat.emojiPickerHovered then
+            if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
+            ui.drawEllipseFilled(vec2(buttonPos.x, ui.windowHeight() - buttonPos.y + movement.smooth), buttonBgRad, colors.final.emojiPickerBG, 100)
+        end
     end
 
     if chat.emojiPicker then
@@ -1147,24 +1156,26 @@ local function drawInputCustom()
         local lineHeight = ui.measureDWriteText('Line Height', inputFontSize, inputWrap).y
 
         if player.isOnline then
-            chat.input.hovered = ui.windowHovered(ui.HoveredFlags.RectOnly)
-            inputClicked = chat.input.hovered and ui.mouseClicked(ui.MouseButton.Left)
+            if app.hovered then
+                chat.input.hovered = ui.windowHovered(ui.HoveredFlags.RectOnly)
+                inputClicked = chat.input.hovered and ui.mouseClicked(ui.MouseButton.Left)
 
-            if chat.input.hovered then
-                ui.setMouseCursor(ui.MouseCursor.TextInput)
-            end
+                if chat.input.hovered then
+                    ui.setMouseCursor(ui.MouseCursor.TextInput)
+                end
 
-            if not chat.input.sendHovered then
-                if inputClicked or chat.mentioned ~= '' then
-                    if not chat.input.active then chat.input.text = '' end
-                    chat.input.active = true
-                    if chat.emojiPicker then chat.emojiPicker = false end
-                elseif ui.mouseClicked(ui.MouseButton.Left) and not chat.emojiPickerHovered and not chat.input.hovered then
-                    chat.input.active = false
-                    chat.input.text = chat.input.placeholder
-                    chat.input.selected = nil
-                    chat.input.historyIndex = 0
-                    chat.emojiPicker = false
+                if not chat.input.sendHovered then
+                    if inputClicked or chat.mentioned ~= '' then
+                        if not chat.input.active then chat.input.text = '' end
+                        chat.input.active = true
+                        if chat.emojiPicker then chat.emojiPicker = false end
+                    elseif ui.mouseClicked(ui.MouseButton.Left) and not chat.emojiPickerHovered and not chat.input.hovered then
+                        chat.input.active = false
+                        chat.input.text = chat.input.placeholder
+                        chat.input.selected = nil
+                        chat.input.historyIndex = 0
+                        chat.emojiPicker = false
+                    end
                 end
             end
 
@@ -1212,17 +1223,20 @@ local function drawInputCustom()
             local buttonColor = rgb():set(colors.iMessageBlue)
 
             ui.setCursor(vec2(inputBoxSize.x - circlePadding, inputBoxSize.y - circlePadding))
-            chat.input.sendHovered = ui.rectHovered(ui.getCursor() - vec2(circleRad, circleRad), ui.getCursor() + vec2(circleRad, circleRad))
 
-            if chat.input.sendHovered then
-                ui.setMouseCursor(ui.MouseCursor.Hand)
-                buttonColor:mul(rgb(0.6, 0.6, 0.8))
+            if app.hovered then
+                chat.input.sendHovered = ui.rectHovered(ui.getCursor() - vec2(circleRad, circleRad), ui.getCursor() + vec2(circleRad, circleRad))
 
-                if ui.mouseClicked(ui.MouseButton.Left) then
-                    playAudio(audio.keyboard.enter)
-                    sendChatMessage()
-                    chat.emojiPicker = false
-                    chat.input.sendHovered = false
+                if chat.input.sendHovered then
+                    ui.setMouseCursor(ui.MouseCursor.Hand)
+                    buttonColor:mul(rgb(0.6, 0.6, 0.8))
+
+                    if ui.mouseClicked(ui.MouseButton.Left) then
+                        playAudio(audio.keyboard.enter)
+                        sendChatMessage()
+                        chat.emojiPicker = false
+                        chat.input.sendHovered = false
+                    end
                 end
             end
 
