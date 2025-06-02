@@ -1377,7 +1377,7 @@ if player.isOnline then
         local isFriend = isPlayer and checkIfFriend(senderCarIndex)
         local isMentioned = message:lower():find('%f[%a_]' .. player.driverName:lower() .. '%f[%A_]')
         local hideMessage = false
-        local userTagColor
+        local userTagColor = rgbm()
 
         if isPlayer then
             hideMessage = matchMessage(isPlayer, escapedMessage) and settings.chatHideAnnoying
@@ -1389,15 +1389,13 @@ if player.isOnline then
             deleteOldestMessages()
 
             if settings.chatUsernameColor and isPlayer then
-                userTagColor = ac.DriverTags(ac.getDriverName(senderCarIndex)).color
-                if (senderCarIndex == 0 and userTagColor == rgbm.colors.yellow) or (senderCarIndex ~= 0 and userTagColor == rgbm.colors.white) then userTagColor = rgb.colors.gray end
+                userTagColor = userTagColor:set(ac.DriverTags(ac.getDriverName(senderCarIndex)).color)
+                if (senderCarIndex == 0 and userTagColor == rgbm.colors.yellow) or (senderCarIndex ~= 0 and userTagColor == rgbm.colors.white) then userTagColor:set(rgbm.colors.gray) end
             else
-                userTagColor = rgb.colors.gray
+                userTagColor:set(rgbm.colors.gray)
             end
 
-            table.insert(chat.messages, { senderCarIndex, isPlayer and ac.getDriverName(senderCarIndex) or 'Server', message, os.time(), userTagColor })
-
-            --ac.debug('chat.messages', chat.messages)
+            table.insert(chat.messages, { senderCarIndex, isPlayer and ac.getDriverName(senderCarIndex) or 'Server', message, os.time(), userTagColor:clone() })
 
             moveAppUp()
 
