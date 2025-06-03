@@ -3,6 +3,7 @@
 ui.setAsynchronousImagesLoading(true)
 local WINDOWFLAGS = bit.bor(ui.WindowFlags.NoDecoration, ui.WindowFlags.NoBackground, ui.WindowFlags.NoNav, ui.WindowFlags.NoInputs, ui.WindowFlags.NoScrollbar)
 local WINDOWFLAGSINPUT = bit.bor(ui.WindowFlags.NoDecoration, ui.WindowFlags.NoBackground, ui.WindowFlags.NoNav, ui.WindowFlags.NoScrollbar)
+local COLORPICKERFLAGS = bit.bor(ui.ColorPickerFlags.NoAlpha, ui.ColorPickerFlags.NoSidePreview, ui.ColorPickerFlags.NoDragDrop, ui.ColorPickerFlags.NoLabel, ui.ColorPickerFlags.DisplayRGB, ui.ColorPickerFlags.NoSmallPreview)
 
 --#region APP PERSISTENT SETTINGS
 
@@ -63,6 +64,10 @@ local settings = ac.storage {
 
     dataCheckLast = 0,
     dataCheckFailed = false,
+
+    customColor = false,
+    messageColorSelf = rgb(0, 0.49, 1),
+    messageColorFriend = rgb(0.2, 0.75, 0.3),
 }
 
 --#endregion
@@ -98,6 +103,10 @@ local colors = {
         headerLine = rgbm(),
         elements = rgb(),
         message = rgb(),
+        messageOwn = rgb(),
+        messageOwnText = rgb(),
+        messageFriend = rgb(),
+        messageFriendText = rgb(),
         input = rgbm(),
         emojiPicker = rgbm(),
         emojiPickerBG = rgbm(),
@@ -353,47 +362,23 @@ local function lastItemHoveredTooltip(tooltipString, changeCursor)
     end
 end
 
-local function updateCommunityData()
-    if (not settings.dataCheckFailed and os.time() - settings.dataCheckLast > 43200) or (settings.dataCheckFailed and os.time() - settings.dataCheckLast > 3600) then
-        web.get('https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/smartphone/src/communities/data/list.lua', function(err, response)
-            if err or response.status ~= 200 then
-                settings.dataCheckLast = os.time()
-                settings.dataCheckFailed = true
-                return error('Couldn\'t get community data from github.')
-            end
-
-            local data = stringify.parse(response.body)
-            if communities.version[1] == data.version[1] then
-                settings.dataCheckLast = os.time()
-                return ac.log('Already using latest data.')
-            else
-                local file = io.open(ac.getFolder(ac.FolderID.ACAppsLua) .. '\\smartphone\\src\\communities\\data\\list.lua', 'w+')
-                if file then
-                    file:write(stringify(data))
-                    file:close()
-                end
-
-                for name, community in pairs(data) do
-                    if name ~= 'default' and community.image then
-                        local filename = community.image:match('([^\\]+)$')
-                        local remoteImageUrl = 'https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/smartphone/src/communities/img/' .. filename
-                        web.get(remoteImageUrl, function(err, response)
-                            if err or response.status ~= 200 then
-                                settings.dataCheckLast = os.time()
-                                settings.dataCheckFailed = true
-
-                                return error('Couldn\'t get community data from github.')
-                            end
-                            io.save(community.image, response.body)
-                        end)
-                    end
-                end
-                settings.dataCheckLast = os.time()
-                settings.dataCheckFailed = false
-                return ac.log('Updated to latest data.')
-            end
-        end)
+---@param color rgb The RGB color to calculate luminance for
+---@return number luminance The perceptual luminance value (0-1, where 0 is black and 1 is white)
+---Calculate perceptual luminance (0-1 range) using Rec. 709 coefficients
+local function getLuminance(color)
+    local function toLinear(c)
+        if c <= 0.03928 then
+            return c / 12.92
+        else
+            return math.pow((c + 0.055) / 1.055, 2.4)
+        end
     end
+
+    local lr = toLinear(color.r)
+    local lg = toLinear(color.g)
+    local lb = toLinear(color.b)
+
+    return 0.2126 * lr + 0.7152 * lg + 0.0722 * lb
 end
 
 --#endregion
@@ -409,6 +394,12 @@ local function updateColors()
     colors.final.message:set((settings.darkMode or player.phoneMode) and colors.iMessageDarkGray or colors.iMessageLightGray)
     colors.final.emojiPicker:set((settings.darkMode or player.phoneMode) and colors.emojiPickerButtonDark or colors.emojiPickerButtonLight)
     colors.final.emojiPickerBG:set((settings.darkMode or player.phoneMode) and colors.emojiPickerButtonBGDark or colors.emojiPickerButtonBGLight)
+
+    colors.final.messageOwn:set(settings.customColor and settings.messageColorSelf or colors.iMessageBlue)
+    colors.final.messageFriend:set(settings.customColor and settings.messageColorFriend or colors.iMessageGreen)
+
+    colors.final.messageOwnText:set(getLuminance(colors.final.messageOwn) <= 0.225 and rgb.colors.white or rgb.colors.black)
+    colors.final.messageFriendText:set(getLuminance(colors.final.messageFriend) <= 0.225 and rgb.colors.white or rgb.colors.black)
 end
 
 local appWindow, windowHeight, appBottom = ac.accessAppWindow('IMGUI_LUA_Smartphone_main')
@@ -514,6 +505,49 @@ local function automaticModeSwitch()
     elseif sunAngle < 82 and settings.darkModeAuto and player.phoneMode then
         player.phoneMode = false
         updateColors()
+    end
+end
+
+local function updateCommunityData()
+    if (not settings.dataCheckFailed and os.time() - settings.dataCheckLast > 43200) or (settings.dataCheckFailed and os.time() - settings.dataCheckLast > 3600) then
+        web.get('https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/smartphone/src/communities/data/list.lua', function(err, response)
+            if err or response.status ~= 200 then
+                settings.dataCheckLast = os.time()
+                settings.dataCheckFailed = true
+                return error('Couldn\'t get community data from github.')
+            end
+
+            local data = stringify.parse(response.body)
+            if communities.version[1] == data.version[1] then
+                settings.dataCheckLast = os.time()
+                return ac.log('Already using latest data.')
+            else
+                local file = io.open(ac.getFolder(ac.FolderID.ACAppsLua) .. '\\smartphone\\src\\communities\\data\\list.lua', 'w+')
+                if file then
+                    file:write(stringify(data))
+                    file:close()
+                end
+
+                for name, community in pairs(data) do
+                    if name ~= 'default' and community.image then
+                        local filename = community.image:match('([^\\]+)$')
+                        local remoteImageUrl = 'https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/smartphone/src/communities/img/' .. filename
+                        web.get(remoteImageUrl, function(err, response)
+                            if err or response.status ~= 200 then
+                                settings.dataCheckLast = os.time()
+                                settings.dataCheckFailed = true
+
+                                return error('Couldn\'t get community data from github.')
+                            end
+                            io.save(community.image, response.body)
+                        end)
+                    end
+                end
+                settings.dataCheckLast = os.time()
+                settings.dataCheckFailed = false
+                return ac.log('Updated to latest data.')
+            end
+        end)
     end
 end
 
@@ -965,9 +999,9 @@ local function drawMessages()
                     local messageTextSize = ui.measureDWriteText(messageTextContent, messageFontSize, scale(190))
                     msgDist = math.ceil(msgDist + messageTextSize.y)
                     ui.setCursor(vec2(ui.windowWidth() - scale(5), msgDist))
-                    ui.drawRectFilled(ui.getCursor() - vec2(math.ceil(messageTextSize.x + messagePadding.x), math.ceil(messageTextSize.y + messagePadding.y)), ui.getCursor(), colors.iMessageBlue, messageRounding)
+                    ui.drawRectFilled(ui.getCursor() - vec2(math.ceil(messageTextSize.x + messagePadding.x), math.ceil(messageTextSize.y + messagePadding.y)), ui.getCursor(), colors.final.messageOwn, messageRounding)
                     ui.setCursor(ui.getCursor() - vec2(math.ceil(messageTextSize.x + messagePadding.x / 2), math.ceil(messageTextSize.y + messagePadding.y / 2)))
-                    ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgb.colors.white)
+                    ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, colors.final.messageOwnText)
                     ui.popDWriteFont()
 
                     if settings.chatShowTimestamps then
@@ -985,8 +1019,8 @@ local function drawMessages()
                     local isFriend = checkIfFriend(messageUserIndex)
 
                     if isFriend then
-                        bubbleColor = colors.iMessageGreen
-                        messageTextColor = rgb.colors.white
+                        bubbleColor = colors.final.messageFriend
+                        messageTextColor = colors.final.messageFriendText
                     end
 
                     ui.pushDWriteFont(app.font.bold)
@@ -1713,6 +1747,41 @@ function script.windowMainSettings()
                         if ui.checkbox('Friend Join/Leave', settings.notificationsFriendConnections) then settings.notificationsFriendConnections = not settings.notificationsFriendConnections end
                         lastItemHoveredTooltip('Plays notification when friend joins/leaves the server.')
                     end
+                end
+            end
+        end)
+
+        ui.tabItem('Coloring', function()
+            if ui.checkbox('Enable Custom Coloring', settings.customColor) then
+                settings.customColor = not settings.customColor
+                updateColors()
+            end
+            lastItemHoveredTooltip('If enabeld, allows you to recolor certain elements.')
+
+            if settings.customColor then
+                ui.columns(2, false)
+                ui.text('Message Color Own')
+                ui.setNextItemWidth(132 * ac.getUI().uiScale)
+                local messageColorSelfChange = ui.colorPicker('Display Color Picker', settings.messageColorSelf, COLORPICKERFLAGS)
+                if ui.button('Reset to default') then
+                    settings.messageColorSelf = colors.iMessageBlue:clone()
+                    updateColors()
+                end
+
+                ui.nextColumn()
+
+                ui.text('Message Color Friends')
+                ui.setNextItemWidth(132 * ac.getUI().uiScale)
+                local messageColorFriendChange = ui.colorPicker('Text Color Picker', settings.messageColorFriend, COLORPICKERFLAGS)
+                if ui.button('Reset to default') then
+                    settings.messageColorFriend = colors.iMessageGreen:clone()
+                    updateColors()
+                end
+
+                if messageColorFriendChange or messageColorSelfChange then
+                    settings.messageColorSelf = settings.messageColorSelf:clone()
+                    settings.messageColorFriend = settings.messageColorFriend:clone()
+                    updateColors()
                 end
             end
         end)
