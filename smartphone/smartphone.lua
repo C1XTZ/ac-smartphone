@@ -243,7 +243,7 @@ end
 
 ---@param s string @Input string
 ---@param i number @Start character index
----@param j number @End character index
+---@param j? number @End character index
 ---@return string @Substring of s from i to j
 local function utf8sub(s, i, j)
     j = j or -1
@@ -345,7 +345,7 @@ local function getServerCommunity()
 end
 
 ---@param tooltipString string @Text to be displayed in the tooltip.
----@param changeCursor boolean @Changes the mouse cursor to ui.MouseCursor.Hand
+---@param changeCursor? boolean @Changes the mouse cursor to ui.MouseCursor.Hand
 local function lastItemHoveredTooltip(tooltipString, changeCursor)
     if ui.itemHovered() then
         if changeCursor then ui.setMouseCursor(ui.MouseCursor.Hand) end
@@ -528,7 +528,7 @@ local function setDynamicIslandSize(enable)
     return songInfo.dynamicIslandSize:set(width, 20)
 end
 
----@param forced boolean @Whether to force updating the song information even if the artist and title have not changed.
+---@param forced? boolean @Whether to force updating the song information even if the artist and title have not changed.
 ---Updates the global songInfo table with the currently playing track’s artist and title, handles cases of unknown artists or paused playback, and formats the scrolling text display.
 local function updateSongInfo(forced)
     local current = ac.currentlyPlaying()
@@ -555,7 +555,7 @@ local function updateSongInfo(forced)
                 songInfo.align = ui.Alignment.Center
             else
                 if utf8len(songInfo.scroll) < maxLength then
-                    string.rep(' ', maxLength - utf8len(songInfo.scroll))
+                    songInfo.scroll = songInfo.scroll .. string.rep(' ', maxLength - utf8len(songInfo.scroll))
                 end
                 songInfo.static = false
                 songInfo.align = ui.Alignment.Start
@@ -724,7 +724,7 @@ local function handleKeyboardInput()
     local typed = keyboardInput:queue()
     local inputMaxLen = math.floor(490 * (13 / settings.chatFontSize) ^ 2)
 
-    if (ui.keyPressed(ui.Key.Backspace, true) or ui.keyPressed(ui.Key.Delete)) then
+    if (ui.keyPressed(ui.Key.Backspace) or ui.keyPressed(ui.Key.Delete)) then
         playAudio(audio.keyboard.delete)
     elseif ui.keyboardButtonPressed(ui.getKeyIndex(ui.Key.Enter), false) or ui.keyboardButtonPressed(ui.getKeyIndex(ui.Key.Space), true) then
         playAudio(audio.keyboard.enter)
@@ -732,7 +732,7 @@ local function handleKeyboardInput()
         playAudio(audio.keyboard.keystroke)
     end
 
-    if (ui.keyPressed(ui.Key.Backspace, true) or ui.keyPressed(ui.Key.Delete)) and msgLen then
+    if (ui.keyPressed(ui.Key.Backspace) or ui.keyPressed(ui.Key.Delete)) and msgLen then
         if chat.input.selected then
             chat.input.text = ''
             chat.input.selected = nil
@@ -810,10 +810,9 @@ local function drawiPhone()
 end
 
 local function drawPing()
-    ping = player.car.ping
+    local ping = player.car.ping
 
     if ping > -1 then
-        local pingAtlasSize = ui.imageSize(app.images.pingAtlasPath):scale(app.scale)
         local pingSize = vec2(20, 20):scale(app.scale)
         local pingPosition = vec2(scale(238), pingSize.y + movement.smooth)
 
@@ -940,11 +939,11 @@ local function drawMessages()
                 local messageUserIndexLast = i >= 2 and chat.messages[i - 1][1] or nil
                 local messageUsername = chat.messages[i][2]
                 local messageUsernameColor = chat.messages[i][5]
-                local messageTextcontent = chat.messages[i][3]
+                local messageTextContent = chat.messages[i][3]
                 local messageTimestamp = settings.badTime and to12hTime(os.date('%H:%M', chat.messages[i][4])) .. ' ' .. player.timePeriod or os.date('%H:%M', chat.messages[i][4])
                 local fontWeight = app.font.regular
 
-                if (i == #chat.messages and settings.chatLatestBold) or (messageTextcontent:lower():find('%f[%a_]' .. player.driverName:lower() .. '%f[%A_]') and messageUserIndex > 0) then
+                if (i == #chat.messages and settings.chatLatestBold) or (messageTextContent:lower():find('%f[%a_]' .. player.driverName:lower() .. '%f[%A_]') and messageUserIndex > 0) then
                     fontWeight = app.font.bold
                 else
                     fontWeight = app.font.regular
@@ -963,12 +962,12 @@ local function drawMessages()
 
                     ui.popDWriteFont()
                     ui.pushDWriteFont(fontWeight)
-                    local messageTextSize = ui.measureDWriteText(messageTextcontent, messageFontSize, scale(190))
+                    local messageTextSize = ui.measureDWriteText(messageTextContent, messageFontSize, scale(190))
                     msgDist = math.ceil(msgDist + messageTextSize.y)
                     ui.setCursor(vec2(ui.windowWidth() - scale(5), msgDist))
                     ui.drawRectFilled(ui.getCursor() - vec2(math.ceil(messageTextSize.x + messagePadding.x), math.ceil(messageTextSize.y + messagePadding.y)), ui.getCursor(), colors.iMessageBlue, messageRounding)
                     ui.setCursor(ui.getCursor() - vec2(math.ceil(messageTextSize.x + messagePadding.x / 2), math.ceil(messageTextSize.y + messagePadding.y / 2)))
-                    ui.dwriteTextAligned(messageTextcontent, messageFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgb.colors.white)
+                    ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgb.colors.white)
                     ui.popDWriteFont()
 
                     if settings.chatShowTimestamps then
@@ -1013,12 +1012,12 @@ local function drawMessages()
 
                     ui.popDWriteFont()
                     ui.pushDWriteFont(fontWeight)
-                    local messageTextSize = ui.measureDWriteText(messageTextcontent, messageFontSize, scale(190))
+                    local messageTextSize = ui.measureDWriteText(messageTextContent, messageFontSize, scale(190))
                     msgDist = math.ceil(msgDist + messageTextSize.y)
                     ui.setCursor(vec2(math.ceil(messageTextSize.x + messagePadding.x + scale(5)), msgDist))
                     ui.drawRectFilled(ui.getCursor() - vec2(math.ceil(messageTextSize.x + messagePadding.x), math.ceil(messageTextSize.y + messagePadding.y)), ui.getCursor(), bubbleColor, messageRounding)
                     ui.setCursor(ui.getCursor() - vec2(math.ceil(messageTextSize.x + messagePadding.x / 2), math.ceil(messageTextSize.y + messagePadding.y / 2)))
-                    ui.dwriteTextAligned(messageTextcontent, messageFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, messageTextColor)
+                    ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, messageTextColor)
                     ui.popDWriteFont()
 
                     if settings.chatShowTimestamps then
@@ -1033,24 +1032,24 @@ local function drawMessages()
                     msgDist = math.ceil(msgDist + messagePadding.y + messagePadding.y / 2)
                 elseif messageUserIndex == -1 then
                     ui.pushDWriteFont(app.font.bold)
-                    local messageTextSize = ui.measureDWriteText(messageTextcontent, messageFontSize, scale(220))
+                    local messageTextSize = ui.measureDWriteText(messageTextContent, messageFontSize, scale(220))
 
                     if i < 2 then
                         msgDist = math.ceil(msgDist - messageTextSize.y / 2)
                         ui.setCursor(vec2(math.ceil(ui.windowWidth() / 2 - messageTextSize.x / 2), math.ceil(msgDist)))
-                        ui.dwriteTextAligned(messageTextcontent, messageFontSize, ui.Alignment.Center, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgb.colors.gray)
+                        ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Center, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgb.colors.gray)
                         ui.popDWriteFont()
                         msgDist = math.ceil(msgDist + messageTextSize.y + messagePadding.y / 2)
                     else
                         if chat.messages[i - 1][1] == messageUserIndex then
                             ui.setCursor(vec2(math.ceil(ui.windowWidth() / 2 - messageTextSize.x / 2), math.ceil(msgDist)))
-                            ui.dwriteTextAligned(messageTextcontent, messageFontSize, ui.Alignment.Center, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgb.colors.gray)
+                            ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Center, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgb.colors.gray)
                             ui.popDWriteFont()
                             msgDist = math.ceil(msgDist + messageTextSize.y + messagePadding.y / 2)
                         else
                             msgDist = math.ceil(msgDist - messagePadding.y)
                             ui.setCursor(vec2(math.ceil(ui.windowWidth() / 2 - messageTextSize.x / 2), math.ceil(msgDist)))
-                            ui.dwriteTextAligned(messageTextcontent, messageFontSize, ui.Alignment.Center, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgb.colors.gray)
+                            ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Center, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgb.colors.gray)
                             ui.popDWriteFont()
                             msgDist = math.ceil(msgDist + messageTextSize.y + messagePadding.y / 2)
                         end
@@ -1153,29 +1152,26 @@ local function drawInputCustom()
         ui.endOutline((settings.darkMode or player.phoneMode) and colors.transparent.white10 or colors.transparent.black10, math.max(1, math.round(1 * app.scale, 1)))
         local displayText = ''
         ui.pushDWriteFont(app.font.regular)
-        local lineHeight = ui.measureDWriteText('Line Height', inputFontSize, inputWrap).y
 
         if player.isOnline then
-            if app.hovered then
-                chat.input.hovered = ui.windowHovered(ui.HoveredFlags.RectOnly)
-                inputClicked = chat.input.hovered and ui.mouseClicked(ui.MouseButton.Left)
+            chat.input.hovered = ui.windowHovered(ui.HoveredFlags.RectOnly)
+            local inputClicked = chat.input.hovered and ui.mouseClicked(ui.MouseButton.Left)
 
-                if chat.input.hovered then
-                    ui.setMouseCursor(ui.MouseCursor.TextInput)
-                end
+            if chat.input.hovered then
+                ui.setMouseCursor(ui.MouseCursor.TextInput)
+            end
 
-                if not chat.input.sendHovered then
-                    if inputClicked or chat.mentioned ~= '' then
-                        if not chat.input.active then chat.input.text = '' end
-                        chat.input.active = true
-                        if chat.emojiPicker then chat.emojiPicker = false end
-                    elseif ui.mouseClicked(ui.MouseButton.Left) and not chat.emojiPickerHovered and not chat.input.hovered then
-                        chat.input.active = false
-                        chat.input.text = chat.input.placeholder
-                        chat.input.selected = nil
-                        chat.input.historyIndex = 0
-                        chat.emojiPicker = false
-                    end
+            if not chat.input.sendHovered then
+                if inputClicked or chat.mentioned ~= '' then
+                    if not chat.input.active then chat.input.text = '' end
+                    chat.input.active = true
+                    if chat.emojiPicker then chat.emojiPicker = false end
+                elseif ui.mouseClicked(ui.MouseButton.Left) and not chat.emojiPickerHovered and not chat.input.hovered then
+                    chat.input.active = false
+                    chat.input.text = chat.input.placeholder
+                    chat.input.selected = nil
+                    chat.input.historyIndex = 0
+                    chat.emojiPicker = false
                 end
             end
 
@@ -1278,7 +1274,41 @@ local releaseURL = 'https://api.github.com/repos/C1XTZ/ac-smartphone/releases/la
 local doUpdate = (os.time() - settings.updateLastCheck) / 86400 > settings.updateInterval
 local mainFile, assetFile = appName .. '.lua', appName .. '.zip'
 
-function updateCheckVersion(manual)
+local function updateApplyUpdate(downloadUrl)
+    web.get(downloadUrl, function(downloadErr, downloadResponse)
+        if downloadErr then
+            settings.updateStatus = 4
+            error(downloadErr)
+            return
+        end
+
+        local mainFileContent
+        for _, file in ipairs(io.scanZip(downloadResponse.body)) do
+            local content = io.loadFromZip(downloadResponse.body, file)
+            if content then
+                local filePath = file:match('(.*)')
+                if filePath then
+                    filePath = filePath:gsub(appName .. '/', '')
+                    if filePath == mainFile then
+                        mainFileContent = content
+                    else
+                        if io.save(appFolder .. filePath, content) then print('Updating: ' .. file) end
+                    end
+                end
+            end
+        end
+
+        if mainFileContent then
+            if io.save(appFolder .. mainFile, mainFileContent) then print('Updating: ' .. mainFile) end
+        end
+
+        settings.updateStatus = 1
+        settings.updateAvailable = false
+        settings.updateURL = ''
+    end)
+end
+
+local function updateCheckVersion(manual)
     settings.updateLastCheck = os.time()
 
     web.get(releaseURL, function(err, response)
@@ -1329,40 +1359,6 @@ function updateCheckVersion(manual)
                 settings.updateStatus = 5
             end
         end
-    end)
-end
-
-function updateApplyUpdate(downloadUrl)
-    web.get(downloadUrl, function(downloadErr, downloadResponse)
-        if downloadErr then
-            settings.updateStatus = 4
-            error(downloadErr)
-            return
-        end
-
-        local mainFileContent
-        for _, file in ipairs(io.scanZip(downloadResponse.body)) do
-            local content = io.loadFromZip(downloadResponse.body, file)
-            if content then
-                local filePath = file:match('(.*)')
-                if filePath then
-                    filePath = filePath:gsub(appName .. '/', '')
-                    if filePath == mainFile then
-                        mainFileContent = content
-                    else
-                        if io.save(appFolder .. filePath, content) then print('Updating: ' .. file) end
-                    end
-                end
-            end
-        end
-
-        if mainFileContent then
-            if io.save(appFolder .. mainFile, mainFileContent) then print('Updating: ' .. mainFile) end
-        end
-
-        settings.updateStatus = 1
-        settings.updateAvailable = false
-        settings.updateURL = ''
     end)
 end
 
@@ -1472,7 +1468,7 @@ end
 
 --#region APP SETTINGS WINDOW
 
-function script.windowMainSettings(dt)
+function script.windowMainSettings()
     ui.tabBar('TabBar', function()
         ui.tabItem('Update', function()
             ui.text('Currrently running version ' .. string.format("%.2f", appVersion))
@@ -1607,8 +1603,9 @@ function script.windowMainSettings(dt)
             if settings.appMove then
                 ui.text('\t')
                 ui.sameLine()
-                settings.appMoveTimer, chatinactiveChange = ui.slider('##appMoveTimer', settings.appMoveTimer, 1, 120, 'Inactivity: ' .. '%.0f seconds')
-                if chatinactiveChange then movement.timer = settings.appMoveTimer end
+                local chatInactive, chatInactiveChange = ui.slider('##appMoveTimer', settings.appMoveTimer, 1, 120, 'Inactivity: ' .. '%.0f seconds')
+                settings.appMoveTimer = chatInactive
+                if chatInactiveChange then movement.timer = settings.appMoveTimer end
                 lastItemHoveredTooltip('Time before app moves down.')
 
                 ui.text('\t')
