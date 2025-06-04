@@ -358,7 +358,7 @@ end
 
 ---@param color rgb The RGB color to calculate luminance for
 ---@return number luminance The perceptual luminance value (0-1, where 0 is black and 1 is white)
----Calculate perceptual luminance (0-1 range) using Rec. 709 coefficients
+---Calculate perceptual luminance (0-1 range) using Rec. 709 coefficients for blue and red, halved for green.
 local function getLuminance(color)
     local function toLinear(c)
         if c <= 0.03928 then
@@ -372,7 +372,7 @@ local function getLuminance(color)
     local lg = toLinear(color.g)
     local lb = toLinear(color.b)
 
-    return 0.2126 * lr + 0.7152 * lg + 0.0722 * lb
+    return 0.2126 * lr + 0.3576 * lg + 0.0722 * lb
 end
 
 --#endregion
@@ -744,7 +744,7 @@ local function handleKeyboardInput()
         return
     elseif ui.keyboardButtonDown(ui.KeyIndex.Control) and ui.keyboardButtonPressed(ui.KeyIndex.V, true) then
         if utf8len(chat.input.text .. ui.getClipboardText()) >= inputMaxLen then return end
-        typed = typed .. ui.getClipboardText()
+        chat.input.text = chat.input.text .. ui.getClipboardText()
         return
     elseif ui.keyboardButtonDown(ui.KeyIndex.Control) and ui.keyboardButtonPressed(ui.KeyIndex.A) and msgLen then
         if chat.input.selected then chat.input.selected = nil end
@@ -1721,7 +1721,7 @@ function script.windowMainSettings()
                 ui.text('Message Color Own')
                 ui.setNextItemWidth(132 * ac.getUI().uiScale)
                 local messageColorSelfChange = ui.colorPicker('Display Color Picker', settings.messageColorSelf, COLORPICKERFLAGS)
-                if ui.button('Reset to default') then
+                if ui.button('Reset to default ') then
                     settings.messageColorSelf = colors.iMessageBlue:clone()
                     updateColors()
                 end
