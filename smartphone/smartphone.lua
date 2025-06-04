@@ -29,10 +29,10 @@ local settings = ac.storage {
     badTime = false,
 
     songInfo = false,
-    spaces = 5,
-    scrollSpeed = 2,
-    scrollDirection = 0,
-    scrollAlways = false,
+    songInfoSpacing = 30,
+    songInfoScrollSpeed = 30,
+    songInfoScrollDirection = 0,
+    songInfoscrollAlways = false,
     hideCamera = false,
 
     chatKeepSize = 100,
@@ -141,8 +141,7 @@ local player = {
     phoneMode = settings.darkMode
 }
 
-local communityData = io.load('.\\apps\\lua\\smartphone\\src\\communities\\data\\list.lua')
-local communities = stringify.parse(communityData)
+local communities = stringify.parse(io.load('.\\apps\\lua\\smartphone\\src\\communities\\data\\list.lua'))
 
 local movement = {
     maxDistance = 487,
@@ -156,14 +155,9 @@ local movement = {
 local songInfo = {
     artist = '',
     title = '',
-    scroll = '',
     final = '',
-    length = 0,
     isPaused = false,
     static = false,
-    align = ui.Alignment.Center,
-    spaces = '',
-    scrollInterval = nil,
     updateInterval = nil,
     dynamicIslandSize = vec2(40, 20)
 }
@@ -568,7 +562,7 @@ local function updateSongInfo(forced)
     local current = ac.currentlyPlaying()
     local artist = current.artist
     local title = current.title
-    local maxLength = 17
+    local maxLength = 19
 
     if (current.artist:lower() == 'unknown artist' or current.artist == '') and current.title ~= '' then
         artist, title = splitTitle(current.title)
@@ -582,62 +576,20 @@ local function updateSongInfo(forced)
         if artist ~= songInfo.artist or title ~= songInfo.title or forced then
             songInfo.artist = artist
             songInfo.title = title
-            songInfo.scroll = (songInfo.artist ~= '' and songInfo.artist:lower() ~= 'unknown artist') and (songInfo.artist .. ' - ' .. songInfo.title) or (songInfo.title)
+            songInfo.final = (songInfo.artist ~= '' and songInfo.artist:lower() ~= 'unknown artist') and (songInfo.artist .. ' - ' .. songInfo.title) or (songInfo.title)
 
-            if utf8len(songInfo.scroll) < maxLength and not settings.scrollAlways then
+            if utf8len(songInfo.final) < maxLength and not settings.songInfoscrollAlways then
                 songInfo.static = true
-                songInfo.align = ui.Alignment.Center
             else
-                if utf8len(songInfo.scroll) < maxLength then
-                    songInfo.scroll = songInfo.scroll .. string.rep(' ', maxLength - utf8len(songInfo.scroll))
-                end
                 songInfo.static = false
-                songInfo.align = ui.Alignment.Start
-                songInfo.scroll = songInfo.scroll .. songInfo.spaces
             end
-
-            songInfo.length = utf8len(songInfo.scroll)
-            songInfo.final = songInfo.scroll
         end
         if songInfo.dynamicIslandSize.x == 40 then setDynamicIslandSize(true) end
         songInfo.isPaused = false
     end
 end
 
-local function scrollText()
-    if songInfo.isPaused or songInfo.static then return end
-
-    local firstLetter, restString
-
-    if settings.scrollDirection == 0 then
-        firstLetter = utf8sub(songInfo.scroll, 1, 1)
-        restString = utf8sub(songInfo.scroll, 2)
-        songInfo.scroll = restString .. firstLetter
-    else
-        firstLetter = utf8sub(songInfo.scroll, songInfo.length, songInfo.length)
-        restString = utf8sub(songInfo.scroll, 1, songInfo.length - 1)
-        songInfo.scroll = firstLetter .. restString
-    end
-
-    songInfo.final = songInfo.scroll
-end
-
-local function updateSpacing()
-    songInfo.spaces = string.rep(' ', settings.spaces)
-    updateSongInfo(true)
-end
-
-local function updateScrollInterval()
-    if songInfo.scrollInterval then
-        clearInterval(songInfo.scrollInterval)
-        songInfo.scrollInterval = nil
-    end
-
-    songInfo.scrollInterval = setInterval(scrollText, 1 / settings.scrollSpeed, 'scrollText')
-end
-
 local function startSongInfo()
-    updateSpacing()
     updateSongInfo()
 
     if songInfo.updateInterval then
@@ -645,13 +597,7 @@ local function startSongInfo()
         songInfo.updateInterval = nil
     end
 
-    if songInfo.scrollInterval then
-        clearInterval(songInfo.scrollInterval)
-        songInfo.scrollInterval = nil
-    end
-
     songInfo.updateInterval = setInterval(updateSongInfo, 2, 'updateNP')
-    songInfo.scrollInterval = setInterval(scrollText, 1 / settings.scrollSpeed, 'scrollText')
 end
 
 local function stopSongInfo()
@@ -660,17 +606,36 @@ local function stopSongInfo()
         songInfo.updateInterval = nil
     end
 
-    if songInfo.scrollInterval then
-        clearInterval(songInfo.scrollInterval)
-        songInfo.scrollInterval = nil
-    end
-
     songInfo.final = ''
     songInfo.artist = ''
     songInfo.title = ''
     songInfo.isPaused = false
 
     setDynamicIslandSize(false)
+end
+
+---@param text string @The text content to be displayed, either static or scrolling.
+---@param pos vec2 @The position coordinates where the text should be drawn.
+---@param size vec2 @The dimensions of the text drawing area.
+---@param fontSize number @The font size to use for rendering the text.
+---Draws text that can either be static and centered, or scrolling horizontally.
+local function drawSongInfoText(text, pos, size, fontSize)
+    if not text or text == "" then return end
+    ui.pushDWriteFont(app.font.bold)
+    if songInfo.static then
+        ui.setCursor(pos)
+        ui.dwriteTextAligned(text, fontSize, ui.Alignment.Center, ui.Alignment.Center, size, false, rgbm.colors.white)
+    else
+        local textSize = ui.measureDWriteText(text, fontSize)
+        local stepW = textSize.x + settings.songInfoSpacing
+        local scrollX = (settings.songInfoScrollDirection == 0 and -1 or 1) * ((os.clock() * settings.songInfoScrollSpeed) % stepW)
+        ui.pushClipRect(pos, pos + size)
+        for i = -1, math.ceil(size.x / stepW) do
+            ui.dwriteDrawText(text, fontSize, vec2(pos.x + scrollX + i * stepW, pos.y + (size.y - textSize.y) / 2), rgbm.colors.white)
+        end
+        ui.popClipRect()
+    end
+    ui.popDWriteFont()
 end
 
 --#endregion
@@ -852,7 +817,7 @@ local function drawPing()
 
         if app.hovered then
             if ui.rectHovered(pingPosition, pingPosition + pingSize, true) then
-                ui.tooltip(app.tooltipPadding:scale(app.scale), function() ui.text('Current Ping: ' .. ping .. ' ms\nClick to send to chat') end)
+                ui.tooltip(app.tooltipPadding:scale(app.scale), function() ui.text('Current Ping: ' .. ping .. ' ms\nClick to send to chat.') end)
                 if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
                 if ui.mouseReleased(ui.MouseButton.Left) then sendChatMessage('I currently have a ping of ' .. ping .. ' ms.') end
             end
@@ -882,7 +847,7 @@ local function drawTime()
     ui.popDWriteFont()
 
     if app.hovered then
-        lastItemHoveredTooltip('Current Time: ' .. timeText .. '\nClick to send to chat', true)
+        lastItemHoveredTooltip('Current Time: ' .. timeText .. '\nClick to send to chat.', true)
         if ui.itemClicked(ui.MouseButton.Left) then
             timeText = settings.badTime and timeText .. ' ' .. player.timePeriod or timeText
             sendChatMessage('It\'s currently ' .. timeText .. ' my local time.')
@@ -939,17 +904,18 @@ local function drawSongInfo()
             ui.drawImageRounded(ac.currentlyPlaying(), vec2((ui.windowWidth() / 2) - scale(74), scale(23) + movement.smooth), vec2((ui.windowWidth() / 2) - scale(60), scale(37) + movement.smooth), scale(3), ui.CornerFlags.All)
         end
         local songFontSize = scale(12)
-        local songPosition = vec2(ui.windowWidth() / 2, scale(22))
-        local songTextSize = vec2(133, 15):scale(app.scale)
-        ui.pushDWriteFont(app.font.bold)
-        ui.setCursor(vec2(math.round(ui.windowWidth() / 2 - songTextSize.x / 2.3), songPosition.y + movement.smooth))
-        ui.dwriteTextAligned(songInfo.final, songFontSize, songInfo.align, ui.Alignment.End, songTextSize, false, rgb.colors.white)
-        ui.popDWriteFont()
+        local songPosition = vec2(scale(86), scale(22) + movement.smooth)
+        local songTextSize = vec2(137, 15):scale(app.scale)
+
+        drawSongInfoText(songInfo.final, songPosition, songTextSize, songFontSize)
 
         if app.hovered and songInfo.final ~= '' then
-            lastItemHoveredTooltip('Current Song: ' .. songInfo.artist .. ' - ' .. songInfo.title .. '\nClick to send to chat', true)
-            if ui.itemClicked(ui.MouseButton.Left) then
-                sendChatMessage('I\'m currently listening to: ' .. songInfo.artist .. ' - ' .. songInfo.title)
+            if ui.rectHovered(songPosition, songPosition + songTextSize, true) then
+                if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
+                ui.tooltip(app.tooltipPadding, function() ui.text('Current Song: ' .. songInfo.artist .. ' - ' .. songInfo.title .. '\nClick to send to chat.') end)
+                if ui.mouseClicked(ui.MouseButton.Left) then
+                    sendChatMessage('I\'m currently listening to: ' .. songInfo.final)
+                end
             end
         end
     end
@@ -1579,11 +1545,11 @@ function script.windowMainSettings()
             if settings.songInfo then
                 ui.text('\t')
                 ui.sameLine()
-                if ui.checkbox('Always Scroll Text', settings.scrollAlways) then
-                    settings.scrollAlways = not settings.scrollAlways
-                    updateSpacing()
+                if ui.checkbox('Always Scroll Text', settings.songInfoscrollAlways) then
+                    settings.songInfoscrollAlways = not settings.songInfoscrollAlways
+                    updateSongInfo(true)
                 end
-                lastItemHoveredTooltip('If enabled, will scroll text even if it could be displayed in full.')
+                lastItemHoveredTooltip('If enabled, will scroll text even if it could be displayed statically.')
 
                 ui.text('\t')
                 ui.sameLine()
@@ -1592,26 +1558,18 @@ function script.windowMainSettings()
 
                 ui.text('\t')
                 ui.sameLine()
-                local spacesChanged
-                settings.spaces, spacesChanged = ui.slider('##Spaces', settings.spaces, 0, 25, 'Spaces: %.0f', true)
-                if spacesChanged then
-                    updateSpacing()
-                end
-                lastItemHoveredTooltip('The amount of spaces between the end and start of the song when scrolling.')
+                settings.songInfoSpacing = ui.slider('##Spacing', settings.songInfoSpacing, 0, 300, 'Spacing: %.0f', true)
+                lastItemHoveredTooltip('The amount of spacing between the end and start of the song.')
 
                 ui.text('\t')
                 ui.sameLine()
-                local speedChanged
-                settings.scrollSpeed, speedChanged = ui.slider('##ScrollSpeed', settings.scrollSpeed, 0.1, 15, 'Scroll Speed: %.1f')
-                if speedChanged then
-                    updateScrollInterval()
-                end
-                lastItemHoveredTooltip('Interval that the text is scrolled at.')
+                settings.songInfoScrollSpeed = ui.slider('##ScrollSpeed', settings.songInfoScrollSpeed, 1, 300, 'Scroll Speed: %.0f')
+                lastItemHoveredTooltip('Speed that the text is scrolled at.')
 
                 ui.text('\t')
                 ui.sameLine()
-                local scrollDirStr = (settings.scrollDirection == 0) and 'Left' or 'Right'
-                settings.scrollDirection = ui.slider('##ScrollDirection', settings.scrollDirection, 0, 1, 'Scroll Direction: ' .. scrollDirStr, true)
+                local scrollDirStr = settings.songInfoScrollDirection == 0 and 'Left' or 'Right'
+                settings.songInfoScrollDirection = ui.slider('##ScrollDirection', settings.songInfoScrollDirection, 0, 1, 'Scroll Direction: ' .. scrollDirStr, true)
             end
         end)
 
