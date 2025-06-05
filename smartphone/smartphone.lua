@@ -157,7 +157,6 @@ local songInfo = {
     title = '',
     final = '',
     isPaused = false,
-    static = false,
     updateInterval = nil,
     dynamicIslandSize = vec2(40, 20)
 }
@@ -577,12 +576,6 @@ local function updateSongInfo(forced)
             songInfo.artist = artist
             songInfo.title = title
             songInfo.final = (songInfo.artist ~= '' and songInfo.artist:lower() ~= 'unknown artist') and (songInfo.artist .. ' - ' .. songInfo.title) or (songInfo.title)
-
-            if utf8len(songInfo.final) < maxLength and not settings.songInfoscrollAlways then
-                songInfo.static = true
-            else
-                songInfo.static = false
-            end
         end
         if songInfo.dynamicIslandSize.x == 40 then setDynamicIslandSize(true) end
         songInfo.isPaused = false
@@ -621,12 +614,18 @@ end
 ---Draws text that can either be static and centered, or scrolling horizontally.
 local function drawSongInfoText(text, pos, size, fontSize)
     if not text or text == "" then return end
+    local static = false
     ui.pushDWriteFont(app.font.bold)
-    if songInfo.static then
+    local textSize = ui.measureDWriteText(text, fontSize)
+
+    if textSize.x <= size.x - scale(4) and not settings.songInfoscrollAlways then
+        static = true
+    end
+
+    if static then
         ui.setCursor(pos)
         ui.dwriteTextAligned(text, fontSize, ui.Alignment.Center, ui.Alignment.Center, size, false, rgbm.colors.white)
     else
-        local textSize = ui.measureDWriteText(text, fontSize)
         local stepW = textSize.x + settings.songInfoSpacing
         local scrollX = (settings.songInfoScrollDirection == 0 and -1 or 1) * ((os.clock() * settings.songInfoScrollSpeed) % stepW)
         ui.pushClipRect(pos, pos + size)
