@@ -489,7 +489,10 @@ local function playTestAudio(tbl)
 end
 
 local function automaticModeSwitch()
-    if not settings.darkModeAuto then return end
+    if not settings.darkModeAuto then
+        if player.phoneMode then player.phoneMode = false end
+        return
+    end
 
     local sunAngle = ac.getSunAngle()
     if sunAngle > 82 and settings.darkModeAuto and not player.phoneMode then
@@ -525,14 +528,14 @@ local function updateCommunityData()
                     if name ~= 'default' and community.image then
                         local filename = community.image:match('([^\\]+)$')
                         local remoteImageUrl = 'https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/smartphone/src/communities/img/' .. filename
-                        web.get(remoteImageUrl, function(err, response)
-                            if err or response.status ~= 200 then
+                        web.get(remoteImageUrl, function(error, response2)
+                            if error or response2.status ~= 200 then
                                 settings.dataCheckLast = os.time()
                                 settings.dataCheckFailed = true
 
                                 return error('Couldn\'t get community data from github.')
                             end
-                            io.save(community.image, response.body)
+                            io.save(community.image, response2.body)
                         end)
                     end
                 end
@@ -1526,6 +1529,7 @@ function script.windowMainSettings()
 
             if not settings.darkMode then
                 if ui.checkbox('Automatic Light/Dark Mode', settings.darkModeAuto) then settings.darkModeAuto = not settings.darkModeAuto end
+                updateColors()
                 lastItemHoveredTooltip('If enabled, app will automatically switch between dark/light mode.')
             end
 

@@ -60,7 +60,7 @@ Full license details are available in the [`smartphone/CODELICENSE.txt`](./smart
 ## Exceptions
 
 ### **SRP Logo**  
-[`srp-logo-socials.png`](./smartphone/src/img/communities/srp-logo-socials.png)  
+[`srp-logo-socials.png`](./smartphone/src/communities/img/srp-logo-socials.png)  
 - **License:** All rights reserved by Shutoko Revival Project  
     - You may distribute the image **unchanged**, provided it **remains bundled with this app**.  
 - **Standalone redistribution, modification, or commercial use** requires explicit permission from [Shutoko Revival Project](https://shutokorevivalproject.com).  
