@@ -201,6 +201,7 @@ local chat = {
         '🚦', '🛑', '⛽', '⏱️', '🌍', '💡', '❓', '❗', '💬', '🍀',
         '🚀', '💥', '🐢', '🐇', '💀'
     },
+    usernameColors = {},
 }
 
 local audio = {
@@ -374,19 +375,42 @@ local function getLuminance(color)
     return 0.2126 * lr + 0.3576 * lg + 0.0722 * lb
 end
 
+---@param index integer @Car index
+---@return rgbm @Driver tag color
+local function getDriverColor(index)
+    local name = ac.getDriverName(index)
+    if not name or name == '' then return rgbm.colors.gray end
+    local color = ac.DriverTags(name).color:clone()
+    if (index == 0 and color == rgbm.colors.yellow) or (index > 0 and color == rgbm.colors.white) then
+        color:set(rgbm.colors.gray)
+    end
+    local existingColor = chat.usernameColors[name]
+    if not existingColor or existingColor == rgbm.colors.gray or color ~= rgbm.colors.gray then
+        chat.usernameColors[name] = color
+    end
+    return existingColor and existingColor ~= rgbm.colors.gray and existingColor or color
+end
+
+---@param light rgbm @rgbm color to use if light mode
+---@param dark rgbm @rgbm color to use if dark mode
+---@return rgbm @rgbm color to be used for the given mode
+local function pickMode(light, dark)
+    return (settings.darkMode or player.phoneMode) and dark or light
+end
+
 --#endregion
 
 --#region GENERAL LOGIC FUNCTIONS
 
 local function updateColors()
-    colors.final.display:set((settings.darkMode or player.phoneMode) and colors.displayColorDark or colors.displayColorLight)
-    colors.final.header:set((settings.darkMode or player.phoneMode) and colors.headerColorDark or colors.headerColorLight)
-    colors.final.elements:set((settings.darkMode or player.phoneMode) and colors.displayColorLight or colors.displayColorDark)
-    colors.final.headerLine:set((settings.darkMode or player.phoneMode) and colors.headerLineColorDark or colors.headerLineColorLight)
-    colors.final.input:set((settings.darkMode or player.phoneMode) and colors.transparent.white50 or colors.transparent.black50)
-    colors.final.message:set((settings.darkMode or player.phoneMode) and colors.iMessageDarkGray or colors.iMessageLightGray)
-    colors.final.emojiPicker:set((settings.darkMode or player.phoneMode) and colors.emojiPickerButtonDark or colors.emojiPickerButtonLight)
-    colors.final.emojiPickerBG:set((settings.darkMode or player.phoneMode) and colors.emojiPickerButtonBGDark or colors.emojiPickerButtonBGLight)
+    colors.final.display:set(pickMode(colors.displayColorLight, colors.displayColorDark))
+    colors.final.header:set(pickMode(colors.headerColorLight, colors.headerColorDark))
+    colors.final.elements:set(pickMode(colors.displayColorDark, colors.displayColorLight))
+    colors.final.headerLine:set(pickMode(colors.headerLineColorLight, colors.headerLineColorDark))
+    colors.final.input:set(pickMode(colors.transparent.black50, colors.transparent.white50))
+    colors.final.message:set(pickMode(colors.iMessageLightGray, colors.iMessageDarkGray))
+    colors.final.emojiPicker:set(pickMode(colors.emojiPickerButtonLight, colors.emojiPickerButtonDark))
+    colors.final.emojiPickerBG:set(pickMode(colors.emojiPickerButtonBGLight, colors.emojiPickerButtonBGDark))
 
     colors.final.messageOwn:set(settings.customColor and settings.messageColorSelf or colors.iMessageBlue)
     colors.final.messageFriend:set(settings.customColor and settings.messageColorFriend or colors.iMessageGreen)
@@ -408,36 +432,39 @@ local function forceAppToBottom()
 end
 
 ---@param dt number @Delta time in seconds since last update.
----Updates movement state (distance, smoothness, direction, timer).
+---Updates movement state
 local function updateAppMovement(dt)
-    if settings.appMove then
-        local scaledMaxDistance = scale(movement.maxDistance)
-
-        if movement.timer > 0 and movement.distance == 0 then
-            movement.timer = movement.timer - dt
-            movement.down = true
+    if not settings.appMove then
+        if movement.distance ~= 0 then
+            movement.distance = 0
+            movement.smooth = 0
         end
+        return
+    end
 
-        if movement.timer <= 0 and movement.down then
-            movement.down = true
-            movement.distance = math.floor(movement.distance + dt * 100 * settings.appMoveSpeed)
-            movement.smooth = math.floor(math.smootherstep(math.lerpInvSat(movement.distance, 0, scaledMaxDistance)) * scaledMaxDistance)
-        elseif movement.timer > 0 and movement.up then
-            movement.distance = math.floor(movement.distance - dt * 100 * settings.appMoveSpeed)
-            movement.smooth = math.floor(math.smootherstep(math.lerpInvSat(movement.distance, 0, scaledMaxDistance)) * scaledMaxDistance)
-        end
+    local scaledMaxDistance = scale(movement.maxDistance)
 
-        if movement.distance > scaledMaxDistance then
+    if movement.distance == 0 and movement.timer > 0 then
+        movement.timer = movement.timer - dt
+        movement.down = true
+        return
+    end
+
+    if movement.down and movement.timer <= 0 then
+        movement.distance = math.floor(movement.distance + dt * 100 * settings.appMoveSpeed)
+        movement.smooth = math.floor(math.smootherstep(math.lerpInvSat(movement.distance, 0, scaledMaxDistance)) * scaledMaxDistance)
+        if movement.distance >= scaledMaxDistance then
             movement.distance = scaledMaxDistance
             movement.down = false
-        elseif movement.distance < 0 then
+        end
+    elseif movement.up and movement.timer > 0 then
+        movement.distance = math.floor(movement.distance - dt * 100 * settings.appMoveSpeed)
+        movement.smooth = math.floor(math.smootherstep(math.lerpInvSat(movement.distance, 0, scaledMaxDistance)) * scaledMaxDistance)
+        if movement.distance <= 0 then
             movement.distance = 0
             movement.up = false
             movement.timer = settings.appMoveTimer
         end
-    elseif not settings.appMove and movement.distance ~= 0 then
-        movement.distance = 0
-        movement.smooth = 0
     end
 end
 
@@ -450,25 +477,30 @@ end
 
 ---@param event table @audio event table (audio.category.event)
 local function playAudio(event)
-    if not settings.enableAudio then return end
-
+    if not settings.enableAudio or not event then return end
+    local categoryFound
     for category, events in pairs(audio) do
         for _, eventData in pairs(events) do
             if event == eventData then
-                local enableSetting = 'enable' .. category:sub(1, 1):upper() .. category:sub(2)
-                if settings[enableSetting] then
-                    local volumeSetting = 'volume' .. category:sub(1, 1):upper() .. category:sub(2)
-                    local audioToPlay = ac.AudioEvent.fromFile({ filename = event.file, use3D = false, loop = false }, false)
-                    audioToPlay.cameraInteriorMultiplier = 1
-                    audioToPlay.cameraExteriorMultiplier = 1
-                    audioToPlay.volume = settings[volumeSetting]
-                    audioToPlay:start()
-                    setTimeout(function() audioToPlay:dispose() end, audioToPlay:getDuration(), 'audioToPlay')
-                end
-                return
+                categoryFound = category
+                break
             end
         end
+        if categoryFound then break end
     end
+    if not categoryFound then return end
+
+    local enableSetting = 'enable' .. categoryFound:sub(1, 1):upper() .. categoryFound:sub(2)
+    if not settings[enableSetting] then return end
+
+    local volumeSetting = 'volume' .. categoryFound:sub(1, 1):upper() .. categoryFound:sub(2)
+    local audioToPlay = ac.AudioEvent.fromFile({ filename = event.file, use3D = false, loop = false }, false)
+
+    audioToPlay.cameraInteriorMultiplier = 1
+    audioToPlay.cameraExteriorMultiplier = 1
+    audioToPlay.volume = settings[volumeSetting]
+    audioToPlay:start()
+    setTimeout(function() audioToPlay:dispose() end, audioToPlay:getDuration(), 'audioToPlay')
 end
 
 local audioIndexes = {}
@@ -490,61 +522,59 @@ end
 
 local function automaticModeSwitch()
     if not settings.darkModeAuto then
-        if player.phoneMode then player.phoneMode = false end
+        if player.phoneMode then
+            player.phoneMode = false
+            updateColors()
+        end
         return
     end
 
-    local sunAngle = ac.getSunAngle()
-    if sunAngle > 82 and settings.darkModeAuto and not player.phoneMode then
-        player.phoneMode = true
-        updateColors()
-    elseif sunAngle < 82 and settings.darkModeAuto and player.phoneMode then
-        player.phoneMode = false
+    local shouldBeDark = ac.getSim().timeHours > 9 and ac.getSim().timeHours < 19
+    if player.phoneMode ~= shouldBeDark then
+        player.phoneMode = shouldBeDark
         updateColors()
     end
 end
 
 local function updateCommunityData()
-    if (not settings.dataCheckFailed and os.time() - settings.dataCheckLast > 43200) or (settings.dataCheckFailed and os.time() - settings.dataCheckLast > 3600) then
-        web.get('https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/smartphone/src/communities/data/list.lua', function(err, response)
-            if err or response.status ~= 200 then
-                settings.dataCheckLast = os.time()
-                settings.dataCheckFailed = true
-                return error('Couldn\'t get community data from github.')
-            end
+    local now = os.time()
+    local checkInterval = settings.dataCheckFailed and 3600 or 43200
+    if now - settings.dataCheckLast <= checkInterval then return end
 
-            local data = stringify.parse(response.body)
-            if communities.version[1] == data.version[1] then
-                settings.dataCheckLast = os.time()
-                return ac.log('Already using latest data.')
-            else
-                local file = io.open(ac.getFolder(ac.FolderID.ACAppsLua) .. '\\smartphone\\src\\communities\\data\\list.lua', 'w+')
-                if file then
-                    file:write(stringify(data))
-                    file:close()
-                end
+    web.get('https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/smartphone/src/communities/data/list.lua', function(err, response)
+        settings.dataCheckLast = now
+        if err or response.status ~= 200 then
+            settings.dataCheckFailed = true
+            return error("Couldn't get community data from github.")
+        end
 
-                for name, community in pairs(data) do
-                    if name ~= 'default' and community.image then
-                        local filename = community.image:match('([^\\]+)$')
-                        local remoteImageUrl = 'https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/smartphone/src/communities/img/' .. filename
-                        web.get(remoteImageUrl, function(error, response2)
-                            if error or response2.status ~= 200 then
-                                settings.dataCheckLast = os.time()
-                                settings.dataCheckFailed = true
+        local data = stringify.parse(response.body)
+        if communities.version[1] == data.version[1] then
+            return ac.log('Already using latest data.')
+        end
 
-                                return error('Couldn\'t get community data from github.')
-                            end
-                            io.save(community.image, response2.body)
-                        end)
+        local file = io.open(ac.getFolder(ac.FolderID.ACAppsLua) .. '\\smartphone\\src\\communities\\data\\list.lua', 'w+')
+        if file then
+            file:write(stringify(data))
+            file:close()
+        end
+
+        for name, community in pairs(data) do
+            if name ~= 'default' and community.image then
+                local filename = community.image:match('([^\\]+)$')
+                local remoteImageUrl = 'https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/smartphone/src/communities/img/' .. filename
+                web.get(remoteImageUrl, function(err2, response2)
+                    if err2 or response2.status ~= 200 then
+                        settings.dataCheckFailed = true
+                        return err2("Couldn't get community data from github.")
                     end
-                end
-                settings.dataCheckLast = os.time()
-                settings.dataCheckFailed = false
-                return ac.log('Updated to latest data.')
+                    io.save(community.image, response2.body)
+                end)
             end
-        end)
-    end
+        end
+        settings.dataCheckFailed = false
+        return ac.log('Updated to latest data.')
+    end)
 end
 
 --#endregion
@@ -940,7 +970,7 @@ local function drawMessages()
                 local messageUserIndex = chat.messages[i][1]
                 local messageUserIndexLast = i >= 2 and chat.messages[i - 1][1] or nil
                 local messageUsername = chat.messages[i][2]
-                local messageUsernameColor = chat.messages[i][5]
+                local messageUsernameColor = chat.usernameColors[messageUserIndex] or rgbm.colors.gray
                 local messageTextContent = chat.messages[i][3]
                 local messageTimestamp = settings.badTime and to12hTime(os.date('%H:%M', chat.messages[i][4])) .. ' ' .. player.timePeriod or os.date('%H:%M', chat.messages[i][4])
                 local fontWeight = app.font.regular
@@ -983,7 +1013,7 @@ local function drawMessages()
 
                     msgDist = math.ceil(msgDist + messagePadding.y + messagePadding.y / 2)
                 elseif messageUserIndex > 0 then
-                    local bubbleColor, messageTextColor = colors.final.message, (settings.darkMode or player.phoneMode) and rgb.colors.white or rgb.colors.black
+                    local bubbleColor, messageTextColor = colors.final.message, pickMode(rgb.colors.black, rgb.colors.white)
                     local isFriend = checkIfFriend(messageUserIndex)
 
                     if isFriend then
@@ -1086,7 +1116,7 @@ local function drawEmojiPicker()
     if app.hovered then
         chat.emojiPickerHovered = ui.rectHovered(ui.getCursor() - buttonSize / 2, ui.getCursor() + buttonSize / 2 + movement.smooth)
 
-        if chat.emojiPickerHovered and ui.mouseReleased(ui.MouseButton.Left) then
+        if chat.emojiPickerHovered and ui.mouseReleased(ui.MouseButton.Left) and player.isOnline then
             chat.emojiPicker = not chat.emojiPicker
             playAudio(audio.keyboard.enter)
         end
@@ -1151,7 +1181,7 @@ local function drawInputCustom()
     ui.childWindow('ChatInput', inputSize, false, WINDOWFLAGSINPUT, function()
         ui.beginOutline()
         ui.drawRectFilled(vec2(2, 2):scale(app.scale), inputBoxSize, colors.final.display, scale(10))
-        ui.endOutline((settings.darkMode or player.phoneMode) and colors.transparent.white10 or colors.transparent.black10, math.max(1, math.round(1 * app.scale, 1)))
+        ui.endOutline(pickMode(colors.transparent.black10, colors.transparent.white10), math.max(1, math.round(1 * app.scale, 1)))
         local displayText = ''
         ui.pushDWriteFont(app.font.regular)
 
@@ -1179,11 +1209,11 @@ local function drawInputCustom()
 
             if chat.input.active then
                 handleKeyboardInput()
-                colors.final.input:set((settings.darkMode or player.phoneMode) and rgbm.colors.white or rgbm.colors.black)
+                colors.final.input:set(pickMode(rgbm.colors.black, rgbm.colors.white))
                 if chat.mentioned ~= '' and chat.input.text ~= chat.mentioned then chat.mentioned = '' end
             else
                 chat.input.text = chat.input.placeholder
-                colors.final.input:set((settings.darkMode or player.phoneMode) and colors.transparent.white50 or colors.transparent.black50)
+                colors.final.input:set(pickMode(colors.transparent.black50, colors.transparent.white50))
             end
 
             displayText = chat.input.text
@@ -1374,26 +1404,16 @@ if player.isOnline then
         local isPlayer = senderCarIndex > -1
         local isFriend = isPlayer and checkIfFriend(senderCarIndex)
         local isMentioned = message:lower():find('%f[%a_]' .. player.driverName:lower() .. '%f[%A_]')
-        local hideMessage = false
-        local userTagColor = rgbm()
-
-        if isPlayer then
-            hideMessage = matchMessage(isPlayer, escapedMessage) and settings.chatHideAnnoying
-        else
-            hideMessage = matchMessage(isPlayer, escapedMessage) and settings.chatHideKickBan
-        end
+        local hideMessage = isPlayer and matchMessage(isPlayer, escapedMessage) and settings.chatHideAnnoying or matchMessage(isPlayer, escapedMessage) and settings.chatHideKickBan
 
         if not hideMessage and message:len() > 0 then
             deleteOldestMessages()
 
             if settings.chatUsernameColor and isPlayer then
-                userTagColor = userTagColor:set(ac.DriverTags(ac.getDriverName(senderCarIndex)).color)
-                if (senderCarIndex == 0 and userTagColor == rgbm.colors.yellow) or (senderCarIndex ~= 0 and userTagColor == rgbm.colors.white) then userTagColor:set(rgbm.colors.gray) end
-            else
-                userTagColor:set(rgbm.colors.gray)
+                getDriverColor(senderCarIndex)
             end
 
-            table.insert(chat.messages, { senderCarIndex, isPlayer and ac.getDriverName(senderCarIndex) or 'Server', message, os.time(), userTagColor:clone() })
+            table.insert(chat.messages, { senderCarIndex, isPlayer and ac.getDriverName(senderCarIndex) or 'Server', message, os.time() })
 
             moveAppUp()
 
