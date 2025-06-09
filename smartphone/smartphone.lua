@@ -545,7 +545,7 @@ local function updateCommunityData()
         settings.dataCheckLast = now
         if err or response.status ~= 200 then
             settings.dataCheckFailed = true
-            return error("Couldn't get community data from github.")
+            return error('Couldn\'t get community data from github.')
         end
 
         local data = stringify.parse(response.body)
@@ -566,7 +566,7 @@ local function updateCommunityData()
                 web.get(remoteImageUrl, function(err2, response2)
                     if err2 or response2.status ~= 200 then
                         settings.dataCheckFailed = true
-                        return err2("Couldn't get community data from github.")
+                        return err2('Couldn\'t get community data from github.')
                     end
                     io.save(community.image, response2.body)
                 end)
@@ -646,7 +646,7 @@ end
 ---@param fontSize number @The font size to use for rendering the text.
 ---Draws text that can either be static and centered, or scrolling horizontally.
 local function drawSongInfoText(text, pos, size, fontSize)
-    if not text or text == "" then return end
+    if not text or text == '' then return end
     local static = false
     ui.pushDWriteFont(app.font.bold)
     local textSize = ui.measureDWriteText(text, fontSize)
@@ -738,12 +738,27 @@ end
 local function deleteOldestMessages()
     local currentTime = os.time()
     local index = 1
+    local removedMsg = false
     while index <= #chat.messages do
         if #chat.messages > settings.chatKeepSize and
             currentTime - chat.messages[index][4] > (settings.chatOlderThan * 10) then
             table.remove(chat.messages, index)
+            removedAny = true
         else
             index = index + 1
+        end
+    end
+    
+    if removedMsg then
+        local activeUsernames = {}
+        for i = 1, #chat.messages do
+            activeUsernames[chat.messages[i][2]] = true
+        end
+        
+        for username, _ in pairs(chat.usernameColors) do
+            if not activeUsernames[username] then
+                chat.usernameColors[username] = nil
+            end
         end
     end
 end
@@ -970,7 +985,7 @@ local function drawMessages()
                 local messageUserIndex = chat.messages[i][1]
                 local messageUserIndexLast = i >= 2 and chat.messages[i - 1][1] or nil
                 local messageUsername = chat.messages[i][2]
-                local messageUsernameColor = chat.usernameColors[messageUserIndex] or rgbm.colors.gray
+                local messageUsernameColor = chat.usernameColors[messageUsername] or rgbm.colors.gray
                 local messageTextContent = chat.messages[i][3]
                 local messageTimestamp = settings.badTime and to12hTime(os.date('%H:%M', chat.messages[i][4])) .. ' ' .. player.timePeriod or os.date('%H:%M', chat.messages[i][4])
                 local fontWeight = app.font.regular
@@ -1493,7 +1508,7 @@ end
 function script.windowMainSettings()
     ui.tabBar('TabBar', function()
         ui.tabItem('Update', function()
-            ui.text('Currrently running version ' .. string.format("%.2f", appVersion))
+            ui.text('Currrently running version ' .. string.format('%.2f', appVersion))
             if ui.checkbox('Automatically Check for Updates', settings.updateAutoCheck) then
                 settings.updateAutoCheck = not settings.updateAutoCheck
                 if settings.updateAutoCheck then updateCheckVersion() end
