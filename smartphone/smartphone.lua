@@ -529,10 +529,18 @@ local function automaticModeSwitch()
         return
     end
 
-    local shouldBeDark = ac.getSim().timeHours > 9 and ac.getSim().timeHours < 19
-    if player.phoneMode ~= shouldBeDark then
-        player.phoneMode = shouldBeDark
-        updateColors()
+    if player.cspVersion >= 3459 then
+        local shouldBeDark = ac.getSunAngle() > 84
+        if player.phoneMode ~= shouldBeDark then
+            player.phoneMode = shouldBeDark
+            updateColors()
+        end
+    else
+        local shouldBeDark = ac.getSim().timeHours > 9 and ac.getSim().timeHours < 19
+        if player.phoneMode ~= shouldBeDark then
+            player.phoneMode = shouldBeDark
+            updateColors()
+        end
     end
 end
 
@@ -743,18 +751,18 @@ local function deleteOldestMessages()
         if #chat.messages > settings.chatKeepSize and
             currentTime - chat.messages[index][4] > (settings.chatOlderThan * 10) then
             table.remove(chat.messages, index)
-            removedAny = true
+            removedMsg = true
         else
             index = index + 1
         end
     end
-    
+
     if removedMsg then
         local activeUsernames = {}
         for i = 1, #chat.messages do
             activeUsernames[chat.messages[i][2]] = true
         end
-        
+
         for username, _ in pairs(chat.usernameColors) do
             if not activeUsernames[username] then
                 chat.usernameColors[username] = nil
