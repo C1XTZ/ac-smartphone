@@ -1,9 +1,6 @@
 --made by C1XTZ
 --if you're reading any of this let me preface this by saying: If you're going 'what the fuck is this idiot doing??' it's likely that I said the same thing while writing it.
 ui.setAsynchronousImagesLoading(true)
-local WINDOWFLAGS = bit.bor(ui.WindowFlags.NoDecoration, ui.WindowFlags.NoBackground, ui.WindowFlags.NoNav, ui.WindowFlags.NoInputs, ui.WindowFlags.NoScrollbar)
-local WINDOWFLAGSINPUT = bit.bor(ui.WindowFlags.NoDecoration, ui.WindowFlags.NoBackground, ui.WindowFlags.NoNav, ui.WindowFlags.NoScrollbar)
-local COLORPICKERFLAGS = bit.bor(ui.ColorPickerFlags.NoAlpha, ui.ColorPickerFlags.NoSidePreview, ui.ColorPickerFlags.NoDragDrop, ui.ColorPickerFlags.NoLabel, ui.ColorPickerFlags.DisplayRGB, ui.ColorPickerFlags.NoSmallPreview)
 
 --#region APP PERSISTENT SETTINGS
 
@@ -220,12 +217,19 @@ local audio = {
     },
 }
 
+local flags = {
+    window = bit.bor(ui.WindowFlags.NoDecoration, ui.WindowFlags.NoBackground, ui.WindowFlags.NoNav, ui.WindowFlags.NoInputs, ui.WindowFlags.NoScrollbar),
+    input = bit.bor(ui.WindowFlags.NoDecoration, ui.WindowFlags.NoBackground, ui.WindowFlags.NoNav, ui.WindowFlags.NoScrollbar),
+    colorpicker = bit.bor(ui.ColorPickerFlags.NoAlpha, ui.ColorPickerFlags.NoSidePreview, ui.ColorPickerFlags.NoDragDrop, ui.ColorPickerFlags.NoLabel, ui.ColorPickerFlags.DisplayRGB, ui.ColorPickerFlags.NoSmallPreview),
+}
+
 --#endregion
 
 --#region UTF8 HANDLING
 
 ---@param s string @Input string
 ---@return number @Character count (counts multibyte characters as 1)
+---Counts the number of characters in a UTF-8 encoded string.
 local function utf8len(s)
     local len, i = 0, 1
     while i <= #s do
@@ -248,6 +252,7 @@ end
 ---@param i number @Start character index
 ---@param j? number @End character index
 ---@return string @Substring of s from i to j
+---Extracts a substring from a UTF-8 encoded string.
 local function utf8sub(s, i, j)
     j = j or -1
     local pos = 1
@@ -284,6 +289,7 @@ end
 
 ---@param value number @The value to be scaled.
 ---@return number @The scaled value.
+---Scales the given value by the app scale.
 local function scale(value)
     return math.floor(app.scale * value)
 end
@@ -291,6 +297,7 @@ end
 ---@param title string @combined 'artist - title' string
 ---@return string @artist name string
 ---@return string @song title string
+---Splits the title string into artist and track name.
 local function splitTitle(title)
     local patterns = {
         '^(.-)%s*%- %s*(.+)$',
@@ -309,6 +316,7 @@ end
 
 ---@param timeString string @Input os.date string in 24-hour format (e.g., '14:30')
 ---@return string @Time string in 12-hour format (e.g., '02:30')
+---Converts a 24-hour time string to 12-hour format.
 local function to12hTime(timeString)
     local hour, minute = timeString:match('^(%d+):(%d+)$')
     hour, minute = tonumber(hour), tonumber(minute)
@@ -331,6 +339,8 @@ local function checkIfFriend(carIndex)
     return ac.DriverTags(ac.getDriverName(carIndex)).friend
 end
 
+---@return string @The community name of the current server.
+---Determines the community name of the current server.
 local function getServerCommunity()
     if not player.isOnline then return 'default' end
 
@@ -349,6 +359,7 @@ end
 
 ---@param tooltipString string @Text to be displayed in the tooltip.
 ---@param changeCursor? boolean @Changes the mouse cursor to ui.MouseCursor.Hand
+---Displays a tooltip for the last hovered item.
 local function lastItemHoveredTooltip(tooltipString, changeCursor)
     if ui.itemHovered() then
         if changeCursor then ui.setMouseCursor(ui.MouseCursor.Hand) end
@@ -377,6 +388,7 @@ end
 
 ---@param index integer @Car index
 ---@return rgbm @Driver tag color
+---Gets the color of the driver tag for the specified car index.
 local function getDriverColor(index)
     local name = ac.getDriverName(index)
     if not name or name == '' then return rgbm.colors.gray end
@@ -391,9 +403,10 @@ local function getDriverColor(index)
     return existingColor and existingColor ~= rgbm.colors.gray and existingColor or color
 end
 
----@param light rgbm @rgbm color to use if light mode
----@param dark rgbm @rgbm color to use if dark mode
----@return rgbm @rgbm color to be used for the given mode
+---@param light rgb|rgbm @rgbm color to use if light mode
+---@param dark rgb|rgbm @rgbm color to use if dark mode
+---@return rgb|rgbm @rgbm color to be used for the given mode
+---Picks the appropriate color based on the current mode.
 local function pickMode(light, dark)
     return (settings.darkMode or player.phoneMode) and dark or light
 end
@@ -402,6 +415,7 @@ end
 
 --#region GENERAL LOGIC FUNCTIONS
 
+---Updates the colors based on the current mode.
 local function updateColors()
     colors.final.display:set(pickMode(colors.displayColorLight, colors.displayColorDark))
     colors.final.header:set(pickMode(colors.headerColorLight, colors.headerColorDark))
@@ -468,6 +482,7 @@ local function updateAppMovement(dt)
     end
 end
 
+---Moves the app up.
 local function moveAppUp()
     if settings.appMove then
         movement.timer = settings.appMoveTimer
@@ -476,6 +491,7 @@ local function moveAppUp()
 end
 
 ---@param event table @audio event table (audio.category.event)
+---Plays the specified audio event.
 local function playAudio(event)
     if not settings.enableAudio or not event then return end
     local categoryFound
@@ -505,6 +521,7 @@ end
 
 local audioIndexes = {}
 ---@param tbl table @audio table (audio.category)
+---Plays a test audio event.
 local function playTestAudio(tbl)
     local t = {}
     for _, v in pairs(tbl) do
@@ -520,6 +537,7 @@ local function playTestAudio(tbl)
     return playAudio(t[audioIndexes[key]])
 end
 
+---Switches the phone mode automatically based on the current time or sun angle.
 local function automaticModeSwitch()
     if not settings.darkModeAuto then
         if player.phoneMode then
@@ -544,6 +562,7 @@ local function automaticModeSwitch()
     end
 end
 
+---Updates the community data from github.
 local function updateCommunityData()
     local now = os.time()
     local checkInterval = settings.dataCheckFailed and 3600 or 43200
@@ -591,6 +610,7 @@ end
 
 ---@param enable boolean @sets the width of the island
 ---@return vec2 @updated size of the island
+---Sets the width of the dynamic island.
 local function setDynamicIslandSize(enable)
     local width = enable and 80 or 40
     return songInfo.dynamicIslandSize:set(width, 20)
@@ -602,7 +622,6 @@ local function updateSongInfo(forced)
     local current = ac.currentlyPlaying()
     local artist = current.artist
     local title = current.title
-    local maxLength = 19
 
     if (current.artist:lower() == 'unknown artist' or current.artist == '') and current.title ~= '' then
         artist, title = splitTitle(current.title)
@@ -623,6 +642,7 @@ local function updateSongInfo(forced)
     end
 end
 
+---Starts the song information update interval.
 local function startSongInfo()
     updateSongInfo()
 
@@ -634,6 +654,7 @@ local function startSongInfo()
     songInfo.updateInterval = setInterval(updateSongInfo, 2, 'updateNP')
 end
 
+---Stops the song information update interval.
 local function stopSongInfo()
     if songInfo.updateInterval then
         clearInterval(songInfo.updateInterval)
@@ -683,9 +704,10 @@ end
 --#region CHAT LOGIC FUNCTIONS
 
 ---@param message string? @Optional, message to be sent instead of input field text.
+---Sends a chat message.
 local function sendChatMessage(message)
     if not chat.sendCd then
-        message = message and ac.sendChatMessage(message) or ac.sendChatMessage(chat.input.text)
+        ac.sendChatMessage(message or chat.input.text)
 
         table.insert(chat.input.history, { 0, player.driverName, chat.input.text, os.time() })
         if #chat.input.history > 15 then table.remove(chat.input.history, 1) end
@@ -743,6 +765,7 @@ local function matchMessage(isPlayer, message)
     return false
 end
 
+---Deletes the oldest messages from the chat.
 local function deleteOldestMessages()
     local currentTime = os.time()
     local index = 1
@@ -841,20 +864,21 @@ local function handleKeyboardInput()
     if utf8len(chat.input.text) >= inputMaxLen then return end
 
     chat.input.text = chat.input.text .. typed
-    return
 end
 
 --#endregion
 
 --#region DRAWING FUNCTIONS
 
+---Draws the background.
 local function drawDisplay()
     ui.drawRectFilled(vec2(scale(5), 0 + movement.smooth), ui.windowSize() - vec2(5, 0):scale(app.scale), colors.final.display, scale(50), ui.CornerFlags.Top)
 end
 
+---Draws the iPhone images.
 local function drawiPhone()
     ui.setCursor(vec2(0, 0))
-    ui.childWindow('OnTopImages', vec2(app.images.phoneAtlasSize.x / 2, app.images.phoneAtlasSize.y), false, WINDOWFLAGS, function()
+    ui.childWindow('OnTopImages', vec2(app.images.phoneAtlasSize.x / 2, app.images.phoneAtlasSize.y), false, flags.window, function()
         ui.drawImage(app.images.phoneAtlasPath, vec2(0, movement.smooth), vec2(app.images.phoneAtlasSize.x / 2, app.images.phoneAtlasSize.y + movement.smooth), rgb.colors.white, vec2(0 / 2, 0), vec2(1 / 2, 1))
         if not (settings.darkMode or player.phoneMode) then
             local padding = scale(2)
@@ -863,6 +887,7 @@ local function drawiPhone()
     end)
 end
 
+---Draws the ping.
 local function drawPing()
     local ping = player.car.ping
 
@@ -890,6 +915,7 @@ local function drawPing()
     end
 end
 
+---Draws the time.
 local function drawTime()
     local time = os.date('%H:%M')
     local timeText = settings.badTime and to12hTime(time) or time
@@ -910,6 +936,7 @@ local function drawTime()
     end
 end
 
+---Draws the dynamic island.
 local function drawDynamicIsland()
     ui.drawRectFilled(vec2((ui.windowWidth() / 2 - scale(songInfo.dynamicIslandSize.x)), scale(songInfo.dynamicIslandSize.y) + movement.smooth), vec2((ui.windowWidth() / 2 + scale(songInfo.dynamicIslandSize.x)), scale(songInfo.dynamicIslandSize.y * 2) + movement.smooth), rgb.colors.black, scale(10))
     if not settings.hideCamera or not settings.songInfo or songInfo.isPaused then
@@ -919,6 +946,7 @@ local function drawDynamicIsland()
     end
 end
 
+---Draws the header of the chat window.
 local function drawHeader()
     local headerPadding = vec2(11, 9):scale(app.scale)
     local headerSize = vec2(ui.windowWidth() - scale(11), scale(100) + movement.smooth)
@@ -952,6 +980,7 @@ local function drawHeader()
     end
 end
 
+---Draws the song information.
 local function drawSongInfo()
     if settings.songInfo then
         if ui.isImageReady(ac.currentlyPlaying()) and songInfo.isPaused == false then
@@ -976,10 +1005,11 @@ local function drawSongInfo()
     end
 end
 
+---Draws the chat messages.
 local function drawMessages()
     ui.pushClipRect(vec2(0, 0), vec2(ui.windowWidth(), (scale(500) - chat.input.offset) + movement.smooth))
     ui.setCursor(vec2(13, 100):scale(app.scale) + vec2(0, movement.smooth))
-    ui.childWindow('Messages', vec2(266, 400 - chat.input.offset):scale(app.scale), false, WINDOWFLAGS, function()
+    ui.childWindow('Messages', vec2(266, 400 - chat.input.offset):scale(app.scale), false, flags.window, function()
         local messageFontSize = scale(settings.chatFontSize)
         local usernameFontSize = scale(settings.chatFontSize - 2)
         local timestampFontSize = scale(settings.chatFontSize - 4)
@@ -1123,6 +1153,7 @@ local function drawMessages()
     ui.popClipRect()
 end
 
+---Draws the emoji picker button and window.
 local function drawEmojiPicker()
     local buttonPos = vec2(29, 17):scale(app.scale)
     local buttonSize = vec2(24, 24):scale(app.scale)
@@ -1158,7 +1189,7 @@ local function drawEmojiPicker()
         local emojiOffset = vec2(0, 2):scale(app.scale)
 
         ui.setCursor(vec2(windowPos.x, ui.windowHeight() - windowPos.y - chat.input.offset))
-        ui.childWindow('EmojiPicker', windowSize, false, WINDOWFLAGS, function()
+        ui.childWindow('EmojiPicker', windowSize, false, flags.window, function()
             ui.setCursor(vec2(0, ui.windowHeight() - windowSize.y))
             ui.drawRectFilled(ui.getCursor(), windowSize, colors.final.message, rounding)
 
@@ -1195,13 +1226,14 @@ local function drawEmojiPicker()
     ui.popDWriteFont()
 end
 
+---Draws the custom input box for the chat.
 local function drawInputCustom()
     local inputSize = vec2(235, 32):scale(app.scale) + vec2(0, chat.input.offset)
     local inputBoxSize = inputSize - vec2(5, 5):scale(app.scale)
     local inputFontSize = scale(settings.chatFontSize)
     local inputWrap = scale(190)
     ui.setCursor(vec2(scale(42), (ui.windowHeight() - scale(32) - chat.input.offset) + movement.smooth))
-    ui.childWindow('ChatInput', inputSize, false, WINDOWFLAGSINPUT, function()
+    ui.childWindow('ChatInput', inputSize, false, flags.input, function()
         ui.beginOutline()
         ui.drawRectFilled(vec2(2, 2):scale(app.scale), inputBoxSize, colors.final.display, scale(10))
         ui.endOutline(pickMode(colors.transparent.black10, colors.transparent.white10), math.max(1, math.round(1 * app.scale, 1)))
@@ -1303,7 +1335,7 @@ end
 
 --#region APP UPDATER
 local updateStatus = {
-    text  = {
+    text = {
         [0] = 'C1XTZ: You shouldnt be reading this',
         [1] = 'Updated: The app was successfully updated',
         [2] = 'No Change: The latest version is already installed',
@@ -1329,6 +1361,8 @@ local releaseURL = 'https://api.github.com/repos/C1XTZ/ac-smartphone/releases/la
 local doUpdate = (os.time() - settings.updateLastCheck) / 86400 > settings.updateInterval
 local mainFile, assetFile = appName .. '.lua', appName .. '.zip'
 
+---@param downloadUrl string @The URL to download the update from
+---Applies the update from the specified URL.
 local function updateApplyUpdate(downloadUrl)
     web.get(downloadUrl, function(downloadErr, downloadResponse)
         if downloadErr then
@@ -1363,6 +1397,8 @@ local function updateApplyUpdate(downloadUrl)
     end)
 end
 
+---@param manual boolean? @Whether the update check is manual
+---Checks for updates and handles the update process.
 local function updateCheckVersion(manual)
     settings.updateLastCheck = os.time()
 
@@ -1442,7 +1478,7 @@ if player.isOnline then
 
             if isPlayer then
                 if senderCarIndex == 0 then
-                    return playAudio(audio.message.send)
+                    playAudio(audio.message.send)
                 else
                     if isFriend or settings.messagesNonFriends then
                         playAudio(audio.message.recieve)
@@ -1451,22 +1487,22 @@ if player.isOnline then
                         setTimeout(function()
                             playAudio(audio.notification.regular)
                         end, 0.4)
-                        return
                     end
                 end
             else
                 if settings.messagesServer then
-                    return playAudio(audio.message.recieve)
+                    playAudio(audio.message.recieve)
                 end
             end
         end
+        return false
     end)
 end
 
 if player.isOnline and settings.connectionEvents then
     ---@param connectedCarIndex number @Car index of the car that joined/left
     ---@param action string @joined/left string
-    ---adds system messages for join/leave events.
+    ---Adds system messages for join/leave events.
     local function connectionHandler(connectedCarIndex, action)
         local isFriend = checkIfFriend(connectedCarIndex)
         if not settings.connectionEventsFriendsOnly or isFriend then
@@ -1766,7 +1802,7 @@ function script.windowMainSettings()
                 ui.columns(2, false)
                 ui.text('Message Color Own')
                 ui.setNextItemWidth(132 * ac.getUI().uiScale)
-                local messageColorSelfChange = ui.colorPicker('Display Color Picker', settings.messageColorSelf, COLORPICKERFLAGS)
+                local messageColorSelfChange = ui.colorPicker('Display Color Picker', settings.messageColorSelf, flags.colorpicker)
                 if ui.button('Reset to default ') then
                     settings.messageColorSelf = colors.iMessageBlue:clone()
                     updateColors()
@@ -1776,7 +1812,7 @@ function script.windowMainSettings()
 
                 ui.text('Message Color Friends')
                 ui.setNextItemWidth(132 * ac.getUI().uiScale)
-                local messageColorFriendChange = ui.colorPicker('Text Color Picker', settings.messageColorFriend, COLORPICKERFLAGS)
+                local messageColorFriendChange = ui.colorPicker('Text Color Picker', settings.messageColorFriend, flags.colorpicker)
                 if ui.button('Reset to default') then
                     settings.messageColorFriend = colors.iMessageGreen:clone()
                     updateColors()
@@ -1807,7 +1843,7 @@ function script.windowMain(dt)
     if app.hovered or chat.input.active then moveAppUp() end
     if settings.forceBottom then forceAppToBottom() end
 
-    ui.childWindow('Phone', vec2(app.images.phoneAtlasSize.x / 2, app.images.phoneAtlasSize.y), false, WINDOWFLAGS, function()
+    ui.childWindow('Phone', vec2(app.images.phoneAtlasSize.x / 2, app.images.phoneAtlasSize.y), false, flags.window, function()
         drawDisplay()
 
         drawHeader()
