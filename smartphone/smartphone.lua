@@ -63,8 +63,8 @@ local settings = ac.storage {
     dataCheckFailed = false,
 
     customColor = false,
-    messageColorSelf = rgb(0, 0.49, 1),
-    messageColorFriend = rgb(0.2, 0.75, 0.3),
+    messageColorSelf = rgbm(0, 0.49, 1, 1),
+    messageColorFriend = rgbm(0.2, 0.75, 0.3, 1),
 }
 
 --#endregion
@@ -79,31 +79,31 @@ local colors = {
         white50 = rgbm(1, 1, 1, 0.5),
     },
     glowColor = rgbm(1, 1, 1, 0.65),
-    displayColorLight = rgb.colors.white,
-    displayColorDark = rgb.colors.black,
+    displayColorLight = rgbm.colors.white,
+    displayColorDark = rgbm.colors.black,
     headerColorLight = rgbm(0, 0, 0, 0.033),
     headerColorDark = rgbm(1, 1, 1, 0.075),
     headerLineColorLight = rgbm(0, 0, 0, 0.15),
     headerLineColorDark = rgbm(1, 1, 1, 0.075),
-    iMessageBlue = rgb(0, 0.49, 1),
-    iMessageLightGray = rgb(0.85, 0.85, 0.85),
-    iMessageDarkGray = rgb(0.15, 0.15, 0.15),
-    iMessageGreen = rgb(0.2, 0.75, 0.3),
+    iMessageBlue = rgbm(0, 0.49, 1, 1),
+    iMessageLightGray = rgbm(0.85, 0.85, 0.85, 1),
+    iMessageDarkGray = rgbm(0.15, 0.15, 0.15, 1),
+    iMessageGreen = rgbm(0.2, 0.75, 0.3, 1),
     iMessageSelected = rgbm(0, 0.49, 1, 0.33),
     emojiPickerButtonLight = rgbm(0, 0, 0, 0.33),
     emojiPickerButtonDark = rgbm(1, 1, 1, 0.33),
     emojiPickerButtonBGLight = rgbm(0, 0, 0, 0.1),
     emojiPickerButtonBGDark = rgbm(1, 1, 1, 0.15),
     final = {
-        display = rgb(),
+        display = rgbm(),
         header = rgbm(),
         headerLine = rgbm(),
-        elements = rgb(),
-        message = rgb(),
-        messageOwn = rgb(),
-        messageOwnText = rgb(),
-        messageFriend = rgb(),
-        messageFriendText = rgb(),
+        elements = rgbm(),
+        message = rgbm(),
+        messageOwn = rgbm(),
+        messageOwnText = rgbm(),
+        messageFriend = rgbm(),
+        messageFriendText = rgbm(),
         input = rgbm(),
         emojiPicker = rgbm(),
         emojiPickerBG = rgbm(),
@@ -138,7 +138,7 @@ local player = {
     phoneMode = settings.darkMode
 }
 
-local communities = stringify.parse(io.load('.\\apps\\lua\\smartphone\\src\\communities\\data\\list.lua'))
+local communities = stringify.parse(io.load('.\\apps\\lua\\smartphone\\src\\communities\\data\\list.lua') --[[@as string]]) --[[@as table]]
 
 local movement = {
     maxDistance = 487,
@@ -313,9 +313,9 @@ local function splitTitle(title)
     return 'Unknown Artist', title
 end
 
----@param timeString string @Input os.date string in 24-hour format (e.g., '14:30')
+---@param timeString string @Input string in 24-hour format (e.g., '14:30')
 ---@return string @Time string in 12-hour format (e.g., '02:30')
----Converts a 24-hour time string to 12-hour format.
+---Converts a 24-hour time string to 12-hour format and the time period (AM/PM).
 local function to12hTime(timeString)
     local hour, minute = timeString:match('^(%d+):(%d+)$')
     hour, minute = tonumber(hour), tonumber(minute)
@@ -366,7 +366,7 @@ local function lastItemHoveredTooltip(tooltipString, changeCursor)
     end
 end
 
----@param color rgb The RGB color to calculate luminance for
+---@param color rgbm The RGB color to calculate luminance for
 ---@return number luminance The perceptual luminance value (0-1, where 0 is black and 1 is white)
 ---Calculate perceptual luminance (0-1 range) using Rec. 709 coefficients for blue and red, halved for green.
 local function getLuminance(color)
@@ -402,9 +402,9 @@ local function getDriverColor(index)
     return existingColor and existingColor ~= rgbm.colors.gray and existingColor or color
 end
 
----@param light rgb|rgbm @rgbm color to use if light mode
----@param dark rgb|rgbm @rgbm color to use if dark mode
----@return rgb|rgbm @rgbm color to be used for the given mode
+---@param light rgbm @rgbm color to use if light mode
+---@param dark rgbm @rgbm color to use if dark mode
+---@return rgbm @rgbm color to be used for the given mode
 ---Picks the appropriate color based on the current mode.
 local function pickMode(light, dark)
     return (settings.darkMode or player.phoneMode) and dark or light
@@ -428,13 +428,14 @@ local function updateColors()
     colors.final.messageOwn:set(settings.customColor and settings.messageColorSelf or colors.iMessageBlue)
     colors.final.messageFriend:set(settings.customColor and settings.messageColorFriend or colors.iMessageGreen)
 
-    colors.final.messageOwnText:set(getLuminance(colors.final.messageOwn) <= 0.225 and rgb.colors.white or rgb.colors.black)
-    colors.final.messageFriendText:set(getLuminance(colors.final.messageFriend) <= 0.225 and rgb.colors.white or rgb.colors.black)
+    colors.final.messageOwnText:set(getLuminance(colors.final.messageOwn) <= 0.225 and rgbm.colors.white or rgbm.colors.black)
+    colors.final.messageFriendText:set(getLuminance(colors.final.messageFriend) <= 0.225 and rgbm.colors.white or rgbm.colors.black)
 end
 
 local appWindow, windowHeight, appBottom = ac.accessAppWindow('IMGUI_LUA_Smartphone_main')
+---Forces the app to be at the bottom of the screen.
 local function forceAppToBottom()
-    if not appWindow:valid() then return end
+    if not appWindow or not appWindow:valid() then return end
 
     windowHeight = ac.getSim().windowHeight
     appBottom = windowHeight - appWindow:size().y
@@ -575,6 +576,7 @@ local function updateCommunityData()
         end
 
         local data = stringify.parse(response.body)
+        if not data or not communities then return error('Web request or Communities table is nil.') end
         if communities.version[1] == data.version[1] then
             return ac.log('Already using latest data.')
         end
@@ -585,7 +587,7 @@ local function updateCommunityData()
             file:close()
         end
 
-        for name, community in pairs(data) do
+        for name, community in pairs(data --[[@as table]]) do
             if name ~= 'default' and community.image then
                 local filename = community.image:match('([^\\]+)$')
                 local remoteImageUrl = 'https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/smartphone/src/communities/img/' .. filename
@@ -852,7 +854,7 @@ end
 local function drawiPhone()
     ui.setCursor(vec2(0, 0))
     ui.childWindow('OnTopImages', vec2(app.images.phoneAtlasSize.x / 2, app.images.phoneAtlasSize.y), false, flags.window, function()
-        ui.drawImage(app.images.phoneAtlasPath, vec2(0, movement.smooth), vec2(app.images.phoneAtlasSize.x / 2, app.images.phoneAtlasSize.y + movement.smooth), rgb.colors.white, vec2(0 / 2, 0), vec2(1 / 2, 1))
+        ui.drawImage(app.images.phoneAtlasPath, vec2(0, movement.smooth), vec2(app.images.phoneAtlasSize.x / 2, app.images.phoneAtlasSize.y + movement.smooth), rgbm.colors.white, vec2(0 / 2, 0), vec2(1 / 2, 1))
         if not (settings.darkMode or player.phoneMode) then
             local padding = scale(2)
             ui.drawImage(app.images.phoneAtlasPath, vec2(padding, movement.smooth), vec2(math.ceil(app.images.phoneAtlasSize.x / 2 - padding), app.images.phoneAtlasSize.y + movement.smooth), colors.glowColor, vec2(1 / 2, 0), vec2(2 / 2, 1))
@@ -890,7 +892,7 @@ end
 
 ---Draws the time.
 local function drawTime()
-    local time = os.date('%H:%M')
+    local time = os.date('%H:%M') --[[@as string]]
     local timeText = settings.badTime and to12hTime(time) or time
     local timeSize = scale(13)
     local timePosition = vec2(23, 22):scale(app.scale) + vec2(0, movement.smooth)
@@ -911,7 +913,7 @@ end
 
 ---Draws the dynamic island.
 local function drawDynamicIsland()
-    ui.drawRectFilled(vec2((ui.windowWidth() / 2 - scale(songInfo.dynamicIslandSize.x)), scale(songInfo.dynamicIslandSize.y) + movement.smooth), vec2((ui.windowWidth() / 2 + scale(songInfo.dynamicIslandSize.x)), scale(songInfo.dynamicIslandSize.y * 2) + movement.smooth), rgb.colors.black, scale(10))
+    ui.drawRectFilled(vec2((ui.windowWidth() / 2 - scale(songInfo.dynamicIslandSize.x)), scale(songInfo.dynamicIslandSize.y) + movement.smooth), vec2((ui.windowWidth() / 2 + scale(songInfo.dynamicIslandSize.x)), scale(songInfo.dynamicIslandSize.y * 2) + movement.smooth), rgbm.colors.black, scale(10))
     if not settings.hideCamera or not settings.songInfo or songInfo.isPaused then
         local camSize = scale(songInfo.dynamicIslandSize.y - 2)
         local camPos = math.ceil(ui.windowWidth() / 2 + scale(30))
@@ -938,10 +940,12 @@ local function drawHeader()
     local headerImagePosition = vec2(129, 47):scale(app.scale) + vec2(0, movement.smooth)
     local headerImageRounding = scale(20)
 
+    if not communities then return error('Communities table is nil.') end
+
     if ui.isImageReady(communities[player.serverCommunity].image) then
-        ui.drawImageRounded(communities[player.serverCommunity].image, headerImagePosition, headerImagePosition + headerImageSize, headerImageRounding)
+        ui.drawImageRounded(communities[player.serverCommunity].image, headerImagePosition, headerImagePosition + headerImageSize, headerImageRounding, ui.CornerFlags.All)
     else
-        ui.drawImageRounded(communities['default'].image, headerImagePosition, headerImagePosition + headerImageSize, headerImageRounding)
+        ui.drawImageRounded(communities['default'].image, headerImagePosition, headerImagePosition + headerImageSize, headerImageRounding, ui.CornerFlags.All)
     end
 
     if app.hovered then
@@ -956,9 +960,10 @@ end
 ---Draws the song information.
 local function drawSongInfo()
     if settings.songInfo then
-        if ui.isImageReady(ac.currentlyPlaying()) and songInfo.isPaused == false then
+        --I'm using --[[@as ui.MediaPlayer]] here because ac.MusicData is not in the valid imageSources for some reason?
+        if ui.isImageReady(ac.currentlyPlaying() --[[@as ui.MediaPlayer]]) and songInfo.isPaused == false then
             ui.setCursor(vec2(20, 100):scale(app.scale))
-            ui.drawImageRounded(ac.currentlyPlaying(), vec2((ui.windowWidth() / 2) - scale(74), scale(23) + movement.smooth), vec2((ui.windowWidth() / 2) - scale(60), scale(37) + movement.smooth), scale(3), ui.CornerFlags.All)
+            ui.drawImageRounded(ac.currentlyPlaying() --[[@as ui.MediaPlayer]], vec2((ui.windowWidth() / 2) - scale(74), scale(23) + movement.smooth), vec2((ui.windowWidth() / 2) - scale(60), scale(37) + movement.smooth), scale(3), ui.CornerFlags.All)
         end
         local songFontSize = scale(12)
         local songPosition = vec2(scale(86), scale(22) + movement.smooth)
@@ -998,7 +1003,7 @@ local function drawMessages()
                 local messageUsername = chat.messages[i][2]
                 local messageUsernameColor = chat.usernameColors[messageUsername] or rgbm.colors.gray
                 local messageTextContent = chat.messages[i][3]
-                local messageTimestamp = settings.badTime and to12hTime(os.date('%H:%M', chat.messages[i][4])) .. ' ' .. player.timePeriod or os.date('%H:%M', chat.messages[i][4])
+                local messageTimestamp = settings.badTime and to12hTime(os.date('%H:%M', chat.messages[i][4]) --[[@as string]]) .. ' ' .. player.timePeriod or os.date('%H:%M', chat.messages[i][4]) --[[@as string]]
                 local fontWeight = app.font.regular
 
                 if (i == #chat.messages and settings.chatLatestBold) or (messageTextContent:lower():find('%f[%a_]' .. player.driverName:lower() .. '%f[%A_]') and messageUserIndex > 0) then
@@ -1032,14 +1037,14 @@ local function drawMessages()
                         ui.pushDWriteFont(app.font.bold)
                         local timestampSize = ui.measureDWriteText(messageTimestamp, timestampFontSize)
                         ui.setCursor(vec2(math.ceil(ui.windowWidth() - timestampSize.x - scale(6)), msgDist))
-                        ui.dwriteTextAligned(messageTimestamp, timestampFontSize, ui.Alignment.Start, ui.Alignment.Start, timestampSize, true, rgb.colors.gray)
+                        ui.dwriteTextAligned(messageTimestamp, timestampFontSize, ui.Alignment.Start, ui.Alignment.Start, timestampSize, true, rgbm.colors.gray)
                         ui.popDWriteFont()
                         msgDist = math.ceil(msgDist + timestampSize.y)
                     end
 
                     msgDist = math.ceil(msgDist + messagePadding.y + messagePadding.y / 2)
                 elseif messageUserIndex > 0 then
-                    local bubbleColor, messageTextColor = colors.final.message, pickMode(rgb.colors.black, rgb.colors.white)
+                    local bubbleColor, messageTextColor = colors.final.message, pickMode(rgbm.colors.black, rgbm.colors.white)
                     local isFriend = checkIfFriend(messageUserIndex)
 
                     if isFriend then
@@ -1082,7 +1087,7 @@ local function drawMessages()
                         ui.pushDWriteFont(app.font.bold)
                         local timestampSize = ui.measureDWriteText(messageTimestamp, timestampFontSize)
                         ui.setCursor(vec2(scale(5), msgDist))
-                        ui.dwriteTextAligned(messageTimestamp, timestampFontSize, ui.Alignment.Start, ui.Alignment.Start, timestampSize, true, rgb.colors.gray)
+                        ui.dwriteTextAligned(messageTimestamp, timestampFontSize, ui.Alignment.Start, ui.Alignment.Start, timestampSize, true, rgbm.colors.gray)
                         ui.popDWriteFont()
                         msgDist = math.ceil(msgDist + timestampSize.y)
                     end
@@ -1095,19 +1100,19 @@ local function drawMessages()
                     if i < 2 then
                         msgDist = math.ceil(msgDist - messageTextSize.y / 2)
                         ui.setCursor(vec2(math.ceil(ui.windowWidth() / 2 - messageTextSize.x / 2), math.ceil(msgDist)))
-                        ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Center, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgb.colors.gray)
+                        ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Center, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgbm.colors.gray)
                         ui.popDWriteFont()
                         msgDist = math.ceil(msgDist + messageTextSize.y + messagePadding.y / 2)
                     else
                         if chat.messages[i - 1][1] == messageUserIndex then
                             ui.setCursor(vec2(math.ceil(ui.windowWidth() / 2 - messageTextSize.x / 2), math.ceil(msgDist)))
-                            ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Center, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgb.colors.gray)
+                            ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Center, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgbm.colors.gray)
                             ui.popDWriteFont()
                             msgDist = math.ceil(msgDist + messageTextSize.y + messagePadding.y / 2)
                         else
                             msgDist = math.ceil(msgDist - messagePadding.y)
                             ui.setCursor(vec2(math.ceil(ui.windowWidth() / 2 - messageTextSize.x / 2), math.ceil(msgDist)))
-                            ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Center, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgb.colors.gray)
+                            ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Center, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgbm.colors.gray)
                             ui.popDWriteFont()
                             msgDist = math.ceil(msgDist + messageTextSize.y + messagePadding.y / 2)
                         end
@@ -1276,7 +1281,7 @@ local function drawInputCustom()
             local circleRad = scale(10)
             local circlePadding = circleRad + scale(2)
             local arrowRad = vec2(7, 7):scale(app.scale)
-            local buttonColor = rgb():set(colors.iMessageBlue)
+            local buttonColor = rgbm():set(colors.iMessageBlue)
 
             ui.setCursor(vec2(inputBoxSize.x - circlePadding, inputBoxSize.y - circlePadding))
 
@@ -1285,7 +1290,7 @@ local function drawInputCustom()
 
                 if chat.input.sendHovered then
                     ui.setMouseCursor(ui.MouseCursor.Hand)
-                    buttonColor:mul(rgb(0.6, 0.6, 0.8))
+                    buttonColor:mul(rgbm(0.6, 0.6, 0.8, 1))
 
                     if ui.mouseClicked(ui.MouseButton.Left) then
                         playAudio(audio.keyboard.enter)
@@ -1297,7 +1302,7 @@ local function drawInputCustom()
             end
 
             ui.drawCircleFilled(ui.getCursor(), circleRad, buttonColor, 25)
-            ui.drawIcon(ui.Icons.ArrowUp, ui.getCursor() - arrowRad, ui.getCursor() + arrowRad, rgb.colors.white)
+            ui.drawIcon(ui.Icons.ArrowUp, ui.getCursor() - arrowRad, ui.getCursor() + arrowRad, rgbm.colors.white)
         end
 
         chat.input.offset = math.min(math.floor(inputTextSize.y - scale(17)), scale(390))
