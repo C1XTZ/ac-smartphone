@@ -1,5 +1,8 @@
 --made by C1XTZ
 --if you're reading any of this let me preface this by saying: If you're going 'what the fuck is this idiot doing??' it's likely that I said the same thing while writing it.
+---@meta
+---@diagnostic disable: lowercase-global
+
 ui.setAsynchronousImagesLoading(true)
 
 --#region APP PERSISTENT SETTINGS
