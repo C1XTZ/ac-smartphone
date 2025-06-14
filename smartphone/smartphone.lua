@@ -154,7 +154,6 @@ local songInfo = {
     title = '',
     final = '',
     isPaused = false,
-    updateInterval = nil,
     dynamicIslandSize = vec2(40, 20)
 }
 
@@ -619,54 +618,28 @@ end
 ---@param forced? boolean @Whether to force updating the song information even if the artist and title have not changed.
 ---Updates the global songInfo table with the currently playing track’s artist and title, handles cases of unknown artists or paused playback, and formats the scrolling text display.
 local function updateSongInfo(forced)
+    if not settings.songInfo then return end
     local current = ac.currentlyPlaying()
-    local artist = current.artist
-    local title = current.title
 
-    if (current.artist:lower() == 'unknown artist' or current.artist == '') and current.title ~= '' then
-        artist, title = splitTitle(current.title)
+    if not forced and current.artist == songInfo.artist and current.title == songInfo.title and current.isPlaying == not songInfo.isPaused then
+        return
     end
 
-    if artist == '' and title == '' and not current.isPlaying then
+    if (current.artist:lower() == 'unknown artist' or current.artist == '') and current.title ~= '' then
+        current.artist, current.title = splitTitle(current.title)
+    end
+
+    if current.artist == '' and current.title == '' and not current.isPlaying then
         songInfo.final = ''
         if songInfo.dynamicIslandSize.x == 80 then setDynamicIslandSize(false) end
         songInfo.isPaused = true
     else
-        if artist ~= songInfo.artist or title ~= songInfo.title or forced then
-            songInfo.artist = artist
-            songInfo.title = title
-            songInfo.final = (songInfo.artist ~= '' and songInfo.artist:lower() ~= 'unknown artist') and (songInfo.artist .. ' - ' .. songInfo.title) or (songInfo.title)
-        end
+        songInfo.artist = current.artist
+        songInfo.title = current.title
+        songInfo.final = (current.artist ~= '' and current.artist:lower() ~= 'unknown artist') and (current.artist .. ' - ' .. current.title) or current.title
         if songInfo.dynamicIslandSize.x == 40 then setDynamicIslandSize(true) end
-        songInfo.isPaused = false
+        songInfo.isPaused = not current.isPlaying
     end
-end
-
----Starts the song information update interval.
-local function startSongInfo()
-    updateSongInfo()
-
-    if songInfo.updateInterval then
-        clearInterval(songInfo.updateInterval)
-        songInfo.updateInterval = nil
-    end
-
-    songInfo.updateInterval = setInterval(updateSongInfo, 2, 'updateNP')
-end
-
----Stops the song information update interval.
-local function stopSongInfo()
-    if songInfo.updateInterval then
-        clearInterval(songInfo.updateInterval)
-        songInfo.updateInterval = nil
-    end
-
-    songInfo.final = ''
-    songInfo.artist = ''
-    songInfo.title = ''
-    songInfo.isPaused = false
-
-    setDynamicIslandSize(false)
 end
 
 ---@param text string @The text content to be displayed, either static or scrolling.
@@ -1533,9 +1506,9 @@ function onShowWindow()
     updateColors()
     updateCommunityData()
 
-    if (settings.updateAutoCheck and doUpdate) or settings.updateAvailable then updateCheckVersion() end
+    updateSongInfo(true)
 
-    if settings.songInfo then startSongInfo() end
+    if (settings.updateAutoCheck and doUpdate) or settings.updateAvailable then updateCheckVersion() end
 
     if app.scale ~= math.round(settings.appScale, 1) then
         app.scale = math.round(settings.appScale, 1)
@@ -1620,7 +1593,13 @@ function script.windowMainSettings()
 
             if ui.checkbox('Show Music Information', settings.songInfo) then
                 settings.songInfo = not settings.songInfo
-                if settings.songInfo then startSongInfo() else stopSongInfo() end
+                if not settings.songInfo then
+                    songInfo.final = ''
+                    songInfo.artist = ''
+                    songInfo.title = ''
+                    songInfo.isPaused = false
+                    setDynamicIslandSize(false)
+                end
             end
             lastItemHoveredTooltip('If enabled, shows current song information if detected.\nCheck your CSP Music settings if there are issues.')
 
@@ -1835,6 +1814,7 @@ end
 function script.windowMain(dt)
     updateAppMovement(dt)
     automaticModeSwitch()
+    updateSongInfo()
 
     app.hovered = ui.windowHovered(ui.HoveredFlags.ChildWindows)
     player.car = ac.getCar(0)
