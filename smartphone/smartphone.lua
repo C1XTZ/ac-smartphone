@@ -14,6 +14,7 @@ local settings = ac.storage {
     darkModeAuto = false,
 
     forceBottom = true,
+    focusMode = false,
 
     updateLastCheck = 0,
     updateAutoCheck = false,
@@ -337,8 +338,8 @@ end
 ---@return boolean @Returns true if the driver at the given index is tagged as a friend.
 ---Determines whether the driver of the specified car is marked as a friend.
 local function checkIfFriend(carIndex)
-    if not ac.getCar(carIndex) then return false end
-    return ac.DriverTags(ac.getDriverName(carIndex)).friend
+    if not ac.getDriverName(carIndex) then return false end
+    return ac.DriverTags(ac.getDriverName(carIndex) --[[@as string]]).friend
 end
 
 ---@return string @The community name of the current server.
@@ -774,7 +775,7 @@ end
 
 ---Custom keybard handling for input field, may god have mercy on my soul.
 local function handleKeyboardInput()
-    local keyboardInput = ui.captureKeyboard(false, true, false)
+    local keyboardInput = ui.captureKeyboard(false, true)
     local msgLen = utf8len(chat.input.text) > 0
     local typed = keyboardInput:queue()
     local inputMaxLen = math.floor(490 * (13 / settings.chatFontSize) ^ 2)
@@ -882,13 +883,16 @@ local function drawPing()
         end
 
         if ping < 100 then
-            ui.drawImage(app.images.pingAtlasPath, pingPosition, pingPosition + pingSize, colors.final.elements, vec2(0 / 4, 0), vec2(1 / 4, 1))
+            ui.drawImage(app.images.pingAtlasPath, pingPosition, pingPosition + pingSize, colors.final.elements, vec2(0 / 5, 0), vec2(1 / 5, 1))
         elseif ping >= 100 and ping < 200 then
-            ui.drawImage(app.images.pingAtlasPath, pingPosition, pingPosition + pingSize, colors.final.elements, vec2(1 / 4, 0), vec2(2 / 4, 1))
+            ui.drawImage(app.images.pingAtlasPath, pingPosition, pingPosition + pingSize, colors.final.elements, vec2(1 / 5, 0), vec2(2 / 5, 1))
         elseif ping >= 200 and ping < 300 then
-            ui.drawImage(app.images.pingAtlasPath, pingPosition, pingPosition + pingSize, colors.final.elements, vec2(2 / 4, 0), vec2(3 / 4, 1))
+            ui.drawImage(app.images.pingAtlasPath, pingPosition, pingPosition + pingSize, colors.final.elements, vec2(2 / 5, 0), vec2(3 / 5, 1))
         elseif ping >= 300 then
-            ui.drawImage(app.images.pingAtlasPath, pingPosition, pingPosition + pingSize, colors.final.elements, vec2(3 / 4, 0), vec2(4 / 4, 1))
+            ui.drawImage(app.images.pingAtlasPath, pingPosition, pingPosition + pingSize, colors.final.elements, vec2(3 / 5, 0), vec2(4 / 5, 1))
+            if math.floor(os.clock() * 2) % 2 == 0 then
+                ui.drawImage(app.images.pingAtlasPath, pingPosition, pingPosition + pingSize, colors.final.elements, vec2(4 / 5, 0), vec2(5 / 5, 1))
+            end
         end
     end
 end
@@ -1009,6 +1013,8 @@ local function drawMessages()
                 local messageTimestamp = settings.badTime and to12hTime(os.date('%H:%M', chat.messages[i][4]) --[[@as string]]) .. ' ' .. player.timePeriod or os.date('%H:%M', chat.messages[i][4]) --[[@as string]]
                 local fontWeight = app.font.regular
 
+                if settings.focusMode and (messageUserIndex > 0 and not checkIfFriend(messageUserIndex)) then goto continue end
+
                 if (i == #chat.messages and settings.chatLatestBold) or (messageTextContent:lower():find('%f[%a_]' .. player.driverName:lower() .. '%f[%A_]') and messageUserIndex > 0) then
                     fontWeight = app.font.bold
                 else
@@ -1123,6 +1129,7 @@ local function drawMessages()
                 end
 
                 if (not app.hovered or chat.scrollBool) or (chat.input.active and chat.input.hovered) and ui.getScrollY() ~= ui.getScrollMaxY() then ui.setScrollHereY(-1) end
+                ::continue::
             end
         end
 
@@ -1341,6 +1348,7 @@ local appVersion = manifest:get('ABOUT', 'VERSION', 0.01)
 local releaseURL = 'https://api.github.com/repos/C1XTZ/ac-smartphone/releases/latest'
 local doUpdate = (os.time() - settings.updateLastCheck) / 86400 > settings.updateInterval
 local mainFile, assetFile = appName .. '.lua', appName .. '.zip'
+local carKeyFile = #io.scanDir(appFolder, '*.carkey') > 0
 
 ---@param downloadUrl string @The URL to download the update from
 ---Applies the update from the specified URL.
@@ -1455,7 +1463,7 @@ if player.isOnline then
 
             table.insert(chat.messages, { senderCarIndex, isPlayer and ac.getDriverName(senderCarIndex) or 'Server', message, os.time() })
 
-            moveAppUp()
+            if not settings.focusMode or isFriend or not isPlayer then moveAppUp() end
 
             if isPlayer then
                 if senderCarIndex == 0 then
@@ -1517,6 +1525,8 @@ function onShowWindow()
     updateSongInfo(true)
 
     if (settings.updateAutoCheck and doUpdate) or settings.updateAvailable then updateCheckVersion() end
+
+    if settings.focusMode then settings.focusMode = false end
 
     if app.scale ~= math.round(settings.appScale, 1) then
         app.scale = math.round(settings.appScale, 1)
@@ -1812,6 +1822,14 @@ function script.windowMainSettings()
                 end
             end
         end)
+
+        if carKeyFile then
+            ui.tabItem('Focus Mode', function()
+                ui.textColored('IF YOU ENABLE THIS I WILL TAKE NO RESPONSIBILITY\nWHEN YOU IGNORE ADMIN MESSAGES AND GET BANNED', rgbm.colors.red)
+                if ui.checkbox('Enable Focus Mode', settings.focusMode) then settings.focusMode = not settings.focusMode end
+                lastItemHoveredTooltip('If enabled, only displays Server messages.')
+            end)
+        end
     end)
 end
 
