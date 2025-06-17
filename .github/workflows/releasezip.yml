@@ -25,6 +25,7 @@ jobs:
         name: "Smartphone ${{ github.ref_name }}"
         body: |
           <p align="center"><img src="https://github.com/C1XTZ/ac-smartphone/blob/main/.github/img/repopreview.png" width="700"/></p>
+          
           ## Added:
 
           ## Changes:
@@ -48,6 +49,7 @@ jobs:
           (By default: `C:\Steam\steamapps\common\assettocorsa\apps\lua`)
 
           ## Known Issues:
+          - Username colors might be incorrect on servers that use custom name color scripts for players that reconnect in a different carslot.
           - Song Information will sometimes be picked up from the wrong source (e.g. Browser instead of Spotify), or not at all.  
             Try adding unwanted programs to the `Ignored processes` in the your CSP Music module settings.
           - When using the AssettoServer PatreonTwitchChatPlugin, some Twitch features like Announcements are not be displayed correctly and will result in empty lines
