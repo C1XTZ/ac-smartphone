@@ -1,7 +1,7 @@
 on:
   push:
     tags:
-      - 'v*'  
+      - "v*"
 
 jobs:
   build:
@@ -9,48 +9,97 @@ jobs:
     permissions:
       contents: write
     steps:
-    - uses: actions/checkout@master
-    - name: Archive Release
-      uses: thedoctor0/zip-release@0.7.1
-      with:
-        type: 'zip'
-        filename: 'smartphone.zip'
-        path: './smartphone/'
+      - uses: actions/checkout@master
+        with:
+          fetch-depth: 0
 
-    - name: Create Release
-      uses: ncipollo/release-action@v1.12.0
-      with:
-        artifacts: "smartphone.zip"
-        tag: ${{ github.ref }}
-        name: "Smartphone ${{ github.ref_name }}"
-        body: |
-          <p align="center"><img src="https://github.com/C1XTZ/ac-smartphone/blob/main/.github/img/repopreview.png" width="700"/></p>
-          
-          ## Added:
+      - name: Generate Changelog
+        id: changelog
+        run: |
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
 
-          ## Changes:
+          if [ -z "$PREVIOUS_TAG" ]; then
+            echo "No previous tag found, using all commits"
+            COMMITS=$(git log --oneline --pretty=format:"%h: %s")
+          else
+            echo "Previous tag: $PREVIOUS_TAG"
+            COMMITS=$(git log --oneline --pretty=format:"%h: %s" $PREVIOUS_TAG..HEAD)
+          fi
 
-          ## Updating & Installation:
-          ### Oldest Supported CSP Version: CSP 0.2.3 (3044)
-          ### Updating Ingame:
-            ![](https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/.github/img/updater.png)
-          1. Open the Smartphone Ingame
-          2. Select the `Update` Tab
-          3. Click the `Check for Update` button
-          4. Click the `Install Update` button
+          ADDED=""
+          CHANGED=""
 
-          ### Automatic Installation via Content Manager: 
-          1. Download `smartphone.zip`
-          2. Drag & Drop `smartphone.zip` into Content Manager and click `Install`
+          while IFS= read -r commit; do
+            if [[ $commit == *"add:"* ]]; then
+              ITEM=$(echo "$commit" | sed 's/add: //')
+              ADDED="$ADDED- $ITEM"$'\n'
+            elif [[ $commit == *"chg:"* ]]; then
+              ITEM=$(echo "$commit" | sed 's/chg: //')
+              CHANGED="$CHANGED- $ITEM"$'\n'
+            fi
+          done <<< "$COMMITS"
 
-          ### Manual Installation: 
-          1. Download `smartphone.zip`
-          2. Extract and place the `smartphone` folder inside the `\apps\lua` folder of your Assetto Corsa installation.
-          (By default: `C:\Steam\steamapps\common\assettocorsa\apps\lua`)
+          ADDED=$(echo "$ADDED" | sed '/^$/d')
+          CHANGED=$(echo "$CHANGED" | sed '/^$/d')
 
-          ## Known Issues:
-          - Username colors might be incorrect on servers that use custom name color scripts for players that reconnect in a different carslot.
-          - Song Information will sometimes be picked up from the wrong source (e.g. Browser instead of Spotify), or not at all.  
-            Try adding unwanted programs to the `Ignored processes` in the your CSP Music module settings.
-          - When using the AssettoServer PatreonTwitchChatPlugin, some Twitch features like Announcements are not be displayed correctly and will result in empty lines
+          ADDED_SECTION=""
+          CHANGED_SECTION=""
 
+          if [ -n "$ADDED" ]; then
+            ADDED_SECTION="## Added:"$'\n'"$ADDED"$'\n'
+          fi
+
+          if [ -n "$CHANGED" ]; then
+            CHANGED_SECTION="## Changes:"$'\n'"$CHANGED"$'\n'
+          fi
+
+          echo "ADDED_SECTION<<EOF" >> $GITHUB_OUTPUT
+          echo "$ADDED_SECTION" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          echo "CHANGED_SECTION<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGED_SECTION" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Archive Release
+        uses: thedoctor0/zip-release@0.7.1
+        with:
+          type: "zip"
+          filename: "smartphone.zip"
+          path: "./smartphone/"
+
+      - name: Create Release
+        uses: ncipollo/release-action@v1.12.0
+        with:
+          artifacts: "smartphone.zip"
+          tag: ${{ github.ref }}
+          name: "Smartphone ${{ github.ref_name }}"
+          makeLatest: true
+          body: |
+            <p align="center"><img src="https://github.com/C1XTZ/ac-smartphone/blob/main/.github/img/repopreview.png" width="700"/></p>
+
+            ${{ steps.changelog.outputs.ADDED_SECTION }}${{ steps.changelog.outputs.CHANGED_SECTION }}
+
+            ## Updating & Installation:
+            ### Oldest Supported CSP Version: CSP 0.2.3 (3044)
+            ### Updating Ingame:
+              ![](https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/.github/img/updater.png)
+            1. Open the Smartphone Ingame
+            2. Select the `Update` Tab
+            3. Click the `Check for Update` button
+            4. Click the `Install Update` button
+
+            ### Automatic Installation via Content Manager: 
+            1. Download `smartphone.zip`
+            2. Drag & Drop `smartphone.zip` into Content Manager and click `Install`
+
+            ### Manual Installation: 
+            1. Download `smartphone.zip`
+            2. Extract and place the `smartphone` folder inside the `\apps\lua` folder of your Assetto Corsa installation.
+            (By default: `C:\Steam\steamapps\common\assettocorsa\apps\lua`)
+
+            ## Known Issues:
+            - Username colors might be incorrect on servers that use custom name color scripts for players that reconnect in a different carslot.
+            - Song Information will sometimes be picked up from the wrong source (e.g. Browser instead of Spotify), or not at all.  
+              Make sure that `Show desktop overlay when using media keys` is enabled in your Spotify settings or try adding unwanted programs to the `Ignored processes` in the your CSP Music module settings.
+            - When using the AssettoServer PatreonTwitchChatPlugin, some Twitch features like Announcements are not be displayed correctly and will result in empty lines
