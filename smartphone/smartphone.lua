@@ -44,6 +44,7 @@ local settings = ac.storage {
     chatFontSize = 13,
     chatHideKickBan = false,
     chatHideAnnoying = true,
+    chatHideRaceMsg = false,
     chatLatestBold = false,
     chatUsernameColor = true,
 
@@ -737,6 +738,12 @@ local function matchMessage(isPlayer, message)
                         return true
                     end
                 end
+            end
+        end
+
+        if settings.chatHideRaceMsg and lowerMessage:find('in a race%.$') then
+            if not lowerMessage:find('you') and not lowerMessage:find(lowerPlayerName) then
+                return true
             end
         end
     end
@@ -1452,7 +1459,7 @@ if player.isOnline then
         local isPlayer = senderCarIndex > -1
         local isFriend = isPlayer and checkIfFriend(senderCarIndex)
         local isMentioned = message:lower():find('%f[%a_]' .. player.driverName:lower() .. '%f[%A_]')
-        local hideMessage = isPlayer and matchMessage(isPlayer, escapedMessage) and settings.chatHideAnnoying or matchMessage(isPlayer, escapedMessage) and settings.chatHideKickBan
+        local hideMessage = matchMessage(isPlayer, escapedMessage) and (isPlayer and settings.chatHideAnnoying or settings.chatHideKickBan)
 
         if not hideMessage and message:len() > 0 then
             deleteOldestMessages()
@@ -1723,6 +1730,13 @@ function script.windowMainSettings()
 
             if ui.checkbox('Hide Annoying Messages', settings.chatHideAnnoying) then settings.chatHideAnnoying = not settings.chatHideAnnoying end
             lastItemHoveredTooltip('If enabled, hides annoying messages from apps such as Pit Lane Penalty and Real Penalty.')
+
+            if settings.chatHideAnnoying then
+                ui.text('\t')
+                ui.sameLine()
+                if ui.checkbox('Include AssettoServer Race Challenge Messages', settings.chatHideRaceMsg) then settings.chatHideRaceMsg = not settings.chatHideRaceMsg end
+                lastItemHoveredTooltip('If enabled, includes server messages from the AssettoServer RaceChallengePlugin in the "Hide Annoying Messages" setting.')
+            end
         end)
 
         ui.tabItem('Audio', function()
@@ -1827,7 +1841,7 @@ function script.windowMainSettings()
             ui.tabItem('Focus Mode', function()
                 ui.textColored('IF YOU ENABLE THIS I WILL TAKE NO RESPONSIBILITY\nWHEN YOU IGNORE ADMIN MESSAGES AND GET BANNED', rgbm.colors.red)
                 if ui.checkbox('Enable Focus Mode', settings.focusMode) then settings.focusMode = not settings.focusMode end
-                lastItemHoveredTooltip('If enabled, only displays Server messages.')
+                lastItemHoveredTooltip('If enabled, only displays messages from yourself, friends and the server.')
             end)
         end
     end)
