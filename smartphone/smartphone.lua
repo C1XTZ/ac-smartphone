@@ -12,6 +12,10 @@ local settings = ac.storage {
 
     darkMode = false,
     darkModeAuto = false,
+    darkModeAutoDarkAngle = 84,
+    darkModeAutoLightAngle = 84,
+    darkModeAutoDarkTime = 19,
+    darkModeAutoLightTime = 9,
 
     forceBottom = true,
     focusMode = false,
@@ -553,13 +557,22 @@ local function automaticModeSwitch()
     end
 
     if player.cspVersion >= 3459 then
-        local shouldBeDark = ac.getSunAngle() > 84
+        local sunAngle = ac.getSunAngle()
+        local timeHours = ac.getSim().timeHours
+
+        local shouldBeDark = false
+        if (timeHours > 12 and sunAngle > settings.darkModeAutoDarkAngle) or (timeHours < 12 and sunAngle > settings.darkModeAutoLightAngle) then
+            shouldBeDark = true
+        end
+
         if player.phoneMode ~= shouldBeDark then
             player.phoneMode = shouldBeDark
             updateColors()
         end
     else
-        local shouldBeDark = ac.getSim().timeHours > 9 and ac.getSim().timeHours < 19
+        local currentTime = ac.getSim().timeHours + ac.getSim().timeMinutes / 60
+        local shouldBeDark = not (currentTime > settings.darkModeAutoLightTime and currentTime < settings.darkModeAutoDarkTime)
+
         if player.phoneMode ~= shouldBeDark then
             player.phoneMode = shouldBeDark
             updateColors()
@@ -1608,6 +1621,37 @@ function script.windowMainSettings()
                 if ui.checkbox('Automatic Light/Dark Mode', settings.darkModeAuto) then settings.darkModeAuto = not settings.darkModeAuto end
                 updateColors()
                 lastItemHoveredTooltip('If enabled, app will automatically switch between dark/light mode.')
+                if settings.darkModeAuto then
+                    if player.cspVersion >= 3459 then
+                        ui.text('\t')
+                        ui.sameLine()
+                        ui.text('Current Sun Angle: ' .. math.round(ac.getSunAngle(), 1) .. '°')
+                        ui.text('\t')
+                        ui.sameLine()
+                        settings.darkModeAutoDarkAngle = ui.slider('##darkModeAutoDarkAngle', settings.darkModeAutoDarkAngle, 0, 180, 'Evening Sun Angle: ' .. '%.0f°')
+                        lastItemHoveredTooltip('The angle at which the app will switch to dark mode.\nLower values mean earlier in the day.')
+                        ui.text('\t')
+                        ui.sameLine()
+                        settings.darkModeAutoLightAngle = ui.slider('##darkModeAutoLightAngle', settings.darkModeAutoLightAngle, 0, 180, 'Morning Sun Angle: ' .. '%.0f°')
+                        lastItemHoveredTooltip('The angle at which the app will switch to light mode.\nLower values mean later in the day.')
+                    else
+                        ui.text('\t')
+                        ui.sameLine()
+                        ui.text(string.format('Current Time: %02d:%02d', ac.getSim().timeHours, ac.getSim().timeMinutes))
+                        ui.text('\t')
+                        ui.sameLine()
+                        local darkVal = math.floor(settings.darkModeAutoDarkTime * 2 + 0.5)
+                        local darkTimeStr = string.format('Dark Mode After: %02d:%02d', math.floor(darkVal / 2), (darkVal % 2) * 30)
+                        settings.darkModeAutoDarkTime = ui.slider('##darkModeAutoDarkTime', darkVal, 0, 47, darkTimeStr, true) / 2
+                        lastItemHoveredTooltip('The time at which the app will switch to dark mode.')
+                        ui.text('\t')
+                        ui.sameLine()
+                        local lightVal = math.floor(settings.darkModeAutoLightTime * 2 + 0.5)
+                        local lightTimeStr = string.format('Light Mode After: %02d:%02d', math.floor(lightVal / 2), (lightVal % 2) * 30)
+                        settings.darkModeAutoLightTime = ui.slider('##darkModeAutoLightTime', lightVal, 0, 47, lightTimeStr, true) / 2
+                        lastItemHoveredTooltip('The time at which the app will switch to light mode.')
+                    end
+                end
             end
 
             if ui.checkbox('Force App to Bottom', settings.forceBottom) then settings.forceBottom = not settings.forceBottom end
