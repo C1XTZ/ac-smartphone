@@ -754,7 +754,7 @@ local function matchMessage(isPlayer, message)
             end
         end
 
-        if settings.chatHideRaceMsg and lowerMessage:find('in a race%.$') then
+        if settings.chatHideRaceMsg and lowerMessage:find('in a race%%%.$') then
             if not lowerMessage:find('you') and not lowerMessage:find(lowerPlayerName) then
                 return true
             end
