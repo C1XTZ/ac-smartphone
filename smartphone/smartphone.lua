@@ -1569,9 +1569,11 @@ function script.windowMainSettings()
                 if settings.updateAutoCheck then updateCheckVersion() end
             end
             if settings.updateAutoCheck then
-                ui.text('\t')
-                ui.sameLine()
+                ui.indent()
+
                 settings.updateInterval = ui.slider('##UpdateInterval', settings.updateInterval, 1, 60, 'Check for Update every ' .. '%.0f days')
+
+                ui.unindent()
             end
             lastItemHoveredTooltip('If enabled, will automatically check for updates every X days.')
 
@@ -1601,14 +1603,16 @@ function script.windowMainSettings()
             end
         end)
         ui.tabItem('App', function()
-            ui.text('\t')
-            ui.sameLine()
+            ui.indent()
+
             settings.appScale = ui.slider('##AppScale', settings.appScale, 0.5, 2, 'App Scale: ' .. '%.01f%')
             if app.scale ~= math.round(settings.appScale, 1) then
                 moveAppUp()
                 app.scale = math.round(settings.appScale, 1)
                 app.images.phoneAtlasSize = ui.imageSize(app.images.phoneAtlasPath):scale(app.scale)
             end
+
+            ui.unindent()
 
             if ui.checkbox('Dark Mode', settings.darkMode) then
                 settings.darkMode = not settings.darkMode
@@ -1622,35 +1626,29 @@ function script.windowMainSettings()
                 updateColors()
                 lastItemHoveredTooltip('If enabled, app will automatically switch between dark/light mode.')
                 if settings.darkModeAuto then
+                    ui.indent()
                     if player.cspVersion >= 3459 then
-                        ui.text('\t')
-                        ui.sameLine()
                         ui.text('Current Sun Angle: ' .. math.round(ac.getSunAngle(), 1) .. '°')
-                        ui.text('\t')
-                        ui.sameLine()
+
                         settings.darkModeAutoDarkAngle = ui.slider('##darkModeAutoDarkAngle', settings.darkModeAutoDarkAngle, 0, 180, 'Evening Sun Angle: ' .. '%.0f°')
                         lastItemHoveredTooltip('The angle at which the app will switch to dark mode.\nLower values mean earlier in the day.')
-                        ui.text('\t')
-                        ui.sameLine()
+
                         settings.darkModeAutoLightAngle = ui.slider('##darkModeAutoLightAngle', settings.darkModeAutoLightAngle, 0, 180, 'Morning Sun Angle: ' .. '%.0f°')
                         lastItemHoveredTooltip('The angle at which the app will switch to light mode.\nLower values mean later in the day.')
                     else
-                        ui.text('\t')
-                        ui.sameLine()
                         ui.text(string.format('Current Time: %02d:%02d', ac.getSim().timeHours, ac.getSim().timeMinutes))
-                        ui.text('\t')
-                        ui.sameLine()
+
                         local darkVal = math.floor(settings.darkModeAutoDarkTime * 2 + 0.5)
                         local darkTimeStr = string.format('Dark Mode After: %02d:%02d', math.floor(darkVal / 2), (darkVal % 2) * 30)
                         settings.darkModeAutoDarkTime = ui.slider('##darkModeAutoDarkTime', darkVal, 0, 47, darkTimeStr, true) / 2
                         lastItemHoveredTooltip('The time at which the app will switch to dark mode.')
-                        ui.text('\t')
-                        ui.sameLine()
+
                         local lightVal = math.floor(settings.darkModeAutoLightTime * 2 + 0.5)
                         local lightTimeStr = string.format('Light Mode After: %02d:%02d', math.floor(lightVal / 2), (lightVal % 2) * 30)
                         settings.darkModeAutoLightTime = ui.slider('##darkModeAutoLightTime', lightVal, 0, 47, lightTimeStr, true) / 2
                         lastItemHoveredTooltip('The time at which the app will switch to light mode.')
                     end
+                    ui.unindent()
                 end
             end
 
@@ -1673,45 +1671,37 @@ function script.windowMainSettings()
             lastItemHoveredTooltip('If enabled, shows current song information if detected.\nCheck your CSP Music settings if there are issues.')
 
             if settings.songInfo then
-                ui.text('\t')
-                ui.sameLine()
+                ui.indent()
                 if ui.checkbox('Always Scroll Text', settings.songInfoscrollAlways) then
                     settings.songInfoscrollAlways = not settings.songInfoscrollAlways
                     updateSongInfo(true)
                 end
                 lastItemHoveredTooltip('If enabled, will scroll text even if it could be displayed statically.')
 
-                ui.text('\t')
-                ui.sameLine()
                 if ui.checkbox('Hide Selfie Camera', settings.hideCamera) then settings.hideCamera = not settings.hideCamera end
                 lastItemHoveredTooltip('If enabled, will hide the selfie camera below the song information.')
 
-                ui.text('\t')
-                ui.sameLine()
                 settings.songInfoSpacing = ui.slider('##Spacing', settings.songInfoSpacing, 0, 300, 'Spacing: %.0f', true)
                 lastItemHoveredTooltip('The amount of spacing between the end and start of the song.')
 
-                ui.text('\t')
-                ui.sameLine()
                 settings.songInfoScrollSpeed = ui.slider('##ScrollSpeed', settings.songInfoScrollSpeed, 1, 300, 'Scroll Speed: %.0f')
                 lastItemHoveredTooltip('Speed that the text is scrolled at.')
 
-                ui.text('\t')
-                ui.sameLine()
                 local scrollDirStr = settings.songInfoScrollDirection == 0 and 'Left' or 'Right'
                 settings.songInfoScrollDirection = ui.slider('##ScrollDirection', settings.songInfoScrollDirection, 0, 1, 'Scroll Direction: ' .. scrollDirStr, true)
+                ui.unindent()
             end
         end)
 
         ui.tabItem('Chat', function()
-            ui.text('\t')
-            ui.sameLine()
+            ui.indent()
+
             settings.chatFontSize = ui.slider('##ChatFontSize', settings.chatFontSize, 6, 36, 'Chat Fontsize: ' .. '%.0f')
 
-            ui.text('\t')
-            ui.sameLine()
             settings.chatScrollDistance = ui.slider('##chatScrollDistance', settings.chatScrollDistance, 1, 100, 'Chat Scroll Distance: ' .. '%.0f')
             lastItemHoveredTooltip('Distance to scroll the chat per mousewheel scroll')
+
+            ui.unindent()
 
             if ui.checkbox('Chat Inactivity Minimizes Phone', settings.appMove) then
                 settings.appMove = not settings.appMove
@@ -1723,29 +1713,29 @@ function script.windowMainSettings()
             lastItemHoveredTooltip('If enabled, the app will move down to free screen space.')
 
             if settings.appMove then
-                ui.text('\t')
-                ui.sameLine()
+                ui.indent()
+
                 local chatInactive, chatInactiveChange = ui.slider('##appMoveTimer', settings.appMoveTimer, 1, 120, 'Inactivity: ' .. '%.0f seconds')
                 settings.appMoveTimer = chatInactive
                 if chatInactiveChange then movement.timer = settings.appMoveTimer end
                 lastItemHoveredTooltip('Time before app moves down.')
 
-                ui.text('\t')
-                ui.sameLine()
                 settings.appMoveSpeed = ui.slider('##appMoveSpeed', settings.appMoveSpeed, 1, 20, 'Speed: ' .. '%.0f')
                 lastItemHoveredTooltip('How fast the app should move up/down.')
+
+                ui.unindent()
             end
 
             if ui.checkbox('Chat History Settings', settings.chatPurge) then settings.chatPurge = not settings.chatPurge end
             lastItemHoveredTooltip('If enabled, allows you to change the chat message history settings')
             if settings.chatPurge then
-                ui.text('\t')
-                ui.sameLine()
+                ui.indent()
+
                 settings.chatKeepSize = ui.slider('##ChatKeepSize', settings.chatKeepSize, 10, 500, 'Always keep %.0f Messages')
 
-                ui.text('\t')
-                ui.sameLine()
                 settings.chatOlderThan = ui.slider('##ChatOlderThan', settings.chatOlderThan, 1, 60, 'Remove if older than %.0f min')
+
+                ui.unindent()
             end
 
             ui.drawSimpleLine(ui.getCursor(), vec2(ui.windowWidth(), ui.getCursorY()), ac.getUI().accentColor)
@@ -1760,10 +1750,12 @@ function script.windowMainSettings()
             if ui.checkbox('Show Join/Leave Messages', settings.connectionEvents) then settings.connectionEvents = not settings.connectionEvents end
             lastItemHoveredTooltip('If enabled, shows server message when a player joins/leaves the server.')
             if settings.connectionEvents then
-                ui.text('\t')
-                ui.sameLine()
+                ui.indent()
+
                 if ui.checkbox('Friends Only', settings.connectionEventsFriendsOnly) then settings.connectionEventsFriendsOnly = not settings.connectionEventsFriendsOnly end
                 lastItemHoveredTooltip('If enabled, only shows join/leave messages of friends.')
+
+                ui.unindent()
             end
 
             if ui.checkbox('Highlight Latest Message', settings.chatLatestBold) then settings.chatLatestBold = not settings.chatLatestBold end
@@ -1776,10 +1768,12 @@ function script.windowMainSettings()
             lastItemHoveredTooltip('If enabled, hides annoying messages from apps such as Pit Lane Penalty and Real Penalty.')
 
             if settings.chatHideAnnoying then
-                ui.text('\t')
-                ui.sameLine()
+                ui.indent()
+
                 if ui.checkbox('Include AssettoServer Race Challenge Messages', settings.chatHideRaceMsg) then settings.chatHideRaceMsg = not settings.chatHideRaceMsg end
                 lastItemHoveredTooltip('If enabled, includes server messages from the AssettoServer RaceChallengePlugin in the "Hide Annoying Messages" setting.')
+
+                ui.unindent()
             end
         end)
 
@@ -1792,56 +1786,53 @@ function script.windowMainSettings()
                 if ui.checkbox('Enable Keystroke Audio', settings.enableKeyboard) then settings.enableKeyboard = not settings.enableKeyboard end
                 lastItemHoveredTooltip('Toggles keystroke sounds when typing.')
                 if settings.enableKeyboard then
-                    ui.text('\t')
-                    ui.sameLine()
+                    ui.indent()
+
                     settings.volumeKeyboard = ui.slider('##keyboardVolume', settings.volumeKeyboard, 0.1, 10, 'Keystroke Volume: ' .. '%.1f')
-                    ui.text('\t')
-                    ui.sameLine()
+
                     if ui.button('Play Test Keystroke') then playTestAudio(audio.keyboard) end
+
+                    ui.unindent()
                 end
 
                 if ui.checkbox('Enable Message Audio', settings.enableMessage) then settings.enableMessage = not settings.enableMessage end
                 lastItemHoveredTooltip('Toggles message sounds.')
                 if settings.enableMessage then
-                    ui.text('\t')
-                    ui.sameLine()
+                    ui.indent()
+
                     settings.volumeMessage = ui.slider('##messageVolume', settings.volumeMessage, 0.1, 10, 'Message Volume: ' .. '%.1f')
-                    ui.text('\t')
-                    ui.sameLine()
+
                     if ui.button('Play Test Message') then playTestAudio(audio.message) end
-                    ui.text('\t')
-                    ui.sameLine()
+
                     if ui.checkbox('Non-Friend Messages', settings.messagesNonFriends) then settings.messagesNonFriends = not settings.messagesNonFriends end
                     lastItemHoveredTooltip('Plays message recieved sound for messages from non-friends.')
-                    ui.text('\t')
-                    ui.sameLine()
+
                     if ui.checkbox('Server Messages', settings.messagesServer) then settings.messagesServer = not settings.messagesServer end
                     lastItemHoveredTooltip('Plays message recieved sound for messages from the server.')
+
+                    ui.unindent()
                 end
 
                 if ui.checkbox('Enable Notification Audio', settings.enableNotification) then settings.enableNotification = not settings.enableNotification end
                 lastItemHoveredTooltip('Toggles notification sounds.')
                 if settings.enableNotification then
-                    ui.text('\t')
-                    ui.sameLine()
+                    ui.indent()
+
                     settings.volumeNotification = ui.slider('##notificationVolume', settings.volumeNotification, 0.1, 10, 'Notification Volume: ' .. '%.1f')
-                    ui.text('\t')
-                    ui.sameLine()
+
                     if ui.button('Play Test Notification') then playTestAudio(audio.notification) end
-                    ui.text('\t')
-                    ui.sameLine()
+
                     if ui.checkbox('@' .. player.driverName .. ' mentions', settings.notificationsMentions) then settings.notificationsMentions = not settings.notificationsMentions end
                     lastItemHoveredTooltip('Plays notification when you are mentioned in chat.')
-                    ui.text('\t')
-                    ui.sameLine()
+
                     if ui.checkbox('Friend Messages', settings.notificationsFriendMessages) then settings.notificationsFriendMessages = not settings.notificationsFriendMessages end
                     lastItemHoveredTooltip('Plays notification when friend sends a chat message.')
                     if settings.connectionEvents then
-                        ui.text('\t')
-                        ui.sameLine()
                         if ui.checkbox('Friend Join/Leave', settings.notificationsFriendConnections) then settings.notificationsFriendConnections = not settings.notificationsFriendConnections end
                         lastItemHoveredTooltip('Plays notification when friend joins/leaves the server.')
                     end
+
+                    ui.unindent()
                 end
             end
         end)
@@ -1884,6 +1875,7 @@ function script.windowMainSettings()
         if carKeyFile then
             ui.tabItem('Focus Mode', function()
                 ui.textColored('IF YOU ENABLE THIS I WILL TAKE NO RESPONSIBILITY\nWHEN YOU IGNORE ADMIN MESSAGES AND GET BANNED', rgbm.colors.red)
+
                 if ui.checkbox('Enable Focus Mode', settings.focusMode) then settings.focusMode = not settings.focusMode end
                 lastItemHoveredTooltip('If enabled, only displays messages from yourself, friends and the server.')
             end)
