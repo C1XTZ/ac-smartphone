@@ -895,7 +895,7 @@ local function drawPing()
 
     if ping > -1 then
         if isHovered then
-            ui.tooltip(app.tooltipPadding:scale(app.scale), function() ui.text('Current Ping: ' .. ping .. ' ms\nClick to send to chat.') end)
+            ui.tooltip(app.tooltipPadding, function() ui.text('Current Ping: ' .. ping .. ' ms\nClick to send to chat.') end)
             if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
             if ui.mouseReleased(ui.MouseButton.Left) then sendChatMessage('I currently have a ping of ' .. ping .. ' ms.') end
         end
@@ -917,7 +917,7 @@ local function drawPing()
 
         ui.drawImage(app.images.pingAtlasPath, pingPosition, pingPosition + pingSize, colors.final.elements, vec2(textureStartUV, 0), vec2(textureEndUV, 1))
     else
-        if isHovered then ui.tooltip(app.tooltipPadding:scale(app.scale), function() ui.text('Currently offline or ping unavailable.') end) end
+        if isHovered then ui.tooltip(app.tooltipPadding, function() ui.text('Currently offline or ping unavailable.') end) end
 
         local animFrame = math.floor(os.clock() * 2) % 3
         local textureStartUV = (2 - animFrame) / 5
@@ -989,7 +989,7 @@ local function drawHeader()
 
     if app.hovered then
         if ui.rectHovered(headerImagePosition, headerImagePosition + headerImageSize) then
-            ui.tooltip(app.tooltipPadding:scale(app.scale), function() ui.text(communities[player.serverCommunity].text .. '\nClick to open in Browser.') end)
+            ui.tooltip(app.tooltipPadding, function() ui.text(communities[player.serverCommunity].text .. '\nClick to open in Browser.') end)
             if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
             if ui.mouseReleased(ui.MouseButton.Left) then os.openURL(communities[player.serverCommunity].url, false) end
         end
