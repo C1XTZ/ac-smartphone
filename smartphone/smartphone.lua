@@ -889,33 +889,44 @@ end
 ---Draws the ping.
 local function drawPing()
     local ping = player.car.ping
+    local pingSize = vec2(20, 20):scale(app.scale)
+    local pingPosition = vec2(scale(238), pingSize.y + movement.smooth)
+    local isHovered = app.hovered and ui.rectHovered(pingPosition, pingPosition + pingSize, true)
 
     if ping > -1 then
-        local pingSize = vec2(20, 20):scale(app.scale)
-        local pingPosition = vec2(scale(238), pingSize.y + movement.smooth)
-
-        if app.hovered then
-            if ui.rectHovered(pingPosition, pingPosition + pingSize, true) then
-                ui.tooltip(app.tooltipPadding:scale(app.scale), function() ui.text('Current Ping: ' .. ping .. ' ms\nClick to send to chat.') end)
-                if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
-                if ui.mouseReleased(ui.MouseButton.Left) then sendChatMessage('I currently have a ping of ' .. ping .. ' ms.') end
-            end
+        if isHovered then
+            ui.tooltip(app.tooltipPadding:scale(app.scale), function() ui.text('Current Ping: ' .. ping .. ' ms\nClick to send to chat.') end)
+            if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
+            if ui.mouseReleased(ui.MouseButton.Left) then sendChatMessage('I currently have a ping of ' .. ping .. ' ms.') end
         end
 
+        local textureStartUV, textureEndUV
         if ping < 100 then
-            ui.drawImage(app.images.pingAtlasPath, pingPosition, pingPosition + pingSize, colors.final.elements, vec2(0 / 5, 0), vec2(1 / 5, 1))
-        elseif ping >= 100 and ping < 200 then
-            ui.drawImage(app.images.pingAtlasPath, pingPosition, pingPosition + pingSize, colors.final.elements, vec2(1 / 5, 0), vec2(2 / 5, 1))
-        elseif ping >= 200 and ping < 300 then
-            ui.drawImage(app.images.pingAtlasPath, pingPosition, pingPosition + pingSize, colors.final.elements, vec2(2 / 5, 0), vec2(3 / 5, 1))
-        elseif ping >= 300 then
-            ui.drawImage(app.images.pingAtlasPath, pingPosition, pingPosition + pingSize, colors.final.elements, vec2(3 / 5, 0), vec2(4 / 5, 1))
+            textureStartUV, textureEndUV = 0 / 5, 1 / 5
+        elseif ping < 200 then
+            textureStartUV, textureEndUV = 1 / 5, 2 / 5
+        elseif ping < 300 then
+            textureStartUV, textureEndUV = 2 / 5, 3 / 5
+        else
             if math.floor(os.clock() * 2) % 2 == 0 then
-                ui.drawImage(app.images.pingAtlasPath, pingPosition, pingPosition + pingSize, colors.final.elements, vec2(4 / 5, 0), vec2(5 / 5, 1))
+                textureStartUV, textureEndUV = 4 / 5, 5 / 5
+            else
+                textureStartUV, textureEndUV = 3 / 5, 4 / 5
             end
         end
+
+        ui.drawImage(app.images.pingAtlasPath, pingPosition, pingPosition + pingSize, colors.final.elements, vec2(textureStartUV, 0), vec2(textureEndUV, 1))
+    else
+        if isHovered then ui.tooltip(app.tooltipPadding:scale(app.scale), function() ui.text('Currently offline or ping unavailable.') end) end
+
+        local animFrame = math.floor(os.clock() * 2) % 3
+        local textureStartUV = (2 - animFrame) / 5
+        local textureEndUV = (3 - animFrame) / 5
+
+        ui.drawImage(app.images.pingAtlasPath, pingPosition, pingPosition + pingSize, colors.final.elements, vec2(textureStartUV, 0), vec2(textureEndUV, 1))
     end
 end
+
 
 ---Draws the time.
 local function drawTime()
@@ -930,8 +941,9 @@ local function drawTime()
     ui.popDWriteFont()
 
     if app.hovered then
-        lastItemHoveredTooltip('Current Time: ' .. timeText .. '\nClick to send to chat.', true)
-        if ui.itemClicked(ui.MouseButton.Left) then
+        local tooltipText = player.isOnline and 'Current Time: ' .. timeText .. '\nClick to send to chat.' or 'Current Time: ' .. timeText
+        lastItemHoveredTooltip(tooltipText, player.isOnline and true or false)
+        if ui.itemClicked(ui.MouseButton.Left) and player.isOnline then
             timeText = settings.badTime and timeText .. ' ' .. player.timePeriod or timeText
             sendChatMessage('It\'s currently ' .. timeText .. ' my local time.')
         end
@@ -1000,9 +1012,10 @@ local function drawSongInfo()
 
         if app.hovered and songInfo.final ~= '' then
             if ui.rectHovered(songPosition, songPosition + songTextSize, true) then
-                if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
-                ui.tooltip(app.tooltipPadding, function() ui.text('Current Song: ' .. songInfo.artist .. ' - ' .. songInfo.title .. '\nClick to send to chat.') end)
-                if ui.mouseClicked(ui.MouseButton.Left) then
+                local tooltipText = player.isOnline and 'Current Song: ' .. songInfo.artist .. ' - ' .. songInfo.title .. '\nClick to send to chat.' or 'Current Song: ' .. songInfo.artist .. ' - ' .. songInfo.title
+                if not ui.isMouseDragging(ui.MouseButton.Left, 0) and player.isOnline then ui.setMouseCursor(ui.MouseCursor.Hand) end
+                ui.tooltip(app.tooltipPadding, function() ui.text(tooltipText) end)
+                if ui.mouseClicked(ui.MouseButton.Left) and player.isOnline then
                     sendChatMessage('I\'m currently listening to: ' .. songInfo.final)
                 end
             end
@@ -1175,10 +1188,10 @@ local function drawEmojiPicker()
 
     ui.drawImage(app.images.emojiPicker, ui.getCursor() - buttonSize / 2, ui.getCursor() + buttonSize / 2, colors.final.emojiPicker)
 
-    if app.hovered then
+    if app.hovered and player.isOnline then
         chat.emojiPickerHovered = ui.rectHovered(ui.getCursor() - buttonSize / 2, ui.getCursor() + buttonSize / 2 + movement.smooth)
 
-        if chat.emojiPickerHovered and ui.mouseReleased(ui.MouseButton.Left) and player.isOnline then
+        if chat.emojiPickerHovered and ui.mouseReleased(ui.MouseButton.Left) then
             chat.emojiPicker = not chat.emojiPicker
             playAudio(audio.keyboard.enter)
         end
