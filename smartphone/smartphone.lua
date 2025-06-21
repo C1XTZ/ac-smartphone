@@ -927,7 +927,6 @@ local function drawPing()
     end
 end
 
-
 ---Draws the time.
 local function drawTime()
     local time = os.date('%H:%M') --[[@as string]]
@@ -1037,9 +1036,10 @@ local function drawMessages()
         local messageRounding = scale(10)
         if #chat.messages > 0 then
             local msgDist = scale(370)
+            local lastDrawnUserIndex = nil
             for i = 1, #chat.messages do
                 local messageUserIndex = chat.messages[i][1]
-                local messageUserIndexLast = i >= 2 and chat.messages[i - 1][1] or nil
+                local messageUserIndexLast = lastDrawnUserIndex
                 local messageUsername = chat.messages[i][2]
                 local messageUsernameColor = chat.usernameColors[messageUsername] or rgbm.colors.gray
                 local messageTextContent = chat.messages[i][3]
@@ -1139,14 +1139,14 @@ local function drawMessages()
                     ui.pushDWriteFont(app.font.bold)
                     local messageTextSize = ui.measureDWriteText(messageTextContent, messageFontSize, scale(220))
 
-                    if i < 2 then
+                    if lastDrawnUserIndex == nil then
                         msgDist = math.ceil(msgDist - messageTextSize.y / 2)
                         ui.setCursor(vec2(math.ceil(ui.windowWidth() / 2 - messageTextSize.x / 2), math.ceil(msgDist)))
                         ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Center, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgbm.colors.gray)
                         ui.popDWriteFont()
                         msgDist = math.ceil(msgDist + messageTextSize.y + messagePadding.y / 2)
                     else
-                        if chat.messages[i - 1][1] == messageUserIndex then
+                        if lastDrawnUserIndex == messageUserIndex then
                             ui.setCursor(vec2(math.ceil(ui.windowWidth() / 2 - messageTextSize.x / 2), math.ceil(msgDist)))
                             ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Center, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgbm.colors.gray)
                             ui.popDWriteFont()
@@ -1161,7 +1161,10 @@ local function drawMessages()
                     end
                 end
 
+                lastDrawnUserIndex = messageUserIndex
+
                 if (not app.hovered or chat.scrollBool) or (chat.input.active and chat.input.hovered) and ui.getScrollY() ~= ui.getScrollMaxY() then ui.setScrollHereY(-1) end
+
                 ::continue::
             end
         end
