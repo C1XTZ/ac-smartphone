@@ -11,9 +11,10 @@ If you're looking for a more "oldschool" feel, try my [Mobilephone](https://gith
 - **Support for Custom Community Pictures, linking to a URL**  
     - Owners of communities that want to be added can contact me with the following information:
       ```ini
-      Server IPs:     ;List of IP addresses of your servers. IP's should not change all the time.
-      Image:          ;Image that you want to be displayed. 
-      Tooltip Text:   ;Text that you want to be displayed in the tooltip.
+      Server IPs:     ;List of IP addresses of your servers. IP's should not change all the time.  
+      Image:          ;Image that you want to be displayed.  
+      URL:            ;URL to direct to when clicked.  
+      Tooltip Text:   ;Text that you want to be displayed in the tooltip.  
       ```
       ![](https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/.github/img/communityexample.png)  
 - **Ingame chat - Right click a message to @mention the sender**
