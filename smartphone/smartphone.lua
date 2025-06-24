@@ -134,6 +134,7 @@ local app = {
         regular = ui.DWriteFont('Inter Variable Text', '.\\src\\ttf'):weight(ui.DWriteFont.Weight.Medium),
         bold = ui.DWriteFont('Inter Variable Text', '.\\src\\ttf'):weight(ui.DWriteFont.Weight.Bold),
     },
+    modernButtonOffset = (-8) * ac.getUI().uiScale
 }
 
 local player = {
@@ -1806,7 +1807,7 @@ function script.windowMainSettings()
 
                     settings.volumeKeyboard = ui.slider('##keyboardVolume', settings.volumeKeyboard, 0.1, 10, 'Keystroke Volume: ' .. '%.1f')
 
-                    if ui.button('Play Test Keystroke') then playTestAudio(audio.keyboard) end
+                    if ui.modernButton('Play Test Keystroke', 0, ui.ButtonFlags.None, nil, app.modernButtonOffset, nil) then playTestAudio(audio.keyboard) end
 
                     ui.unindent()
                 end
@@ -1818,7 +1819,7 @@ function script.windowMainSettings()
 
                     settings.volumeMessage = ui.slider('##messageVolume', settings.volumeMessage, 0.1, 10, 'Message Volume: ' .. '%.1f')
 
-                    if ui.button('Play Test Message') then playTestAudio(audio.message) end
+                    if ui.modernButton('Play Test Message', 0, ui.ButtonFlags.None, nil, app.modernButtonOffset, nil) then playTestAudio(audio.message) end
 
                     if ui.checkbox('Non-Friend Messages', settings.messagesNonFriends) then settings.messagesNonFriends = not settings.messagesNonFriends end
                     lastItemHoveredTooltip('Plays message recieved sound for messages from non-friends.')
@@ -1836,7 +1837,7 @@ function script.windowMainSettings()
 
                     settings.volumeNotification = ui.slider('##notificationVolume', settings.volumeNotification, 0.1, 10, 'Notification Volume: ' .. '%.1f')
 
-                    if ui.button('Play Test Notification') then playTestAudio(audio.notification) end
+                    if ui.modernButton('Play Test Notification', 0, ui.ButtonFlags.None, nil, app.modernButtonOffset, nil) then playTestAudio(audio.notification) end
 
                     if ui.checkbox('@' .. player.driverName .. ' mentions', settings.notificationsMentions) then settings.notificationsMentions = not settings.notificationsMentions end
                     lastItemHoveredTooltip('Plays notification when you are mentioned in chat.')
