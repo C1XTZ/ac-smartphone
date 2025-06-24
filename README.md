@@ -25,7 +25,7 @@ If you're looking for a more "oldschool" feel, try my [Mobilephone](https://gith
 - **Many adjustable settings as seen below - images might be outdated, always check ingame**
 
 <p align="center">
-<img width="150" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/.github/img/updater.png"> <img width="150" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/.github/img/appsettings.png"> <img width="150" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/.github/img/preview.gif"> <img width="150" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/.github/img/chatsettings.png"> <img width="150" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/.github/img/audiosettings.png">
+<img width="130" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/.github/img/updater.png"> <img width="130" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/.github/img/appsettings.png"> <img width="130" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/.github/img/preview.gif"> <img width="130" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/.github/img/chatsettings.png"> <img width="130" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/.github/img/audiosettings.png"> <img width="130" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/.github/img/colorsettings.png">
 </p>
 
 If you have any questions or suggestions, feel free to open an issue or pull request.  
