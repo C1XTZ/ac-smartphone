@@ -1394,7 +1394,7 @@ end
 
 ---Updates the community data from github.
 local function updateCommunityData()
-    web.get('https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/smartphone/src/communities/data/list.lua', function(err, response)
+    web.get('https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/smartphone/src/communities/data/list.lua', function(err, response)
         if err or response.status ~= 200 then
             settings.dataCheckFailed = true
             return error('Couldn\'t get community data from github.')
@@ -1415,7 +1415,7 @@ local function updateCommunityData()
         for name, community in pairs(data --[[@as table]]) do
             if name ~= 'default' and community.image then
                 local filename = community.image:match('([^\\]+)$')
-                local remoteImageUrl = 'https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/smartphone/src/communities/img/' .. filename
+                local remoteImageUrl = 'https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/smartphone/src/communities/img/' .. filename
                 web.get(remoteImageUrl, function(err2, response2)
                     if err2 or response2.status ~= 200 then
                         settings.dataCheckFailed = true
@@ -1748,9 +1748,6 @@ function script.windowMainSettings()
 
                 ui.unindent()
             end
-
-            ui.drawSimpleLine(ui.getCursor(), vec2(ui.windowWidth(), ui.getCursorY()), ac.getUI().accentColor)
-            ui.newLine(-10 * ac.getUI().uiScale)
 
             if ui.checkbox('Use Colored Usernames', settings.chatUsernameColor) then settings.chatUsernameColor = not settings.chatUsernameColor end
             lastItemHoveredTooltip('If enabled, uses colored usernames if possible.\nServers can overwrite CM tag colors.')
