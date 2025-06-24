@@ -21,8 +21,6 @@ local settings = ac.storage {
     focusMode = false,
 
     updateLastCheck = 0,
-    updateAutoCheck = false,
-    updateInterval = 7,
     updateStatus = 0,
     updateAvailable = false,
     updateURL = '',
@@ -68,7 +66,6 @@ local settings = ac.storage {
     notificationsFriendConnections = true,
     notificationsFriendMessages = true,
 
-    dataCheckLast = 0,
     dataCheckFailed = false,
 
     customColor = false,
@@ -296,6 +293,14 @@ end
 
 --#region UTILITY FUNCTIONS
 
+---Moves the app up.
+local function moveAppUp()
+    if settings.appMove then
+        movement.timer = settings.appMoveTimer
+        movement.up = true
+    end
+end
+
 ---@param value number @The value to be scaled.
 ---@return number @The scaled value.
 ---Scales the given value by the app scale.
@@ -420,6 +425,22 @@ local function pickMode(light, dark)
     return (settings.darkMode or player.phoneMode) and dark or light
 end
 
+---@param message any @The message to be sent.
+---@param deleteAfter? number @The amount of time to wait before deleting the message.
+---Sends a chat message as the app using the server index.
+local function sendAppMessage(message, deleteAfter)
+    table.insert(chat.messages, { -1, 'App', message, os.time() })
+    local msgIndex = #chat.messages
+
+    if deleteAfter then
+        setTimeout(function()
+            table.remove(chat.messages, msgIndex)
+        end, deleteAfter)
+    end
+
+    moveAppUp()
+end
+
 --#endregion
 
 --#region GENERAL LOGIC FUNCTIONS
@@ -489,14 +510,6 @@ local function updateAppMovement(dt)
             movement.up = false
             movement.timer = settings.appMoveTimer
         end
-    end
-end
-
----Moves the app up.
-local function moveAppUp()
-    if settings.appMove then
-        movement.timer = settings.appMoveTimer
-        movement.up = true
     end
 end
 
@@ -579,49 +592,6 @@ local function automaticModeSwitch()
             updateColors()
         end
     end
-end
-
----Updates the community data from github.
-local function updateCommunityData()
-    local now = os.time()
-    local checkInterval = settings.dataCheckFailed and 3600 or 43200
-    if now - settings.dataCheckLast <= checkInterval then return end
-
-    web.get('https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/smartphone/src/communities/data/list.lua', function(err, response)
-        settings.dataCheckLast = now
-        if err or response.status ~= 200 then
-            settings.dataCheckFailed = true
-            return error('Couldn\'t get community data from github.')
-        end
-
-        local data = stringify.parse(response.body)
-        if not data or not communities then return error('Web request or Communities table is nil.') end
-        if communities.version[1] == data.version[1] then
-            return ac.log('Already using latest data.')
-        end
-
-        local file = io.open(ac.getFolder(ac.FolderID.ACAppsLua) .. '\\smartphone\\src\\communities\\data\\list.lua', 'w+')
-        if file then
-            file:write(stringify(data))
-            file:close()
-        end
-
-        for name, community in pairs(data --[[@as table]]) do
-            if name ~= 'default' and community.image then
-                local filename = community.image:match('([^\\]+)$')
-                local remoteImageUrl = 'https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/smartphone/src/communities/img/' .. filename
-                web.get(remoteImageUrl, function(err2, response2)
-                    if err2 or response2.status ~= 200 then
-                        settings.dataCheckFailed = true
-                        return err2('Couldn\'t get community data from github.')
-                    end
-                    io.save(community.image, response2.body)
-                end)
-            end
-        end
-        settings.dataCheckFailed = false
-        return ac.log('Updated to latest data.')
-    end)
 end
 
 --#endregion
@@ -1383,7 +1353,6 @@ local appFolder = ac.getFolder(ac.FolderID.ACApps) .. '\\lua\\' .. appName .. '\
 local manifest = ac.INIConfig.load(appFolder .. '\\manifest.ini', ac.INIFormat.Extended)
 local appVersion = manifest:get('ABOUT', 'VERSION', 0.01)
 local releaseURL = 'https://api.github.com/repos/C1XTZ/ac-smartphone/releases/latest'
-local doUpdate = (os.time() - settings.updateLastCheck) / 86400 > settings.updateInterval
 local mainFile, assetFile = appName .. '.lua', appName .. '.zip'
 local carKeyFile = #io.scanDir(appFolder, '*.carkey') > 0
 
@@ -1423,16 +1392,56 @@ local function updateApplyUpdate(downloadUrl)
     end)
 end
 
----@param manual boolean? @Whether the update check is manual
----Checks for updates and handles the update process.
-local function updateCheckVersion(manual)
-    settings.updateLastCheck = os.time()
+---Updates the community data from github.
+local function updateCommunityData()
+    web.get('https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/smartphone/src/communities/data/list.lua', function(err, response)
+        if err or response.status ~= 200 then
+            settings.dataCheckFailed = true
+            return error('Couldn\'t get community data from github.')
+        end
+
+        local data = stringify.parse(response.body)
+        if not data or not communities then return error('Web request or Communities table is nil.') end
+        if communities.version[1] == data.version[1] then
+            return ac.log('Already using latest community data.')
+        end
+
+        local file = io.open(ac.getFolder(ac.FolderID.ACAppsLua) .. '\\smartphone\\src\\communities\\data\\list.lua', 'w+')
+        if file then
+            file:write(stringify(data))
+            file:close()
+        end
+
+        for name, community in pairs(data --[[@as table]]) do
+            if name ~= 'default' and community.image then
+                local filename = community.image:match('([^\\]+)$')
+                local remoteImageUrl = 'https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/smartphone/src/communities/img/' .. filename
+                web.get(remoteImageUrl, function(err2, response2)
+                    if err2 or response2.status ~= 200 then
+                        settings.dataCheckFailed = true
+                        return err2('Couldn\'t get community data from github.')
+                    end
+                    io.save(community.image, response2.body)
+                end)
+            end
+        end
+        settings.dataCheckFailed = false
+        return ac.log('Updated to latest community data.')
+    end)
+end
+
+---@param forced? boolean @Forces the update check to run.
+---Checks for updates and handles the app update process.
+local function updateCheckVersion(forced)
+    local now = os.time()
+    local checkInterval = settings.updateLastCheck and 3600 or 43200
+    if now - settings.updateLastCheck <= checkInterval and not forced then return end
+    settings.updateLastCheck = now
 
     web.get(releaseURL, function(err, response)
         if err then
             settings.updateStatus = 4
-            error(err)
-            return
+            return error(err)
         end
 
         local latestRelease = JSON.parse(response.body)
@@ -1440,19 +1449,17 @@ local function updateCheckVersion(manual)
 
         if not (tagName and tagName:match('^v%d%d?%.%d%d?$')) then
             settings.updateStatus = 4
-            error('URL unavailable or no Version recognized, aborted update')
-            return
+            return error('URL unavailable or no Version recognized, aborted update')
         end
+
         local version = tonumber(tagName:sub(2))
 
         if appVersion > version then
             settings.updateStatus = 3
             settings.updateAvailable = false
-            return
         elseif appVersion == version then
             settings.updateStatus = 2
             settings.updateAvailable = false
-            return
         else
             local downloadUrl
             for _, asset in ipairs(releaseAssets) do
@@ -1464,17 +1471,17 @@ local function updateCheckVersion(manual)
 
             if not downloadUrl then
                 settings.updateStatus = 4
-                error('No matching asset found, aborted update')
-                return
+                return error('No matching asset found, aborted update')
             end
 
-            if manual then
-                updateApplyUpdate(downloadUrl)
-            else
-                settings.updateAvailable = true
-                settings.updateURL = downloadUrl
-                settings.updateStatus = 5
-            end
+            sendAppMessage('Update Available!\nInstall via App Settings')
+            settings.updateAvailable = true
+            settings.updateURL = downloadUrl
+            settings.updateStatus = 5
+        end
+
+        if settings.updateStatus ~= 5 then
+            updateCommunityData()
         end
     end)
 end
@@ -1556,12 +1563,11 @@ if player.isOnline and settings.connectionEvents then
 end
 
 function onShowWindow()
+    updateCheckVersion()
+
     updateColors()
-    updateCommunityData()
 
     updateSongInfo(true)
-
-    if (settings.updateAutoCheck and doUpdate) or settings.updateAvailable then updateCheckVersion() end
 
     if settings.focusMode then settings.focusMode = false end
 
@@ -1580,44 +1586,32 @@ end
 function script.windowMainSettings()
     ui.tabBar('TabBar', function()
         ui.tabItem('Update', function()
-            ui.text('Currrently running version ' .. string.format('%.2f', appVersion))
-            if ui.checkbox('Automatically Check for Updates', settings.updateAutoCheck) then
-                settings.updateAutoCheck = not settings.updateAutoCheck
-                if settings.updateAutoCheck then updateCheckVersion() end
-            end
-            if settings.updateAutoCheck then
-                ui.indent()
-
-                settings.updateInterval = ui.slider('##UpdateInterval', settings.updateInterval, 1, 60, 'Check for Update every ' .. '%.0f days')
-
-                ui.unindent()
-            end
-            lastItemHoveredTooltip('If enabled, will automatically check for updates every X days.')
+            ui.text(appName:gsub("^%l", string.upper) .. ' Version ' .. string.format('%.2f', appVersion))
 
             local updateButtonText = settings.updateAvailable and 'Install Update' or 'Check for Update'
-            if ui.button(updateButtonText) then
+
+            if ui.modernButton(updateButtonText, 0, ui.ButtonFlags.None, nil, app.modernButtonOffset, nil) then
                 if settings.updateAvailable then
-                    updateCheckVersion(true)
+                    updateApplyUpdate(settings.updateURL)
                 else
-                    updateCheckVersion(false)
+                    updateCheckVersion(true)
                 end
             end
-            if settings.updateStatus > 0 then
-                ui.textColored(updateStatus.text[settings.updateStatus], updateStatus.color[settings.updateStatus])
 
-                local diff = os.time() - settings.updateLastCheck
-                if diff > 600 then settings.updateStatus = 0 end
-                local units = { 'seconds', 'minutes', 'hours', 'days' }
-                local values = { 1, 60, 3600, 86400 }
+            local diff = os.time() - settings.updateLastCheck
+            if diff > 600 then settings.updateStatus = 0 end
+            local units = { 'seconds', 'minutes', 'hours', 'days' }
+            local values = { 1, 60, 3600, 86400 }
 
-                local i = #values
-                while i > 1 and diff < values[i] do
-                    i = i - 1
-                end
-
-                local timeAgo = math.floor(diff / values[i])
-                ui.text('Last checked ' .. timeAgo .. ' ' .. units[i] .. ' ago')
+            local i = #values
+            while i > 1 and diff < values[i] do
+                i = i - 1
             end
+
+            local timeAgo = math.floor(diff / values[i])
+            ui.text('Last checked ' .. timeAgo .. ' ' .. units[i] .. ' ago')
+
+            if settings.updateStatus > 0 then ui.textColored(updateStatus.text[settings.updateStatus], updateStatus.color[settings.updateStatus]) end
         end)
         ui.tabItem('App', function()
             ui.indent()
@@ -1788,7 +1782,7 @@ function script.windowMainSettings()
                 ui.indent()
 
                 if ui.checkbox('Include AssettoServer Race Challenge Messages', settings.chatHideRaceMsg) then settings.chatHideRaceMsg = not settings.chatHideRaceMsg end
-                lastItemHoveredTooltip('If enabled, includes server messages from the AssettoServer RaceChallengePlugin in the "Hide Annoying Messages" setting.')
+                lastItemHoveredTooltip('If enabled, includes "X just beat Y in a Race." server messages.')
 
                 ui.unindent()
             end
