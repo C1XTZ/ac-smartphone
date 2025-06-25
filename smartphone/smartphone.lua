@@ -214,12 +214,12 @@ local audio = {
         delete = { file = '.\\src\\aud\\keyboard-delete.mp3' },
     },
     message = {
-        recieve = { file = '.\\src\\aud\\message-recieve.mp3' },
+        receive = { file = '.\\src\\aud\\message-receive.mp3' },
         send = { file = '.\\src\\aud\\message-send.mp3' },
     },
     notification = {
         regular = { file = '.\\src\\aud\\notif-regular.mp3' },
-        critical = { file = '.\\src\\aud\\notif-critial.mp3' },
+        critical = { file = '.\\src\\aud\\notif-critical.mp3' },
     },
 }
 
@@ -764,7 +764,7 @@ local function deleteOldestMessages()
     end
 end
 
----Custom keybard handling for input field, may god have mercy on my soul.
+---Custom keyboard handling for input field, may god have mercy on my soul.
 local function handleKeyboardInput()
     local keyboardInput = ui.captureKeyboard(false, true)
     local msgLen = utf8len(chat.input.text) > 0
@@ -1331,7 +1331,7 @@ end
 --#region APP UPDATER
 local updateStatus = {
     text = {
-        [0] = 'C1XTZ: You shouldnt be reading this',
+        [0] = 'C1XTZ: You shouldn\'t be reading this',
         [1] = 'Updated: The app was successfully updated',
         [2] = 'No Change: The latest version is already installed',
         [3] = 'No Change: A newer version is already installed',
@@ -1514,7 +1514,7 @@ if player.isOnline then
                     playAudio(audio.message.send)
                 else
                     if isFriend or settings.messagesNonFriends then
-                        playAudio(audio.message.recieve)
+                        playAudio(audio.message.receive)
                     end
                     if (isFriend and settings.notificationsFriendMessages) or (isMentioned and settings.notificationsMentions) then
                         setTimeout(function()
@@ -1524,7 +1524,7 @@ if player.isOnline then
                 end
             else
                 if settings.messagesServer then
-                    playAudio(audio.message.recieve)
+                    playAudio(audio.message.receive)
                 end
             end
         end
@@ -1542,7 +1542,7 @@ if player.isOnline and settings.connectionEvents then
             deleteOldestMessages()
             table.insert(chat.messages, { -1, 'Server', ac.getDriverName(connectedCarIndex) .. action .. ' the Server', os.time() })
 
-            if settings.messagesServer and (settings.messagesNonFriends or isFriend) then playAudio(audio.message.recieve) end
+            if settings.messagesServer and (settings.messagesNonFriends or isFriend) then playAudio(audio.message.receive) end
             if settings.notificationsFriendConnections and isFriend then
                 setTimeout(function()
                     playAudio(audio.notification.regular)
@@ -1813,10 +1813,10 @@ function script.windowMainSettings()
                     if ui.modernButton('Play Test Message', 0, ui.ButtonFlags.None, nil, app.modernButtonOffset, nil) then playTestAudio(audio.message) end
 
                     if ui.checkbox('Non-Friend Messages', settings.messagesNonFriends) then settings.messagesNonFriends = not settings.messagesNonFriends end
-                    lastItemHoveredTooltip('Plays message recieved sound for messages from non-friends.')
+                    lastItemHoveredTooltip('Plays message received sound for messages from non-friends.')
 
                     if ui.checkbox('Server Messages', settings.messagesServer) then settings.messagesServer = not settings.messagesServer end
-                    lastItemHoveredTooltip('Plays message recieved sound for messages from the server.')
+                    lastItemHoveredTooltip('Plays message received sound for messages from the server.')
 
                     ui.unindent()
                 end
@@ -1850,7 +1850,7 @@ function script.windowMainSettings()
                 settings.customColor = not settings.customColor
                 updateColors()
             end
-            lastItemHoveredTooltip('If enabeld, allows you to recolor certain elements.')
+            lastItemHoveredTooltip('If enabled, allows you to recolor certain elements.')
 
             if settings.customColor then
                 ui.columns(2, false)
