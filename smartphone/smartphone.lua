@@ -616,17 +616,17 @@ local function updateSongInfo(forced)
         return
     end
 
-    if (current.artist:lower() == 'unknown artist' or current.artist == '') and current.title ~= '' then
-        current.artist, current.title = splitTitle(current.title)
-    end
-
     if current.artist == '' and current.title == '' and not current.isPlaying then
         songInfo.final = ''
         if songInfo.dynamicIslandSize.x == 80 then setDynamicIslandSize(false) end
         songInfo.isPaused = true
     else
-        songInfo.artist = current.artist
-        songInfo.title = current.title
+        if (current.artist:lower() == 'unknown artist' or current.artist == '') and current.title ~= '' then
+            songInfo.artist, songInfo.title = splitTitle(current.title)
+        else
+            songInfo.artist = current.artist
+            songInfo.title = current.title
+        end
         songInfo.final = (current.artist ~= '' and current.artist:lower() ~= 'unknown artist') and (current.artist .. ' - ' .. current.title) or current.title
         if songInfo.dynamicIslandSize.x == 40 then setDynamicIslandSize(true) end
         songInfo.isPaused = not current.isPlaying
