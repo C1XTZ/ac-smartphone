@@ -161,7 +161,11 @@ local songInfo = {
     title = '',
     final = '',
     isPaused = false,
-    dynamicIslandSize = vec2(40, 20)
+    dynamicIslandSize = vec2(40, 20),
+    titleSplitPatterns = {
+        '^(.-)%s*%- %s*(.+)$',
+        '^(.-)%-([^%-]+)$',
+    },
 }
 
 local chat = {
@@ -313,12 +317,7 @@ end
 ---@return string @song title string
 ---Splits the title string into artist and track name.
 local function splitTitle(title)
-    local patterns = {
-        '^(.-)%s*%- %s*(.+)$',
-        '^(.-)%-([^%-]+)$',
-    }
-
-    for _, pattern in ipairs(patterns) do
+    for _, pattern in ipairs(songInfo.titleSplitPatterns) do
         local artist, track = title:match(pattern)
         if artist and track then
             return artist:match('^%s*(.-)%s*$'), track:match('^%s*(.-)%s*$')
