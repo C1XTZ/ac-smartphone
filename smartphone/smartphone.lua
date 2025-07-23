@@ -420,7 +420,7 @@ end
 ---@param dark rgbm @rgbm color to use if dark mode
 ---@return rgbm @rgbm color to be used for the given mode
 ---Picks the appropriate color based on the current mode.
-local function pickMode(light, dark)
+local function pickThemeColor(light, dark)
     return (settings.darkMode or player.phoneMode) and dark or light
 end
 
@@ -446,14 +446,14 @@ end
 
 ---Updates the colors based on the current mode.
 local function updateColors()
-    colors.final.display:set(pickMode(colors.displayColorLight, colors.displayColorDark))
-    colors.final.header:set(pickMode(colors.headerColorLight, colors.headerColorDark))
-    colors.final.elements:set(pickMode(colors.displayColorDark, colors.displayColorLight))
-    colors.final.headerLine:set(pickMode(colors.headerLineColorLight, colors.headerLineColorDark))
-    colors.final.input:set(pickMode(colors.transparent.black50, colors.transparent.white50))
-    colors.final.message:set(pickMode(colors.iMessageLightGray, colors.iMessageDarkGray))
-    colors.final.emojiPicker:set(pickMode(colors.emojiPickerButtonLight, colors.emojiPickerButtonDark))
-    colors.final.emojiPickerBG:set(pickMode(colors.emojiPickerButtonBGLight, colors.emojiPickerButtonBGDark))
+    colors.final.display:set(pickThemeColor(colors.displayColorLight, colors.displayColorDark))
+    colors.final.header:set(pickThemeColor(colors.headerColorLight, colors.headerColorDark))
+    colors.final.elements:set(pickThemeColor(colors.displayColorDark, colors.displayColorLight))
+    colors.final.headerLine:set(pickThemeColor(colors.headerLineColorLight, colors.headerLineColorDark))
+    colors.final.input:set(pickThemeColor(colors.transparent.black50, colors.transparent.white50))
+    colors.final.message:set(pickThemeColor(colors.iMessageLightGray, colors.iMessageDarkGray))
+    colors.final.emojiPicker:set(pickThemeColor(colors.emojiPickerButtonLight, colors.emojiPickerButtonDark))
+    colors.final.emojiPickerBG:set(pickThemeColor(colors.emojiPickerButtonBGLight, colors.emojiPickerButtonBGDark))
 
     colors.final.messageOwn:set(settings.customColor and settings.messageColorSelf or colors.iMessageBlue)
     colors.final.messageFriend:set(settings.customColor and settings.messageColorFriend or colors.iMessageGreen)
@@ -1056,7 +1056,7 @@ local function drawMessages()
 
                     msgDist = math.ceil(msgDist + messagePadding.y + messagePadding.y / 2)
                 elseif messageUserIndex > 0 then
-                    local bubbleColor, messageTextColor = colors.final.message, pickMode(rgbm.colors.black, rgbm.colors.white)
+                    local bubbleColor, messageTextColor = colors.final.message, pickThemeColor(rgbm.colors.black, rgbm.colors.white)
                     local isFriend = checkIfFriend(messageUserIndex)
 
                     if isFriend then
@@ -1230,7 +1230,7 @@ local function drawInputCustom()
     ui.childWindow('ChatInput', inputSize, false, flags.input, function()
         ui.beginOutline()
         ui.drawRectFilled(vec2(2, 2):scale(app.scale), inputBoxSize, colors.final.display, scale(10))
-        ui.endOutline(pickMode(colors.transparent.black10, colors.transparent.white10), math.max(1, math.round(1 * app.scale, 1)))
+        ui.endOutline(pickThemeColor(colors.transparent.black10, colors.transparent.white10), math.max(1, math.round(1 * app.scale, 1)))
         local displayText = ''
         ui.pushDWriteFont(app.font.regular)
 
@@ -1258,11 +1258,11 @@ local function drawInputCustom()
 
             if chat.input.active then
                 handleKeyboardInput()
-                colors.final.input:set(pickMode(rgbm.colors.black, rgbm.colors.white))
+                colors.final.input:set(pickThemeColor(rgbm.colors.black, rgbm.colors.white))
                 if chat.mentioned ~= '' and chat.input.text ~= chat.mentioned then chat.mentioned = '' end
             else
                 chat.input.text = chat.input.placeholder
-                colors.final.input:set(pickMode(colors.transparent.black50, colors.transparent.white50))
+                colors.final.input:set(pickThemeColor(colors.transparent.black50, colors.transparent.white50))
             end
 
             displayText = chat.input.text
