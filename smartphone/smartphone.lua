@@ -1856,7 +1856,7 @@ function script.windowMainSettings()
                 ui.text('Message Color Own')
                 ui.setNextItemWidth(132 * ac.getUI().uiScale)
                 local messageColorSelfChange = ui.colorPicker('Display Color Picker', settings.messageColorSelf, flags.colorpicker)
-                if ui.button('Reset to default ') then
+                if ui.modernButton('Reset to default' .. '\u{200B}', 0, ui.ButtonFlags.None, nil, app.modernButtonOffset, nil) then
                     settings.messageColorSelf = colors.iMessageBlue:clone()
                     updateColors()
                 end
@@ -1866,7 +1866,7 @@ function script.windowMainSettings()
                 ui.text('Message Color Friends')
                 ui.setNextItemWidth(132 * ac.getUI().uiScale)
                 local messageColorFriendChange = ui.colorPicker('Text Color Picker', settings.messageColorFriend, flags.colorpicker)
-                if ui.button('Reset to default') then
+                if ui.modernButton('Reset to default' .. '\u{200C}', 0, ui.ButtonFlags.None, nil, app.modernButtonOffset, nil) then
                     settings.messageColorFriend = colors.iMessageGreen:clone()
                     updateColors()
                 end
