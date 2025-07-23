@@ -160,6 +160,8 @@ local songInfo = {
     artist = '',
     title = '',
     final = '',
+    hasCover = false,
+    defaultCover = './src/img/player.png',
     isPaused = false,
     dynamicIslandSize = vec2(40, 20),
     titleSplitPatterns = {
@@ -998,7 +1000,11 @@ local function drawSongInfo()
             local imageOffset = vec2(-75, 22):scale(app.scale)
             local imageRounding = scale(4)
             local imagePos = vec2(windowHalfWidth + imageOffset.x, imageOffset.y + movement.smooth)
-            ui.drawImageRounded(ac.currentlyPlaying() --[[@as ui.MediaPlayer]], imagePos, imagePos + imageSize, imageRounding, ui.CornerFlags.All)
+            if songInfo.hasCover then
+                ui.drawImageRounded(ac.currentlyPlaying() --[[@as ui.MediaPlayer]], imagePos, imagePos + imageSize, imageRounding, ui.CornerFlags.All)
+            else
+                ui.drawImageRounded(songInfo.defaultCover, imagePos, imagePos + imageSize, imageRounding, ui.CornerFlags.All)
+            end
         end
         local songFontSize = scale(12)
         local songPosition = vec2(scale(88), scale(22) + movement.smooth)
