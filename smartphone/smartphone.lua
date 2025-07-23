@@ -312,19 +312,22 @@ local function scale(value)
     return math.floor(app.scale * value)
 end
 
----@param title string @combined 'artist - title' string
----@return string @artist name string
----@return string @song title string
----Splits the title string into artist and track name.
-local function splitTitle(title)
+---@param songString string @combined 'artist - title' string usually, whatever your mp3 player spits out
+---@return string artist @artist name string
+---@return string title @song title string
+---Splits the title string into artist and track title.
+local function splitTitle(songString)
     for _, pattern in ipairs(songInfo.titleSplitPatterns) do
-        local artist, track = title:match(pattern)
-        if artist and track then
-            return artist:match('^%s*(.-)%s*$'), track:match('^%s*(.-)%s*$')
+        local artist, title = songString:match(pattern)
+        if artist and title then
+            artist = artist:gsub('^%s*(.-)%s*$', '%1')
+            title = title:gsub('^%s*(.-)%s*$', '%1')
+            title = title:gsub('%.%w+$', '')
+            return artist, title
         end
     end
-
-    return 'Unknown Artist', title
+    local trimmedTitle = songString:gsub('%.%w+$', '')
+    return 'Unknown Artist', trimmedTitle
 end
 
 ---@param timeString string @Input string in 24-hour format (e.g., '14:30')
@@ -462,13 +465,16 @@ local function updateColors()
     colors.final.messageFriendText:set(getLuminance(colors.final.messageFriend) <= 0.225 and rgbm.colors.white or rgbm.colors.black)
 end
 
-local appWindow, windowHeight, appBottom = ac.accessAppWindow('IMGUI_LUA_Smartphone_main')
+local appWindow = ac.accessAppWindow('IMGUI_LUA_Smartphone_main')
+local screenSpace = ac.getSim().windowHeight
+local appBottom
 ---Forces the app to be at the bottom of the screen.
 local function forceAppToBottom()
     if not appWindow or not appWindow:valid() then return end
 
-    windowHeight = ac.getSim().windowHeight
-    appBottom = windowHeight - appWindow:size().y
+    if not appBottom or appBottom ~= screenSpace - appWindow:size().y then
+        appBottom = screenSpace - appWindow:size().y
+    end
 
     if appWindow:position().y ~= appBottom and not ui.isMouseDragging(ui.MouseButton.Left, 0) then
         appWindow:move(vec2(appWindow:position().x, appBottom))
@@ -569,9 +575,10 @@ local function automaticModeSwitch()
         return
     end
 
+    local sim = ac.getSim()
     if player.cspVersion >= 3459 then
         local sunAngle = ac.getSunAngle()
-        local timeHours = ac.getSim().timeHours
+        local timeHours = sim.timeHours
 
         local shouldBeDark = false
         if (timeHours > 12 and sunAngle > settings.darkModeAutoDarkAngle) or (timeHours < 12 and sunAngle > settings.darkModeAutoLightAngle) then
@@ -583,7 +590,7 @@ local function automaticModeSwitch()
             updateColors()
         end
     else
-        local currentTime = ac.getSim().timeHours + ac.getSim().timeMinutes / 60
+        local currentTime = sim.timeHours + sim.timeMinutes / 60
         local shouldBeDark = not (currentTime > settings.darkModeAutoLightTime and currentTime < settings.darkModeAutoDarkTime)
 
         if player.phoneMode ~= shouldBeDark then
@@ -626,7 +633,9 @@ local function updateSongInfo(forced)
             songInfo.artist = current.artist
             songInfo.title = current.title
         end
-        songInfo.final = (current.artist ~= '' and current.artist:lower() ~= 'unknown artist') and (current.artist .. ' - ' .. current.title) or current.title
+
+        songInfo.final = (songInfo.artist ~= '' and songInfo.artist:lower() ~= 'unknown artist') and (songInfo.artist .. ' - ' .. songInfo.title) or songInfo.title
+        songInfo.hasCover = current.hasCover
         if songInfo.dynamicIslandSize.x == 40 then setDynamicIslandSize(true) end
         songInfo.isPaused = not current.isPlaying
     end
@@ -652,7 +661,9 @@ local function drawSongInfoText(text, pos, size, fontSize)
         ui.dwriteTextAligned(text, fontSize, ui.Alignment.Center, ui.Alignment.Center, size, false, rgbm.colors.white)
     else
         local stepW = textSize.x + settings.songInfoSpacing
-        local scrollX = (settings.songInfoScrollDirection == 0 and -1 or 1) * ((os.clock() * settings.songInfoScrollSpeed) % stepW)
+        local scrollDirection = settings.songInfoScrollDirection == 0 and -1 or 1
+        local scrollTime = os.clock() * settings.songInfoScrollSpeed
+        local scrollX = scrollDirection * (scrollTime % stepW)
         ui.pushClipRect(pos, pos + size)
         for i = -1, math.ceil(size.x / stepW) do
             ui.dwriteDrawText(text, fontSize, vec2(pos.x + scrollX + i * stepW, pos.y + (size.y - textSize.y) / 2), rgbm.colors.white)
@@ -790,8 +801,9 @@ local function handleKeyboardInput()
         chat.emojiPicker = false
         return
     elseif ui.keyboardButtonDown(ui.KeyIndex.Control) and ui.keyboardButtonPressed(ui.KeyIndex.V, true) then
-        if utf8len(chat.input.text .. ui.getClipboardText()) >= inputMaxLen then return end
-        chat.input.text = chat.input.text .. ui.getClipboardText()
+        local clipboardText = ui.getClipboardText()
+        if utf8len(chat.input.text .. clipboardText) >= inputMaxLen then return end
+        chat.input.text = chat.input.text .. clipboardText
         return
     elseif ui.keyboardButtonDown(ui.KeyIndex.Control) and ui.keyboardButtonPressed(ui.KeyIndex.A) and msgLen then
         if chat.input.selected then chat.input.selected = nil end
@@ -921,18 +933,28 @@ end
 
 ---Draws the dynamic island.
 local function drawDynamicIsland()
-    ui.drawRectFilled(vec2((ui.windowWidth() / 2 - scale(songInfo.dynamicIslandSize.x)), scale(songInfo.dynamicIslandSize.y) + movement.smooth), vec2((ui.windowWidth() / 2 + scale(songInfo.dynamicIslandSize.x)), scale(songInfo.dynamicIslandSize.y * 2) + movement.smooth), rgbm.colors.black, scale(10))
+    local windowHalfWidth = ui.windowWidth() / 2
+    local islandSize = songInfo.dynamicIslandSize:clone():scale(app.scale)
+    local borderRadius = scale(10)
+
+    ui.drawRectFilled(vec2(windowHalfWidth - islandSize.x, islandSize.y + movement.smooth), vec2(windowHalfWidth + islandSize.x, islandSize.y * 2 + movement.smooth), rgbm.colors.black, borderRadius)
+
     if not settings.hideCamera or not settings.songInfo or songInfo.isPaused then
-        local camSize = scale(songInfo.dynamicIslandSize.y - 2)
-        local camPos = math.ceil(ui.windowWidth() / 2 + scale(30))
-        ui.drawImage(app.images.phoneCamera, vec2(camPos - camSize / 2, scale(songInfo.dynamicIslandSize.y * 1.5) - (camSize / 2) + movement.smooth), vec2(camPos + camSize / 2, scale(songInfo.dynamicIslandSize.y * 1.5) + (camSize / 2) + movement.smooth))
+        local camSize = scale(songInfo.dynamicIslandSize.y - 2) / 2
+        local camPosX = math.ceil(windowHalfWidth + scale(30))
+        local camPosY = scale(songInfo.dynamicIslandSize.y * 1.5) + movement.smooth
+
+        ui.drawImage(app.images.phoneCamera, vec2(camPosX - camSize, camPosY - camSize), vec2(camPosX + camSize, camPosY + camSize))
     end
 end
 
+
 ---Draws the header of the chat window.
 local function drawHeader()
+    local windowWidth = ui.windowWidth()
+    local windowHalfWidth = windowWidth / 2
     local headerPadding = vec2(11, 9):scale(app.scale)
-    local headerSize = vec2(ui.windowWidth() - scale(11), scale(100) + movement.smooth)
+    local headerSize = vec2(windowWidth - scale(11), scale(100) + movement.smooth)
     local headerText = 'Server Chat'
     local headerTextFontsize = scale(12)
     ui.pushDWriteFont(app.font.regular)
@@ -940,7 +962,7 @@ local function drawHeader()
 
     ui.drawRectFilled(vec2(headerPadding.x, headerPadding.y + movement.smooth), headerSize, colors.final.header, scale(30), ui.CornerFlags.Top)
     ui.drawSimpleLine(vec2(headerPadding.x, headerSize.y), vec2(headerSize.x, headerSize.y), colors.final.headerLine)
-    ui.setCursor(vec2(math.floor((ui.windowWidth() / 2) - (headerTextSize.x / 2)), scale(84) + movement.smooth))
+    ui.setCursor(vec2(math.floor(windowHalfWidth - (headerTextSize.x / 2)), scale(84) + movement.smooth))
     ui.dwriteTextAligned(headerText, headerTextFontsize, 0, 1, headerTextSize, false, colors.final.elements)
     ui.popDWriteFont()
 
@@ -966,19 +988,22 @@ local function drawHeader()
 end
 
 ---Draws the song information.
+---Draws the song information.
 local function drawSongInfo()
     if settings.songInfo then
+        local windowHalfWidth = ui.windowWidth() / 2
         --I'm using --[[@as ui.MediaPlayer]] here because ac.MusicData is not in the valid imageSources for some reason?
-        if ui.isImageReady(ac.currentlyPlaying() --[[@as ui.MediaPlayer]]) and songInfo.isPaused == false then
-            ui.setCursor(vec2(20, 100):scale(app.scale))
-            ui.drawImageRounded(ac.currentlyPlaying() --[[@as ui.MediaPlayer]], vec2((ui.windowWidth() / 2) - scale(74), scale(23) + movement.smooth), vec2((ui.windowWidth() / 2) - scale(60), scale(37) + movement.smooth), scale(3), ui.CornerFlags.All)
+        if not songInfo.isPaused then
+            local imageSize = vec2(16, 16):scale(app.scale)
+            local imageOffset = vec2(-75, 22):scale(app.scale)
+            local imageRounding = scale(4)
+            local imagePos = vec2(windowHalfWidth + imageOffset.x, imageOffset.y + movement.smooth)
+            ui.drawImageRounded(ac.currentlyPlaying() --[[@as ui.MediaPlayer]], imagePos, imagePos + imageSize, imageRounding, ui.CornerFlags.All)
         end
         local songFontSize = scale(12)
-        local songPosition = vec2(scale(86), scale(22) + movement.smooth)
+        local songPosition = vec2(scale(88), scale(22) + movement.smooth)
         local songTextSize = vec2(137, 15):scale(app.scale)
-
         drawSongInfoText(songInfo.final, songPosition, songTextSize, songFontSize)
-
         if app.hovered and songInfo.final ~= '' then
             if ui.rectHovered(songPosition, songPosition + songTextSize, true) then
                 local tooltipText = player.isOnline and 'Current Song: ' .. songInfo.artist .. ' - ' .. songInfo.title .. '\nClick to send to chat.' or 'Current Song: ' .. songInfo.artist .. ' - ' .. songInfo.title
@@ -994,7 +1019,9 @@ end
 
 ---Draws the chat messages.
 local function drawMessages()
-    ui.pushClipRect(vec2(0, 0), vec2(ui.windowWidth(), (scale(500) - chat.input.offset) + movement.smooth))
+    local windowWidth = ui.windowWidth()
+    local windowHalfWidth = windowWidth / 2
+    ui.pushClipRect(vec2(0, 0), vec2(windowWidth, (scale(500) - chat.input.offset) + movement.smooth))
     ui.setCursor(vec2(13, 100):scale(app.scale) + vec2(0, movement.smooth))
     ui.childWindow('Messages', vec2(266, 400 - chat.input.offset):scale(app.scale), false, flags.window, function()
         local messageFontSize = scale(settings.chatFontSize)
@@ -1007,13 +1034,17 @@ local function drawMessages()
         if #chat.messages > 0 then
             local msgDist = scale(370)
             local lastDrawnUserIndex = nil
+
             for i = 1, #chat.messages do
-                local messageUserIndex = chat.messages[i][1]
+                local message = chat.messages[i]
+                local messageUserIndex = message[1]
                 local messageUserIndexLast = lastDrawnUserIndex
-                local messageUsername = chat.messages[i][2]
+                local messageUsername = message[2]
                 local messageUsernameColor = chat.usernameColors[messageUsername] or rgbm.colors.gray
-                local messageTextContent = chat.messages[i][3]
-                local messageTimestamp = settings.badTime and to12hTime(os.date('%H:%M', chat.messages[i][4]) --[[@as string]]) .. ' ' .. player.timePeriod or os.date('%H:%M', chat.messages[i][4]) --[[@as string]]
+                local messageTextContent = message[3]
+                local messageTime = message[4]
+                local messageTimestamp = settings.badTime and to12hTime(os.date('%H:%M', messageTime) --[[@as string]]) .. ' ' .. player.timePeriod or os.date('%H:%M', messageTime) --[[@as string]]
+
                 local fontWeight = app.font.regular
 
                 if settings.focusMode and (messageUserIndex > 0 and not checkIfFriend(messageUserIndex)) then goto continue end
@@ -1039,7 +1070,7 @@ local function drawMessages()
                     ui.pushDWriteFont(fontWeight)
                     local messageTextSize = ui.measureDWriteText(messageTextContent, messageFontSize, scale(190))
                     msgDist = math.ceil(msgDist + messageTextSize.y)
-                    ui.setCursor(vec2(ui.windowWidth() - scale(5), msgDist))
+                    ui.setCursor(vec2(windowWidth - scale(5), msgDist))
                     ui.drawRectFilled(ui.getCursor() - vec2(math.ceil(messageTextSize.x + messagePadding.x), math.ceil(messageTextSize.y + messagePadding.y)), ui.getCursor(), colors.final.messageOwn, messageRounding)
                     ui.setCursor(ui.getCursor() - vec2(math.ceil(messageTextSize.x + messagePadding.x / 2), math.ceil(messageTextSize.y + messagePadding.y / 2)))
                     ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, colors.final.messageOwnText)
@@ -1048,7 +1079,7 @@ local function drawMessages()
                     if settings.chatShowTimestamps then
                         ui.pushDWriteFont(app.font.bold)
                         local timestampSize = ui.measureDWriteText(messageTimestamp, timestampFontSize)
-                        ui.setCursor(vec2(math.ceil(ui.windowWidth() - timestampSize.x - scale(6)), msgDist))
+                        ui.setCursor(vec2(math.ceil(windowWidth - timestampSize.x - scale(6)), msgDist))
                         ui.dwriteTextAligned(messageTimestamp, timestampFontSize, ui.Alignment.Start, ui.Alignment.Start, timestampSize, true, rgbm.colors.gray)
                         ui.popDWriteFont()
                         msgDist = math.ceil(msgDist + timestampSize.y)
@@ -1111,19 +1142,19 @@ local function drawMessages()
 
                     if lastDrawnUserIndex == nil then
                         msgDist = math.ceil(msgDist - messageTextSize.y / 2)
-                        ui.setCursor(vec2(math.ceil(ui.windowWidth() / 2 - messageTextSize.x / 2), math.ceil(msgDist)))
+                        ui.setCursor(vec2(math.ceil(windowHalfWidth - messageTextSize.x / 2), math.ceil(msgDist)))
                         ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Center, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgbm.colors.gray)
                         ui.popDWriteFont()
                         msgDist = math.ceil(msgDist + messageTextSize.y + messagePadding.y / 2)
                     else
                         if lastDrawnUserIndex == messageUserIndex then
-                            ui.setCursor(vec2(math.ceil(ui.windowWidth() / 2 - messageTextSize.x / 2), math.ceil(msgDist)))
+                            ui.setCursor(vec2(math.ceil(windowHalfWidth - messageTextSize.x / 2), math.ceil(msgDist)))
                             ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Center, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgbm.colors.gray)
                             ui.popDWriteFont()
                             msgDist = math.ceil(msgDist + messageTextSize.y + messagePadding.y / 2)
                         else
                             msgDist = math.ceil(msgDist - messagePadding.y)
-                            ui.setCursor(vec2(math.ceil(ui.windowWidth() / 2 - messageTextSize.x / 2), math.ceil(msgDist)))
+                            ui.setCursor(vec2(math.ceil(windowHalfWidth - messageTextSize.x / 2), math.ceil(msgDist)))
                             ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Center, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgbm.colors.gray)
                             ui.popDWriteFont()
                             msgDist = math.ceil(msgDist + messageTextSize.y + messagePadding.y / 2)
@@ -1646,7 +1677,8 @@ function script.windowMainSettings()
                         settings.darkModeAutoLightAngle = ui.slider('##darkModeAutoLightAngle', settings.darkModeAutoLightAngle, 0, 180, 'Morning Sun Angle: ' .. '%.0f°')
                         lastItemHoveredTooltip('The angle at which the app will switch to light mode.\nLower values mean later in the day.')
                     else
-                        ui.text(string.format('Current Time: %02d:%02d', ac.getSim().timeHours, ac.getSim().timeMinutes))
+                        local sim = ac.getSim()
+                        ui.text(string.format('Current Time: %02d:%02d', sim.timeHours, sim.timeMinutes))
 
                         local darkVal = math.floor(settings.darkModeAutoDarkTime * 2 + 0.5)
                         local darkTimeStr = string.format('Dark Mode After: %02d:%02d', math.floor(darkVal / 2), (darkVal % 2) * 30)
