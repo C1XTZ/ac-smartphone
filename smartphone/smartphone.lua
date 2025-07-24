@@ -1184,9 +1184,10 @@ local function drawMessages(winWidth, winHalfWidth)
     ui.popClipRect()
 end
 
+---@param winHeight number @Window height.
 ---Draws the emoji picker button and window.
-local function drawEmojiPicker()
-    local buttonPos = vec2(29, 17):scale(app.scale)
+local function drawEmojiPicker(winHeight)
+    local buttonPos = vec2(26, 17):scale(app.scale)
     local buttonSize = vec2(24, 24):scale(app.scale)
     local buttonBgRad = scale(12)
     local emojiSizePicker = scale(20)
@@ -1194,7 +1195,7 @@ local function drawEmojiPicker()
     local emojiSize = ui.measureDWriteText('😀', emojiSizePicker)
     if movement.distance > 0 and chat.emojiPicker then chat.emojiPicker = false end
 
-    ui.setCursor(vec2(buttonPos.x, ui.windowHeight() - buttonPos.y + movement.smooth))
+    ui.setCursor(vec2(buttonPos.x, winHeight - buttonPos.y + movement.smooth))
 
     ui.drawImage(app.images.emojiPicker, ui.getCursor() - buttonSize / 2, ui.getCursor() + buttonSize / 2, colors.final.emojiPicker)
 
@@ -1208,7 +1209,7 @@ local function drawEmojiPicker()
 
         if chat.emojiPickerHovered then
             if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
-            ui.drawEllipseFilled(vec2(buttonPos.x, ui.windowHeight() - buttonPos.y + movement.smooth), buttonBgRad, colors.final.emojiPickerBG, 100)
+            ui.drawEllipseFilled(vec2(buttonPos.x, winHeight - buttonPos.y + movement.smooth), buttonBgRad, colors.final.emojiPickerBG, 100)
         end
     end
 
@@ -1219,9 +1220,10 @@ local function drawEmojiPicker()
         local emojiStartPos = vec2(5, 3):scale(app.scale)
         local emojiOffset = vec2(0, 2):scale(app.scale)
 
-        ui.setCursor(vec2(windowPos.x, ui.windowHeight() - windowPos.y - chat.input.offset))
+        ui.setCursor(vec2(windowPos.x, winHeight - windowPos.y - chat.input.offset))
         ui.childWindow('EmojiPicker', windowSize, false, flags.window, function()
-            ui.setCursor(vec2(0, ui.windowHeight() - windowSize.y))
+            winHeight = ui.windowHeight()
+            ui.setCursor(vec2(0, winHeight - windowSize.y))
             ui.drawRectFilled(ui.getCursor(), windowSize, colors.final.message, rounding)
 
             ui.newLine(0)
@@ -1257,13 +1259,14 @@ local function drawEmojiPicker()
     ui.popDWriteFont()
 end
 
+---@param winHeight number @Window height.
 ---Draws the custom input box for the chat.
-local function drawInputCustom()
+local function drawInputCustom(winHeight)
     local inputSize = vec2(235, 32):scale(app.scale) + vec2(0, chat.input.offset)
     local inputBoxSize = inputSize - vec2(5, 5):scale(app.scale)
     local inputFontSize = scale(settings.chatFontSize)
     local inputWrap = scale(190)
-    ui.setCursor(vec2(scale(42), (ui.windowHeight() - scale(32) - chat.input.offset) + movement.smooth))
+    ui.setCursor(vec2(scale(42), (winHeight - scale(32) - chat.input.offset) + movement.smooth))
     ui.childWindow('ChatInput', inputSize, false, flags.input, function()
         ui.beginOutline()
         ui.drawRectFilled(vec2(2, 2):scale(app.scale), inputBoxSize, colors.final.display, scale(10))
@@ -1939,6 +1942,7 @@ function script.windowMain(dt)
 
     local winWidth = ui.windowWidth()
     local winHalfWidth = winWidth / 2
+    local winHeight = ui.windowHeight()
 
     app.hovered = ui.windowHovered(ui.HoveredFlags.ChildWindows)
     player.car = ac.getCar(0)
@@ -1957,8 +1961,8 @@ function script.windowMain(dt)
         drawSongInfo(winHalfWidth)
 
         drawMessages(winWidth, winHalfWidth)
-        drawEmojiPicker()
-        drawInputCustom()
+        drawEmojiPicker(winHeight)
+        drawInputCustom(winHeight)
 
         drawiPhone()
     end)
