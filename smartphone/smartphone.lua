@@ -126,6 +126,7 @@ local app = {
         phoneCamera = '.\\src\\img\\cam.png',
         pingAtlasPath = '.\\src\\img\\connection.png',
         emojiPicker = '.\\src\\img\\picker.png',
+        defaultCover = '.\\src\\img\\player.png',
     },
     font = {
         regular = ui.DWriteFont('Inter Variable Text', '.\\src\\ttf'):weight(ui.DWriteFont.Weight.Medium),
@@ -161,7 +162,6 @@ local songInfo = {
     title = '',
     final = '',
     hasCover = false,
-    defaultCover = './src/img/player.png',
     isPaused = false,
     dynamicIslandSize = vec2(40, 20),
     titleSplitPatterns = {
@@ -990,7 +990,6 @@ local function drawHeader()
 end
 
 ---Draws the song information.
----Draws the song information.
 local function drawSongInfo()
     if settings.songInfo then
         local windowHalfWidth = ui.windowWidth() / 2
@@ -1003,7 +1002,7 @@ local function drawSongInfo()
             if songInfo.hasCover then
                 ui.drawImageRounded(ac.currentlyPlaying() --[[@as ui.MediaPlayer]], imagePos, imagePos + imageSize, imageRounding, ui.CornerFlags.All)
             else
-                ui.drawImageRounded(songInfo.defaultCover, imagePos, imagePos + imageSize, imageRounding, ui.CornerFlags.All)
+                ui.drawImageRounded(app.images.defaultCover, imagePos, imagePos + imageSize, imageRounding, ui.CornerFlags.All)
             end
         end
         local songFontSize = scale(12)
