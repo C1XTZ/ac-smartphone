@@ -684,6 +684,8 @@ end
 ---Sends a chat message.
 local function sendChatMessage(message)
     if not chat.sendCd then
+        playAudio(audio.keyboard.enter)
+
         ac.sendChatMessage(message or chat.input.text)
 
         table.insert(chat.input.history, { 0, player.driverName, chat.input.text, os.time() })
@@ -786,7 +788,7 @@ local function handleKeyboardInput()
 
     if (ui.keyPressed(ui.Key.Backspace) or ui.keyPressed(ui.Key.Delete)) then
         playAudio(audio.keyboard.delete)
-    elseif ui.keyboardButtonPressed(ui.getKeyIndex(ui.Key.Enter), false) or ui.keyboardButtonPressed(ui.getKeyIndex(ui.Key.Space), true) then
+    elseif ui.keyboardButtonPressed(ui.getKeyIndex(ui.Key.Space), true) then
         playAudio(audio.keyboard.enter)
     elseif typed:gsub('[%c]', '') ~= '' and typed ~= ' ' then
         playAudio(audio.keyboard.keystroke)
@@ -855,6 +857,7 @@ end
 ---Popup for right clicking Usernames like in the regular chat app.
 local function chatPlayerPopup(userIndex, userName)
     if ui.itemClicked(ui.MouseButton.Right) then
+        playAudio(audio.keyboard.enter)
         ui.openPopup("chatPlayerPopup" .. userIndex)
     end
 
@@ -862,6 +865,7 @@ local function chatPlayerPopup(userIndex, userName)
         moveAppUp()
 
         if ui.modernMenuItem('Tag in chat', ui.Icons.Tag, false, ui.SelectableFlags.None, false) then
+            playAudio(audio.keyboard.keystroke)
             if chat.input.text == chat.input.placeholder then chat.input.text = '' end
             chat.input.active = true
             chat.input.text = chat.input.text .. '@' .. userName
@@ -875,11 +879,13 @@ local function chatPlayerPopup(userIndex, userName)
             local friendString = ac.DriverTags(userName).friend and 'Remove as Friend' or 'Mark as Friend'
             ui.newLine(chat.popupVertSpacing)
             if ui.modernMenuItem(friendString, ui.Icons.Befriend, false, ui.SelectableFlags.DontClosePopups, false) then
+                playAudio(audio.keyboard.enter)
                 ac.DriverTags(userName).friend = not ac.DriverTags(userName).friend
             end
 
             ui.newLine(chat.popupVertSpacing)
             if ui.modernMenuItem('Mute', ui.Icons.Ban, false, ui.SelectableFlags.DontClosePopups, false) then
+                playAudio(audio.keyboard.enter)
                 ui.modalPopup(
                     'Confirm Mute',
                     'Are you sure you want to mute ' .. userName .. '?\nYou will no longer be able to read their chat messages.\nUnmute them via the Drivers list in the CSP Chat app.',
@@ -889,6 +895,7 @@ local function chatPlayerPopup(userIndex, userName)
                     ui.Icons.Cancel,
                     function(confirmed)
                         if confirmed then ac.DriverTags(userName).muted = not ac.DriverTags(userName).muted end
+                        playAudio(audio.keyboard.enter)
                     end
                 )
             end
@@ -900,6 +907,7 @@ local function chatPlayerPopup(userIndex, userName)
         local watchString = ac.getCar(userIndex).focused and 'Stop Watching' or 'Watch Closely'
         ui.newLine(chat.popupVertSpacing)
         if ui.modernMenuItem(watchString, ui.Icons.VideoCamera, false, ui.SelectableFlags.DontClosePopups, false) then
+            playAudio(audio.keyboard.enter)
             if ac.getCar(userIndex).focused then ac.focusCar(0) else ac.focusCar(userIndex) end
         end
 
@@ -1041,7 +1049,10 @@ local function drawHeader(winWidth, winHalfWidth)
         if ui.rectHovered(headerImagePosition, headerImagePosition + headerImageSize) then
             ui.tooltip(app.tooltipPadding, function() ui.text(communities[player.serverCommunity].text .. '\nClick to open in Browser.') end)
             if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
-            if ui.mouseReleased(ui.MouseButton.Left) then os.openURL(communities[player.serverCommunity].url, false) end
+            if ui.mouseReleased(ui.MouseButton.Left) then
+                playAudio(audio.keyboard.enter)
+                os.openURL(communities[player.serverCommunity].url, false)
+            end
         end
     end
 end
@@ -1405,7 +1416,6 @@ local function drawInputCustom(winHeight)
                     buttonColor:mul(rgbm(0.6, 0.6, 0.8, 1))
 
                     if ui.mouseClicked(ui.MouseButton.Left) then
-                        playAudio(audio.keyboard.enter)
                         sendChatMessage()
                         chat.emojiPicker = false
                         chat.input.sendHovered = false
