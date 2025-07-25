@@ -1637,7 +1637,7 @@ if player.isOnline then
     end)
 end
 
-if player.isOnline and settings.connectionEvents then
+if player.isOnline then
     ---@param connectedCarIndex number @Car index of the car that joined/left
     ---@param action string @joined/left string
     ---Adds system messages for join/leave events.
@@ -1659,11 +1659,11 @@ if player.isOnline and settings.connectionEvents then
     end
 
     ac.onClientConnected(function(connectedCarIndex)
-        connectionHandler(connectedCarIndex, ' joined')
+        if settings.connectionEvents then connectionHandler(connectedCarIndex, ' joined') end
     end)
 
     ac.onClientDisconnected(function(connectedCarIndex)
-        connectionHandler(connectedCarIndex, ' left')
+        if settings.connectionEvents then connectionHandler(connectedCarIndex, ' left') end
     end)
 end
 
