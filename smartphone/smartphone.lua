@@ -211,6 +211,7 @@ local chat = {
         '🚀', '💥', '🐢', '🐇', '💀'
     },
     usernameColors = {},
+    popupVertSpacing = -18 * ac.getUI().uiScale,
 }
 
 local audio = {
@@ -849,6 +850,63 @@ local function handleKeyboardInput()
     chat.input.text = chat.input.text .. typed
 end
 
+---@param userIndex number @Car index of the message sender
+---@param userName string @Username of the message sender
+---Popup for right clicking Usernames like in the regular chat app.
+local function chatPlayerPopup(userIndex, userName)
+    if ui.itemClicked(ui.MouseButton.Right) then
+        ui.openPopup("chatPlayerPopup" .. userIndex)
+    end
+
+    if ui.beginPopup("chatPlayerPopup" .. userIndex, ui.WindowFlags.None, 0) then
+        moveAppUp()
+
+        if ui.modernMenuItem('Tag in chat', ui.Icons.Tag, false, ui.SelectableFlags.None, false) then
+            if chat.input.text == chat.input.placeholder then chat.input.text = '' end
+            chat.input.active = true
+            chat.input.text = chat.input.text .. '@' .. userName
+            ui.closePopup()
+        end
+
+        ui.newLine(chat.popupVertSpacing)
+        ui.separator()
+
+        if player.cspVersion >= 3459 then
+            local friendString = ac.DriverTags(userName).friend and 'Remove as Friend' or 'Mark as Friend'
+            ui.newLine(chat.popupVertSpacing)
+            if ui.modernMenuItem(friendString, ui.Icons.Befriend, false, ui.SelectableFlags.DontClosePopups, false) then
+                ac.DriverTags(userName).friend = not ac.DriverTags(userName).friend
+            end
+
+            ui.newLine(chat.popupVertSpacing)
+            if ui.modernMenuItem('Mute', ui.Icons.Ban, false, ui.SelectableFlags.DontClosePopups, false) then
+                ui.modalPopup(
+                    'Confirm Mute',
+                    'Are you sure you want to mute ' .. userName .. '?\nYou will no longer be able to read their chat messages.\nUnmute them via the Drivers list in the CSP Chat app.',
+                    'Confirm',
+                    'Cancel',
+                    ui.Icons.Confirm,
+                    ui.Icons.Cancel,
+                    function(confirmed)
+                        if confirmed then ac.DriverTags(userName).muted = not ac.DriverTags(userName).muted end
+                    end
+                )
+            end
+        end
+
+        ui.newLine(chat.popupVertSpacing)
+        ui.separator()
+
+        local watchString = ac.getCar(userIndex).focused and 'Stop Watching' or 'Watch Closely'
+        ui.newLine(chat.popupVertSpacing)
+        if ui.modernMenuItem(watchString, ui.Icons.VideoCamera, false, ui.SelectableFlags.DontClosePopups, false) then
+            if ac.getCar(userIndex).focused then ac.focusCar(0) else ac.focusCar(userIndex) end
+        end
+
+        ui.endPopup()
+    end
+end
+
 --#endregion
 
 --#region DRAWING FUNCTIONS
@@ -1053,7 +1111,7 @@ local function drawMessages(winWidth, winHalfWidth)
 
                 local fontWeight = app.font.regular
 
-                if settings.focusMode and (messageUserIndex > 0 and not checkIfFriend(messageUserIndex)) then goto continue end
+                if (settings.focusMode and (messageUserIndex > 0 and not checkIfFriend(messageUserIndex))) or ac.DriverTags(messageUsername).muted then goto continue end
 
                 if (i == #chat.messages and settings.chatLatestBold) or (messageTextContent:lower():find('%f[%a_]' .. player.driverName:lower() .. '%f[%A_]') and messageUserIndex > 0) then
                     fontWeight = app.font.bold
@@ -1112,15 +1170,13 @@ local function drawMessages(winWidth, winHalfWidth)
                     end
 
                     if app.hovered then
-                        if ui.itemHovered() and not ui.isMouseDragging(ui.MouseButton.Right, 0) then
+                        if ui.itemHovered() then
                             ui.setMouseCursor(ui.MouseCursor.Hand)
-                        end
-                        if ui.itemClicked(ui.MouseButton.Right) then
-                            if chat.input.text == chat.input.placeholder then chat.input.text = '' end
-                            chat.input.active = true
-                            chat.input.text = chat.input.text .. '@' .. messageUsername
+                            ui.setDriverTooltip(messageUserIndex)
                         end
                     end
+
+                    chatPlayerPopup(messageUserIndex, messageUsername)
 
                     ui.popDWriteFont()
                     ui.pushDWriteFont(fontWeight)
