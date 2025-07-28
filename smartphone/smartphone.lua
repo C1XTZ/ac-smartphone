@@ -756,8 +756,7 @@ local function deleteOldestMessages()
     local index = 1
     local removedMsg = false
     while index <= #chat.messages do
-        if #chat.messages > settings.chatKeepSize and
-            currentTime - chat.messages[index][4] > (settings.chatOlderThan * 10) then
+        if #chat.messages > settings.chatKeepSize and currentTime - chat.messages[index][4] > (settings.chatOlderThan * 60) then
             table.remove(chat.messages, index)
             removedMsg = true
         else
