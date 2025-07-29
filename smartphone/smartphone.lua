@@ -350,12 +350,18 @@ local function to12hTime(timeString)
     return string.format('%s:%02d', hour, minute)
 end
 
----@param carIndex number @The index of the car whose drivers friend status is being checked.
----@return boolean @Returns true if the driver at the given index is tagged as a friend.
----Determines whether the driver of the specified car is marked as a friend.
-local function checkIfFriend(carIndex)
-    if not ac.getDriverName(carIndex) then return false end
-    return ac.DriverTags(ac.getDriverName(carIndex) --[[@as string]]).friend
+---@param carIndexOrUsername number|string @The index of the car or username whose friend status is being checked.
+---@return boolean @Returns true if the driver is tagged as a friend.
+---Determines whether the driver of the specified car or username is marked as a friend.
+local function checkIfFriend(carIndexOrUsername)
+    local driverName
+    if type(carIndexOrUsername) == "number" then
+        driverName = ac.getDriverName(carIndexOrUsername)
+        if not driverName then return false end
+    else
+        driverName = carIndexOrUsername
+    end
+    return ac.DriverTags(driverName).friend
 end
 
 ---@return string @The community name of the current server.
@@ -855,6 +861,9 @@ end
 ---@param userName string @Username of the message sender
 ---Popup for right clicking Usernames like in the regular chat app.
 local function chatPlayerPopup(userIndex, userName)
+    local car = ac.getCar(userIndex)
+    if not car or car:driverName() ~= userName then return end
+
     if ui.itemClicked(ui.MouseButton.Right) then
         playAudio(audio.keyboard.enter)
         ui.openPopup("chatPlayerPopup" .. userIndex)
@@ -900,14 +909,18 @@ local function chatPlayerPopup(userIndex, userName)
             end
         end
 
-        ui.newLine(chat.popupVertSpacing)
-        ui.separator()
 
-        local watchString = ac.getCar(userIndex).focused and 'Stop Watching' or 'Watch Closely'
-        ui.newLine(chat.popupVertSpacing)
-        if ui.modernMenuItem(watchString, ui.Icons.VideoCamera, false, ui.SelectableFlags.DontClosePopups, false) then
-            playAudio(audio.keyboard.enter)
-            if ac.getCar(userIndex).focused then ac.focusCar(0) else ac.focusCar(userIndex) end
+
+        if car.isConnected then
+            ui.newLine(chat.popupVertSpacing)
+            ui.separator()
+
+            local watchString = ac.getCar(userIndex).focused and 'Stop Watching' or 'Watch Closely'
+            ui.newLine(chat.popupVertSpacing)
+            if ui.modernMenuItem(watchString, ui.Icons.VideoCamera, false, ui.SelectableFlags.DontClosePopups, false) then
+                playAudio(audio.keyboard.enter)
+                if ac.getCar(userIndex).focused then ac.focusCar(0) else ac.focusCar(userIndex) end
+            end
         end
 
         ui.endPopup()
@@ -1093,161 +1106,164 @@ end
 ---@param winHalfWidth number @Half of the window width.
 ---Draws the chat messages.
 local function drawMessages(winWidth, winHalfWidth)
-    ui.pushClipRect(vec2(0, 0), vec2(winWidth, (scale(500) - chat.input.offset) + movement.smooth))
-    ui.setCursor(vec2(13, 100):scale(app.scale) + vec2(0, movement.smooth))
-    ui.childWindow('Messages', vec2(266, 400 - chat.input.offset):scale(app.scale), false, flags.window, function()
-        winWidth = ui.windowWidth()
-        winHalfWidth = winWidth / 2
-        local messageFontSize = scale(settings.chatFontSize)
-        local usernameFontSize = scale(settings.chatFontSize - 2)
-        local timestampFontSize = scale(settings.chatFontSize - 4)
-        local usernameOffset = vec2(scale(10), usernameFontSize + scale(13))
-        local messagePadding = vec2(15, 10):scale(app.scale)
-        local messageMaxWidth = scale(250)
-        local messageRounding = scale(10)
-        if #chat.messages > 0 then
-            local msgDist = scale(370)
-            local lastDrawnUserIndex = nil
+    if player.isOnline then
+        ui.pushClipRect(vec2(0, 0), vec2(winWidth, (scale(500) - chat.input.offset) + movement.smooth))
+        ui.setCursor(vec2(13, 100):scale(app.scale) + vec2(0, movement.smooth))
+        ui.childWindow('Messages', vec2(266, 400 - chat.input.offset):scale(app.scale), false, flags.window, function()
+            winWidth = ui.windowWidth()
+            winHalfWidth = winWidth / 2
+            local messageFontSize = scale(settings.chatFontSize)
+            local usernameFontSize = scale(settings.chatFontSize - 2)
+            local timestampFontSize = scale(settings.chatFontSize - 4)
+            local usernameOffset = vec2(scale(10), usernameFontSize + scale(13))
+            local messagePadding = vec2(15, 10):scale(app.scale)
+            local messageMaxWidth = scale(250)
+            local messageRounding = scale(10)
+            if #chat.messages > 0 then
+                local msgDist = scale(370)
+                local lastDrawnUserIndex = nil
+                local lastDrawnUserName = nil
 
-            for i = 1, #chat.messages do
-                local message = chat.messages[i]
-                local messageUserIndex = message[1]
-                local messageUserIndexLast = lastDrawnUserIndex
-                local messageUsername = message[2]
-                local messageUsernameColor = chat.usernameColors[messageUsername] or rgbm.colors.gray
-                local messageTextContent = message[3]
-                local messageTime = message[4]
-                local messageTimestamp = settings.badTime and to12hTime(os.date('%H:%M', messageTime) --[[@as string]]) .. ' ' .. player.timePeriod or os.date('%H:%M', messageTime) --[[@as string]]
+                for i = 1, #chat.messages do
+                    local message = chat.messages[i]
+                    local messageUserIndex = message[1]
+                    local messageUserIndexLast = lastDrawnUserIndex
+                    local messageUsername = message[2]
+                    local messageUsernameLast = lastDrawnUserName
+                    local messageUsernameColor = chat.usernameColors[messageUsername] or rgbm.colors.gray
+                    local messageTextContent = message[3]
+                    local messageTime = message[4]
+                    local messageTimestamp = settings.badTime and to12hTime(os.date('%H:%M', messageTime) --[[@as string]]) .. ' ' .. player.timePeriod or os.date('%H:%M', messageTime) --[[@as string]]
 
-                local fontWeight = app.font.regular
+                    local fontWeight = app.font.regular
 
-                if (settings.focusMode and (messageUserIndex > 0 and not checkIfFriend(messageUserIndex))) or ac.DriverTags(messageUsername).muted then goto continue end
+                    if (settings.focusMode and (messageUserIndex > 0 and not checkIfFriend(messageUsername))) or ac.DriverTags(messageUsername).muted then goto continue end
 
-                if (i == #chat.messages and settings.chatLatestBold) or (messageTextContent:lower():find('%f[%a_]' .. player.driverName:lower() .. '%f[%A_]') and messageUserIndex > 0) then
-                    fontWeight = app.font.bold
-                else
-                    fontWeight = app.font.regular
-                end
-
-                if messageUserIndex == 0 then
-                    ui.pushDWriteFont(app.font.bold)
-                    local userNameTextSize = ui.measureDWriteText(messageUsername, usernameFontSize)
-
-                    if not messageUserIndexLast or messageUserIndexLast ~= messageUserIndex then
-                        if messageUserIndexLast and messageUserIndexLast ~= -1 then msgDist = math.ceil(msgDist - usernameOffset.y / 2) end
-                        ui.setCursor(vec2(usernameOffset.x, msgDist))
-                        ui.dwriteTextAligned(messageUsername, usernameFontSize, ui.Alignment.End, ui.Alignment.Start, vec2(messageMaxWidth, userNameTextSize.y), false, messageUsernameColor)
-                        msgDist = math.ceil(msgDist + usernameOffset.y)
-                    end
-
-                    ui.popDWriteFont()
-                    ui.pushDWriteFont(fontWeight)
-                    local messageTextSize = ui.measureDWriteText(messageTextContent, messageFontSize, scale(190))
-                    msgDist = math.ceil(msgDist + messageTextSize.y)
-                    ui.setCursor(vec2(winWidth - scale(5), msgDist))
-                    ui.drawRectFilled(ui.getCursor() - vec2(math.ceil(messageTextSize.x + messagePadding.x), math.ceil(messageTextSize.y + messagePadding.y)), ui.getCursor(), colors.final.messageOwn, messageRounding)
-                    ui.setCursor(ui.getCursor() - vec2(math.ceil(messageTextSize.x + messagePadding.x / 2), math.ceil(messageTextSize.y + messagePadding.y / 2)))
-                    ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, colors.final.messageOwnText)
-                    ui.popDWriteFont()
-
-                    if settings.chatShowTimestamps then
-                        ui.pushDWriteFont(app.font.bold)
-                        local timestampSize = ui.measureDWriteText(messageTimestamp, timestampFontSize)
-                        ui.setCursor(vec2(math.ceil(winWidth - timestampSize.x - scale(6)), msgDist))
-                        ui.dwriteTextAligned(messageTimestamp, timestampFontSize, ui.Alignment.Start, ui.Alignment.Start, timestampSize, true, rgbm.colors.gray)
-                        ui.popDWriteFont()
-                        msgDist = math.ceil(msgDist + timestampSize.y)
-                    end
-
-                    msgDist = math.ceil(msgDist + messagePadding.y + messagePadding.y / 2)
-                elseif messageUserIndex > 0 then
-                    local bubbleColor, messageTextColor = colors.final.message, pickThemeColor(rgbm.colors.black, rgbm.colors.white)
-                    local isFriend = checkIfFriend(messageUserIndex)
-
-                    if isFriend then
-                        bubbleColor = colors.final.messageFriend
-                        messageTextColor = colors.final.messageFriendText
-                    end
-
-                    ui.pushDWriteFont(app.font.bold)
-                    local userNameTextSize = ui.measureDWriteText(messageUsername, usernameFontSize)
-
-                    if not messageUserIndexLast or messageUserIndexLast ~= messageUserIndex then
-                        if messageUserIndexLast and messageUserIndexLast ~= -1 then msgDist = math.ceil(msgDist - usernameOffset.y / 2) end
-                        ui.setCursor(vec2(usernameOffset.x / 2, msgDist))
-                        ui.dwriteTextAligned(messageUsername, usernameFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(math.min(userNameTextSize.x, messageMaxWidth), userNameTextSize.y), false, messageUsernameColor)
-                        msgDist = math.ceil(msgDist + usernameOffset.y)
-                    end
-
-                    if app.hovered then
-                        if ui.itemHovered() then
-                            ui.setMouseCursor(ui.MouseCursor.Hand)
-                            ui.setDriverTooltip(messageUserIndex)
-                        end
-                    end
-
-                    chatPlayerPopup(messageUserIndex, messageUsername)
-
-                    ui.popDWriteFont()
-                    ui.pushDWriteFont(fontWeight)
-                    local messageTextSize = ui.measureDWriteText(messageTextContent, messageFontSize, scale(190))
-                    msgDist = math.ceil(msgDist + messageTextSize.y)
-                    ui.setCursor(vec2(math.ceil(messageTextSize.x + messagePadding.x + scale(5)), msgDist))
-                    ui.drawRectFilled(ui.getCursor() - vec2(math.ceil(messageTextSize.x + messagePadding.x), math.ceil(messageTextSize.y + messagePadding.y)), ui.getCursor(), bubbleColor, messageRounding)
-                    ui.setCursor(ui.getCursor() - vec2(math.ceil(messageTextSize.x + messagePadding.x / 2), math.ceil(messageTextSize.y + messagePadding.y / 2)))
-                    ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, messageTextColor)
-                    ui.popDWriteFont()
-
-                    if settings.chatShowTimestamps then
-                        ui.pushDWriteFont(app.font.bold)
-                        local timestampSize = ui.measureDWriteText(messageTimestamp, timestampFontSize)
-                        ui.setCursor(vec2(scale(5), msgDist))
-                        ui.dwriteTextAligned(messageTimestamp, timestampFontSize, ui.Alignment.Start, ui.Alignment.Start, timestampSize, true, rgbm.colors.gray)
-                        ui.popDWriteFont()
-                        msgDist = math.ceil(msgDist + timestampSize.y)
-                    end
-
-                    msgDist = math.ceil(msgDist + messagePadding.y + messagePadding.y / 2)
-                elseif messageUserIndex == -1 then
-                    ui.pushDWriteFont(app.font.bold)
-                    local messageTextSize = ui.measureDWriteText(messageTextContent, messageFontSize, scale(220))
-
-                    if lastDrawnUserIndex == nil then
-                        msgDist = math.ceil(msgDist - messageTextSize.y / 2)
-                        ui.setCursor(vec2(math.ceil(winHalfWidth - messageTextSize.x / 2), math.ceil(msgDist)))
-                        ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Center, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgbm.colors.gray)
-                        ui.popDWriteFont()
-                        msgDist = math.ceil(msgDist + messageTextSize.y + messagePadding.y / 2)
+                    if (i == #chat.messages and settings.chatLatestBold) or (messageTextContent:lower():find('%f[%a_]' .. player.driverName:lower() .. '%f[%A_]') and messageUserIndex > 0) then
+                        fontWeight = app.font.bold
                     else
-                        if lastDrawnUserIndex == messageUserIndex then
+                        fontWeight = app.font.regular
+                    end
+
+                    if messageUserIndex == 0 then
+                        ui.pushDWriteFont(app.font.bold)
+                        local userNameTextSize = ui.measureDWriteText(messageUsername, usernameFontSize)
+
+                        if (not messageUserIndexLast or messageUserIndexLast ~= messageUserIndex) or (not messageUsernameLast or messageUsernameLast ~= messageUsername) then
+                            if messageUserIndexLast and messageUserIndexLast ~= -1 then msgDist = math.ceil(msgDist - usernameOffset.y / 2) end
+                            ui.setCursor(vec2(usernameOffset.x, msgDist))
+                            ui.dwriteTextAligned(messageUsername, usernameFontSize, ui.Alignment.End, ui.Alignment.Start, vec2(messageMaxWidth, userNameTextSize.y), false, messageUsernameColor)
+                            msgDist = math.ceil(msgDist + usernameOffset.y)
+                        end
+
+                        ui.popDWriteFont()
+                        ui.pushDWriteFont(fontWeight)
+                        local messageTextSize = ui.measureDWriteText(messageTextContent, messageFontSize, scale(190))
+                        msgDist = math.ceil(msgDist + messageTextSize.y)
+                        ui.setCursor(vec2(winWidth - scale(5), msgDist))
+                        ui.drawRectFilled(ui.getCursor() - vec2(math.ceil(messageTextSize.x + messagePadding.x), math.ceil(messageTextSize.y + messagePadding.y)), ui.getCursor(), colors.final.messageOwn, messageRounding)
+                        ui.setCursor(ui.getCursor() - vec2(math.ceil(messageTextSize.x + messagePadding.x / 2), math.ceil(messageTextSize.y + messagePadding.y / 2)))
+                        ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, colors.final.messageOwnText)
+                        ui.popDWriteFont()
+
+                        if settings.chatShowTimestamps then
+                            ui.pushDWriteFont(app.font.bold)
+                            local timestampSize = ui.measureDWriteText(messageTimestamp, timestampFontSize)
+                            ui.setCursor(vec2(math.ceil(winWidth - timestampSize.x - scale(6)), msgDist))
+                            ui.dwriteTextAligned(messageTimestamp, timestampFontSize, ui.Alignment.Start, ui.Alignment.Start, timestampSize, true, rgbm.colors.gray)
+                            ui.popDWriteFont()
+                            msgDist = math.ceil(msgDist + timestampSize.y)
+                        end
+
+                        msgDist = math.ceil(msgDist + messagePadding.y + messagePadding.y / 2)
+                    elseif messageUserIndex > 0 then
+                        local bubbleColor, messageTextColor = colors.final.message, pickThemeColor(rgbm.colors.black, rgbm.colors.white)
+
+                        if checkIfFriend(messageUsername) then
+                            bubbleColor = colors.final.messageFriend
+                            messageTextColor = colors.final.messageFriendText
+                        end
+
+                        ui.pushDWriteFont(app.font.bold)
+                        local userNameTextSize = ui.measureDWriteText(messageUsername, usernameFontSize)
+
+                        if (not messageUserIndexLast or messageUserIndexLast ~= messageUserIndex) or (not messageUsernameLast or messageUsernameLast ~= messageUsername) then
+                            if messageUserIndexLast and messageUserIndexLast ~= -1 then msgDist = math.ceil(msgDist - usernameOffset.y / 2) end
+                            ui.setCursor(vec2(usernameOffset.x / 2, msgDist))
+                            ui.dwriteTextAligned(messageUsername, usernameFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(math.min(userNameTextSize.x, messageMaxWidth), userNameTextSize.y), false, messageUsernameColor)
+                            msgDist = math.ceil(msgDist + usernameOffset.y)
+                        end
+
+                        if app.hovered then
+                            if ui.itemHovered() then
+                                ui.setMouseCursor(ui.MouseCursor.Hand)
+                                if ac.getDriverName(messageUserIndex) == messageUsername then ui.setDriverTooltip(messageUserIndex) end
+                            end
+                            chatPlayerPopup(messageUserIndex, messageUsername)
+                        end
+
+                        ui.popDWriteFont()
+                        ui.pushDWriteFont(fontWeight)
+                        local messageTextSize = ui.measureDWriteText(messageTextContent, messageFontSize, scale(190))
+                        msgDist = math.ceil(msgDist + messageTextSize.y)
+                        ui.setCursor(vec2(math.ceil(messageTextSize.x + messagePadding.x + scale(5)), msgDist))
+                        ui.drawRectFilled(ui.getCursor() - vec2(math.ceil(messageTextSize.x + messagePadding.x), math.ceil(messageTextSize.y + messagePadding.y)), ui.getCursor(), bubbleColor, messageRounding)
+                        ui.setCursor(ui.getCursor() - vec2(math.ceil(messageTextSize.x + messagePadding.x / 2), math.ceil(messageTextSize.y + messagePadding.y / 2)))
+                        ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, messageTextColor)
+                        ui.popDWriteFont()
+
+                        if settings.chatShowTimestamps then
+                            ui.pushDWriteFont(app.font.bold)
+                            local timestampSize = ui.measureDWriteText(messageTimestamp, timestampFontSize)
+                            ui.setCursor(vec2(scale(5), msgDist))
+                            ui.dwriteTextAligned(messageTimestamp, timestampFontSize, ui.Alignment.Start, ui.Alignment.Start, timestampSize, true, rgbm.colors.gray)
+                            ui.popDWriteFont()
+                            msgDist = math.ceil(msgDist + timestampSize.y)
+                        end
+
+                        msgDist = math.ceil(msgDist + messagePadding.y + messagePadding.y / 2)
+                    elseif messageUserIndex == -1 then
+                        ui.pushDWriteFont(app.font.bold)
+                        local messageTextSize = ui.measureDWriteText(messageTextContent, messageFontSize, scale(220))
+
+                        if lastDrawnUserIndex == nil then
+                            msgDist = math.ceil(msgDist - messageTextSize.y / 2)
                             ui.setCursor(vec2(math.ceil(winHalfWidth - messageTextSize.x / 2), math.ceil(msgDist)))
                             ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Center, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgbm.colors.gray)
                             ui.popDWriteFont()
                             msgDist = math.ceil(msgDist + messageTextSize.y + messagePadding.y / 2)
                         else
-                            msgDist = math.ceil(msgDist - messagePadding.y)
-                            ui.setCursor(vec2(math.ceil(winHalfWidth - messageTextSize.x / 2), math.ceil(msgDist)))
-                            ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Center, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgbm.colors.gray)
-                            ui.popDWriteFont()
-                            msgDist = math.ceil(msgDist + messageTextSize.y + messagePadding.y / 2)
+                            if lastDrawnUserIndex == messageUserIndex then
+                                ui.setCursor(vec2(math.ceil(winHalfWidth - messageTextSize.x / 2), math.ceil(msgDist)))
+                                ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Center, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgbm.colors.gray)
+                                ui.popDWriteFont()
+                                msgDist = math.ceil(msgDist + messageTextSize.y + messagePadding.y / 2)
+                            else
+                                msgDist = math.ceil(msgDist - messagePadding.y)
+                                ui.setCursor(vec2(math.ceil(winHalfWidth - messageTextSize.x / 2), math.ceil(msgDist)))
+                                ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Center, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgbm.colors.gray)
+                                ui.popDWriteFont()
+                                msgDist = math.ceil(msgDist + messageTextSize.y + messagePadding.y / 2)
+                            end
                         end
                     end
+
+                    lastDrawnUserIndex = messageUserIndex
+                    lastDrawnUserName = messageUsername
+
+                    if (not app.hovered or chat.scrollBool) or (chat.input.active and chat.input.hovered) and ui.getScrollY() ~= ui.getScrollMaxY() then ui.setScrollHereY(-1) end
+
+                    ::continue::
                 end
-
-                lastDrawnUserIndex = messageUserIndex
-
-                if (not app.hovered or chat.scrollBool) or (chat.input.active and chat.input.hovered) and ui.getScrollY() ~= ui.getScrollMaxY() then ui.setScrollHereY(-1) end
-
-                ::continue::
             end
-        end
 
-        if app.hovered and ui.mouseWheel() ~= 0 then
-            local mouseWheel = (ui.mouseWheel() * -1) * (scale(settings.chatScrollDistance))
-            ui.setScrollY(mouseWheel, true, true)
-        end
-    end)
-    ui.popClipRect()
+            if app.hovered and ui.mouseWheel() ~= 0 then
+                local mouseWheel = (ui.mouseWheel() * -1) * (scale(settings.chatScrollDistance))
+                ui.setScrollY(mouseWheel, true, true)
+            end
+        end)
+        ui.popClipRect()
+    end
 end
 
 ---@param winHeight number @Window height.
@@ -2009,7 +2025,7 @@ function script.windowMain(dt)
     local winHalfWidth = winWidth / 2
     local winHeight = ui.windowHeight()
 
-    app.hovered = ui.windowHovered(ui.HoveredFlags.ChildWindows)
+    app.hovered = ui.windowHovered(bit.bor(ui.HoveredFlags.AllowWhenBlockedByPopup, ui.HoveredFlags.ChildWindows, ui.HoveredFlags.AllowWhenBlockedByActiveItem))
     player.car = ac.getCar(0)
 
     if app.images.phoneAtlasSize == vec2(0, 0) then app.images.phoneAtlasSize = ui.imageSize(app.images.phoneAtlasPath):scale(app.scale) end
