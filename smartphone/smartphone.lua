@@ -203,13 +203,7 @@ local chat = {
         'checksums',
         'teleported to pits',
     },
-    emojis = {
-        '😎', '😄', '😅', '😁', '😂', '😍', '🤩', '😳', '🤠', '🥳',
-        '😱', '😤', '😭', '🥴', '🥺', '😡', '🙌', '👍', '👎', '👋',
-        '✌️', '🤝', '🙏', '🤷‍♂️', '🤦‍♂️', '🏆', '🎉', '🥇', '🏁', '🚗',
-        '🚦', '🛑', '⛽', '⏱️', '🌍', '💡', '❓', '❗', '💬', '🍀',
-        '🚀', '💥', '🐢', '🐇', '💀'
-    },
+    emojis = {},
     usernameColors = {},
     popupVertSpacing = -18 * ac.getUI().uiScale,
 }
@@ -450,6 +444,60 @@ local function sendAppMessage(message, deleteAfter)
     end
 
     moveAppUp()
+end
+
+---Loads emojis from the data_emoji.txt file, fully supporting emoji grapheme clusters.
+---Disclosure: this piece of shit was vibecoded because it is black magic to me.
+local function loadEmojis()
+    local path = ac.getFolder(ac.FolderID.ExtCfgSys) .. '\\data_emoji.txt'
+    local f = io.open(path, 'r')
+    if not f then return {} end
+    local content = f:read('*a')
+    f:close()
+
+    local emojis = {}
+    local vs16 = "\239\184\143"
+    local zwj = "\226\128\141"
+
+    for line in content:gmatch('[^\r\n]+') do
+        if line:byte(1) ~= 35 and line:find('%S') then
+            local i = 1
+            local len = #line
+            while i <= len do
+                local c = line:byte(i)
+                if c <= 32 then
+                    i = i + 1
+                else
+                    local clen = (c >= 240 and 4) or (c >= 224 and 3) or (c >= 192 and 2) or 1
+                    local cluster = line:sub(i, i + clen - 1)
+                    i = i + clen
+
+                    if line:sub(i, i + 2) == vs16 then
+                        cluster = cluster .. vs16
+                        i = i + 3
+                    end
+
+                    while line:sub(i, i + 2) == zwj do
+                        cluster = cluster .. zwj
+                        i = i + 3
+                        if i > len then break end
+                        local nc = line:byte(i)
+                        local nlen = (nc >= 240 and 4) or (nc >= 224 and 3) or (nc >= 192 and 2) or 1
+                        cluster = cluster .. line:sub(i, i + nlen - 1)
+                        i = i + nlen
+                        if line:sub(i, i + 2) == vs16 then
+                            cluster = cluster .. vs16
+                            i = i + 3
+                        end
+                    end
+
+                    emojis[#emojis + 1] = cluster
+                end
+            end
+        end
+    end
+
+    chat.emojis = emojis
 end
 
 --#endregion
@@ -1449,6 +1497,7 @@ end
 --#endregion
 
 --#region APP UPDATER
+
 local updateStatus = {
     text = {
         [0] = 'C1XTZ: You shouldn\'t be reading this',
@@ -1684,10 +1733,9 @@ end
 
 function onShowWindow()
     updateCheckVersion()
-
     updateColors()
-
     updateSongInfo(true)
+    loadEmojis()
 
     if settings.focusMode then settings.focusMode = false end
 
