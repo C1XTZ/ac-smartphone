@@ -226,6 +226,7 @@ local audio = {
 
 local flags = {
     window = bit.bor(ui.WindowFlags.NoDecoration, ui.WindowFlags.NoBackground, ui.WindowFlags.NoNav, ui.WindowFlags.NoInputs, ui.WindowFlags.NoScrollbar),
+    emojiWindow = bit.bor(ui.WindowFlags.NoDecoration, ui.WindowFlags.NoBackground, ui.WindowFlags.NoNav, ui.WindowFlags.NoScrollbar),
     input = bit.bor(ui.WindowFlags.NoDecoration, ui.WindowFlags.NoBackground, ui.WindowFlags.NoNav, ui.WindowFlags.NoScrollbar),
     colorpicker = bit.bor(ui.ColorPickerFlags.NoAlpha, ui.ColorPickerFlags.NoSidePreview, ui.ColorPickerFlags.NoDragDrop, ui.ColorPickerFlags.NoLabel, ui.ColorPickerFlags.DisplayRGB, ui.ColorPickerFlags.NoSmallPreview),
 }
@@ -1305,7 +1306,7 @@ local function drawMessages(winWidth, winHalfWidth)
                 end
             end
 
-            if app.hovered and ui.mouseWheel() ~= 0 then
+            if (app.hovered and not chat.emojiPicker) and ui.mouseWheel() ~= 0 then
                 local mouseWheel = (ui.mouseWheel() * -1) * (scale(settings.chatScrollDistance))
                 ui.setScrollY(mouseWheel, true, true)
             end
@@ -1326,11 +1327,17 @@ local function drawEmojiPicker(winHeight)
     if movement.distance > 0 and chat.emojiPicker then chat.emojiPicker = false end
 
     ui.setCursor(vec2(buttonPos.x, winHeight - buttonPos.y + movement.smooth))
+    local cursorPos = ui.getCursor()
+    ui.drawImage(app.images.emojiPicker, cursorPos - buttonSize / 2, cursorPos + buttonSize / 2, colors.final.emojiPicker)
 
-    ui.drawImage(app.images.emojiPicker, ui.getCursor() - buttonSize / 2, ui.getCursor() + buttonSize / 2, colors.final.emojiPicker)
+    if not chat.emojiPicker then
+        ui.popDWriteFont()
+        return
+    end
 
     if app.hovered and player.isOnline then
-        chat.emojiPickerHovered = ui.rectHovered(ui.getCursor() - buttonSize / 2, ui.getCursor() + buttonSize / 2 + movement.smooth)
+        cursorPos = ui.getCursor()
+        chat.emojiPickerHovered = ui.rectHovered(cursorPos - buttonSize / 2, cursorPos + buttonSize / 2 + movement.smooth)
 
         if chat.emojiPickerHovered and ui.mouseReleased(ui.MouseButton.Left) then
             chat.emojiPicker = not chat.emojiPicker
@@ -1343,27 +1350,32 @@ local function drawEmojiPicker(winHeight)
         end
     end
 
-    if chat.emojiPicker then
-        local windowSize = vec2(185, 233):scale(app.scale)
-        local windowPos = vec2(18, 270):scale(app.scale)
-        local rounding = scale(10)
-        local emojiStartPos = vec2(5, 3):scale(app.scale)
-        local emojiOffset = vec2(0, 2):scale(app.scale)
+    local windowSize = vec2(185, 235):scale(app.scale)
+    local windowPos = vec2(18, 272):scale(app.scale)
+    local rounding = scale(10)
+    local emojiStartPos = vec2(5, 0):scale(app.scale)
+    local emojiOffset = vec2(0, 2):scale(app.scale)
+    local emojisPerRow = 6
+    local emojiCount = #chat.emojis
+    local bottomPadding = scale(8)
 
-        ui.setCursor(vec2(windowPos.x, winHeight - windowPos.y - chat.input.offset))
-        ui.childWindow('EmojiPicker', windowSize, false, flags.window, function()
-            winHeight = ui.windowHeight()
-            ui.setCursor(vec2(0, winHeight - windowSize.y))
-            ui.drawRectFilled(ui.getCursor(), windowSize, colors.final.message, rounding)
+    ui.setCursor(vec2(windowPos.x, winHeight - windowPos.y - chat.input.offset))
 
-            ui.newLine(0)
-            ui.setCursor(emojiStartPos)
+    ui.childWindow('EmojiPickerBG', windowSize, false, flags.emojiWindow, function()
+        ui.drawRectFilled(vec2(0, 0), windowSize, colors.final.message, rounding)
+
+        ui.setCursor(vec2(0, 0))
+        ui.childWindow('EmojiPickerEmojis', windowSize, false, flags.emojiWindow, function()
+            ui.dummy(emojiStartPos)
+            ui.setCursorX(emojiStartPos.x)
             ui.beginGroup(windowSize.x)
-            for i = 1, #chat.emojis do
-                if ui.rectHovered(ui.getCursor(), ui.getCursor() + emojiSize) then
+
+            for i = 1, emojiCount do
+                cursorPos = ui.getCursor()
+                if ui.rectHovered(cursorPos, cursorPos + emojiSize) then
                     chat.emojiPickerHovered = true
                     if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
-                    ui.drawRectFilled(ui.getCursor() + emojiOffset, ui.getCursor() + emojiSize + emojiOffset, colors.iMessageSelected, scale(5))
+                    ui.drawRectFilled(cursorPos + emojiOffset, cursorPos + emojiSize + emojiOffset, colors.iMessageSelected, scale(5))
                 end
 
                 ui.beginOutline()
@@ -1378,16 +1390,19 @@ local function drawEmojiPicker(winHeight)
                 end
 
                 ui.sameLine(0, emojiOffset.y)
-
-                if i % 6 == 0 and i ~= #chat.emojis then
+                if i % emojisPerRow == 0 and i ~= emojiCount then
                     ui.newLine(emojiOffset.y)
                 end
             end
+
+            ui.newLine(bottomPadding)
             ui.endGroup()
         end)
-    end
+    end)
+
     ui.popDWriteFont()
 end
+
 
 ---@param winHeight number @Window height.
 ---Draws the custom input box for the chat.
