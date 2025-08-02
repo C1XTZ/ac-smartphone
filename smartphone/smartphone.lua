@@ -1240,14 +1240,14 @@ local function drawMessages(winWidth, winHalfWidth)
                         ui.setCursor(vec2(usernameOffset.x / 2, msgDist))
                         ui.dwriteTextAligned(messageUsername, usernameFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(math.min(userNameTextSize.x, messageMaxWidth), userNameTextSize.y), false, messageUsernameColor)
                         msgDist = math.ceil(msgDist + usernameOffset.y)
-                    end
 
-                    if app.hovered then
-                        if ui.itemHovered() then
-                            ui.setMouseCursor(ui.MouseCursor.Hand)
-                            if ac.getDriverName(messageUserIndex) == messageUsername then ui.setDriverTooltip(messageUserIndex) end
+                        if app.hovered then
+                            if ui.itemHovered() then
+                                ui.setMouseCursor(ui.MouseCursor.Hand)
+                                if ac.getDriverName(messageUserIndex) == messageUsername then ui.setDriverTooltip(messageUserIndex) end
+                            end
+                            chatPlayerPopup(messageUserIndex, messageUsername)
                         end
-                        chatPlayerPopup(messageUserIndex, messageUsername)
                     end
 
                     ui.popDWriteFont()
