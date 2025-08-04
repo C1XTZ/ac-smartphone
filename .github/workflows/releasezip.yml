@@ -21,24 +21,24 @@ jobs:
 
           if [ -z "$PREVIOUS_TAG" ]; then
             echo "No previous tag found, using all commits"
-            COMMITS=$(git log --oneline --pretty=format:"%h: %s")
+            COMMITS=$(git log --pretty=format:"%h: %s%n%b" | sed '/^$/d')
             DIFF_SECTION=""
           else
             echo "Previous tag: $PREVIOUS_TAG"
             echo "Current tag: $CURRENT_TAG"
-            COMMITS=$(git log --oneline --pretty=format:"%h: %s" $PREVIOUS_TAG..HEAD)
+            COMMITS=$(git log --pretty=format:"%h: %s%n%b" $PREVIOUS_TAG..HEAD | sed '/^$/d')
             DIFF_SECTION="## Compare all changes:"$'\n'"[Compare $PREVIOUS_TAG...$CURRENT_TAG](https://github.com/${{ github.repository }}/compare/$PREVIOUS_TAG...$CURRENT_TAG)"$'\n'
           fi
 
           ADDED=""
           CHANGED=""
 
-          while IFS= read -r commit; do
-            if [[ $commit == *"add:"* ]]; then
-              ITEM=$(echo "$commit" | sed 's/add: //')
+          while IFS= read -r line; do
+            if [[ $line == *"add:"* ]]; then
+              ITEM=$(echo "$line" | sed 's/.*add: //')
               ADDED="$ADDED- $ITEM"$'\n'
-            elif [[ $commit == *"chg:"* ]]; then
-              ITEM=$(echo "$commit" | sed 's/chg: //')
+            elif [[ $line == *"chg:"* ]]; then
+              ITEM=$(echo "$line" | sed 's/.*chg: //')
               CHANGED="$CHANGED- $ITEM"$'\n'
             fi
           done <<< "$COMMITS"
@@ -110,4 +110,3 @@ jobs:
             - Username colors might be incorrect on servers that use custom name color scripts for players that reconnect in a different carslot.
             - Song Information will sometimes be picked up from the wrong source (e.g. Browser instead of Spotify), or not at all.  
               Make sure that `Show desktop overlay when using media keys` is enabled in your Spotify settings or try adding unwanted programs to the `Ignored processes` in the your CSP Music module settings.
-            - When using the AssettoServer PatreonTwitchChatPlugin, some Twitch features like Announcements are not be displayed correctly and will result in empty lines
