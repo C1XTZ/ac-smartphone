@@ -206,6 +206,7 @@ local chat = {
     emojis = {},
     usernameColors = {},
     popupVertSpacing = -18 * ac.getUI().uiScale,
+    latestNonServerMessage = nil,
 }
 
 local audio = {
@@ -221,6 +222,7 @@ local audio = {
     notification = {
         regular = { file = '.\\src\\aud\\notif-regular.mp3' },
         critical = { file = '.\\src\\aud\\notif-critical.mp3' },
+        timeout = 0.4,
     },
 }
 
@@ -350,7 +352,7 @@ end
 ---Determines whether the driver of the specified car or username is marked as a friend.
 local function checkIfFriend(carIndexOrUsername)
     local driverName
-    if type(carIndexOrUsername) == "number" then
+    if type(carIndexOrUsername) == 'number' then
         driverName = ac.getDriverName(carIndexOrUsername)
         if not driverName then return false end
     else
@@ -457,8 +459,8 @@ local function loadEmojis()
     f:close()
 
     local emojis = {}
-    local vs16 = "\239\184\143"
-    local zwj = "\226\128\141"
+    local vs16 = '\239\184\143'
+    local zwj = '\226\128\141'
 
     for line in content:gmatch('[^\r\n]+') do
         if line:byte(1) ~= 35 and line:find('%S') then
@@ -782,12 +784,12 @@ local function matchMessage(isPlayer, message)
                 if lowerMessage:find(lowerPlayerName) then
                     setTimeout(function()
                         playAudio(audio.notification.critical)
-                    end, 0.4)
+                    end, audio.notification.timeout)
                 else
                     if (lowerMessage:find('^you') or lowerMessage:find('^it is currently night')) then
                         setTimeout(function()
                             playAudio(audio.notification.critical)
-                        end, 0.4)
+                        end, audio.notification.timeout)
                     else
                         return true
                     end
@@ -915,10 +917,10 @@ local function chatPlayerPopup(userIndex, userName)
 
     if ui.itemClicked(ui.MouseButton.Right) then
         playAudio(audio.keyboard.enter)
-        ui.openPopup("chatPlayerPopup" .. userIndex)
+        ui.openPopup('chatPlayerPopup' .. userIndex)
     end
 
-    if ui.beginPopup("chatPlayerPopup" .. userIndex, ui.WindowFlags.None, 0) then
+    if ui.beginPopup('chatPlayerPopup' .. userIndex, ui.WindowFlags.None, 0) then
         moveAppUp()
 
         if ui.modernMenuItem('Tag in chat', ui.Icons.Tag, false, ui.SelectableFlags.None, false) then
@@ -1187,7 +1189,7 @@ local function drawMessages(winWidth, winHalfWidth)
 
                 if (settings.focusMode and (messageUserIndex > 0 and not checkIfFriend(messageUsername))) or ac.DriverTags(messageUsername).muted then goto continue end
 
-                if (i == #chat.messages and settings.chatLatestBold) or (messageTextContent:lower():find('%f[%a_]' .. player.driverName:lower() .. '%f[%A_]') and messageUserIndex > 0) then
+                if (i == chat.latestNonServerMessage and settings.chatLatestBold) or (messageTextContent:lower():find('%f[%a_]' .. player.driverName:lower() .. '%f[%A_]') and messageUserIndex > 0) then
                     fontWeight = app.font.bold
                 else
                     fontWeight = app.font.regular
@@ -1679,7 +1681,8 @@ if player.isOnline then
     ac.onChatMessage(function(message, senderCarIndex)
         local escapedMessage = message:gsub('([%(%)%.%%%+%-%*%?%[%]%^%$])', '%%%1')
         local isPlayer = senderCarIndex > -1
-        local isFriend = isPlayer and checkIfFriend(senderCarIndex)
+        local userName = ac.getDriverName(senderCarIndex) or 'Someone'
+        local isFriend = userName ~= 'Someone' and checkIfFriend(userName) or false
         local isMentioned = message:lower():find('%f[%a_]' .. player.driverName:lower() .. '%f[%A_]')
         local hideMessage = matchMessage(isPlayer, escapedMessage) and (isPlayer and settings.chatHideAnnoying or settings.chatHideKickBan)
 
@@ -1690,9 +1693,11 @@ if player.isOnline then
                 getDriverColor(senderCarIndex)
             end
 
-            table.insert(chat.messages, { senderCarIndex, isPlayer and ac.getDriverName(senderCarIndex) or 'Server', message, os.time() })
+            table.insert(chat.messages, { senderCarIndex, isPlayer and userName or 'Server', message, os.time() })
 
             if not settings.focusMode or isFriend or not isPlayer then moveAppUp() end
+
+            if senderCarIndex ~= -1 then chat.latestNonServerMessage = #chat.messages end
 
             if isPlayer then
                 if senderCarIndex == 0 then
@@ -1704,7 +1709,7 @@ if player.isOnline then
                     if (isFriend and settings.notificationsFriendMessages) or (isMentioned and settings.notificationsMentions) then
                         setTimeout(function()
                             playAudio(audio.notification.regular)
-                        end, 0.4)
+                        end, audio.notification.timeout)
                     end
                 end
             else
@@ -1722,16 +1727,18 @@ if player.isOnline then
     ---@param action string @joined/left string
     ---Adds system messages for join/leave events.
     local function connectionHandler(connectedCarIndex, action)
-        local isFriend = checkIfFriend(connectedCarIndex)
+        local userName = ac.getDriverName(connectedCarIndex) or 'Someone'
+        local isFriend = userName ~= 'Someone' and checkIfFriend(userName) or false
+
         if not settings.connectionEventsFriendsOnly or isFriend then
             deleteOldestMessages()
-            table.insert(chat.messages, { -1, 'Server', ac.getDriverName(connectedCarIndex) .. action .. ' the Server', os.time() })
+            table.insert(chat.messages, { -1, 'Server', userName .. action .. ' the Server', os.time() })
 
             if settings.messagesServer and (settings.messagesNonFriends or isFriend) then playAudio(audio.message.receive) end
             if settings.notificationsFriendConnections and isFriend then
                 setTimeout(function()
                     playAudio(audio.notification.regular)
-                end, 0.4)
+                end, audio.notification.timeout)
             end
 
             moveAppUp()
@@ -1770,7 +1777,7 @@ end
 function script.windowMainSettings()
     ui.tabBar('TabBar', function()
         ui.tabItem('Update', function()
-            ui.text(appName:gsub("^%l", string.upper) .. ' Version ' .. string.format('%.2f', appVersion))
+            ui.text(appName:gsub('^%l', string.upper) .. ' Version ' .. string.format('%.2f', appVersion))
 
             local updateButtonText = settings.updateAvailable and 'Install Update' or 'Check for Update'
 
