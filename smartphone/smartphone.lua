@@ -409,11 +409,10 @@ local function getLuminance(color)
 end
 
 ---@param index integer @Car index
----@return rgbm @Driver tag color
----Gets the color of the driver tag for the specified car index.
+---Caches the driver tag color for the specified car index.
 local function getDriverColor(index)
     local name = ac.getDriverName(index)
-    if not name or name == '' then return rgbm.colors.gray end
+    if not name or name == '' then return end
     local color = ac.DriverTags(name).color:clone()
     if (index == 0 and color == rgbm.colors.yellow) or (index > 0 and color == rgbm.colors.white) then
         color:set(rgbm.colors.gray)
@@ -422,7 +421,6 @@ local function getDriverColor(index)
     if not existingColor or existingColor == rgbm.colors.gray or color ~= rgbm.colors.gray then
         chat.usernameColors[name] = color
     end
-    return existingColor and existingColor ~= rgbm.colors.gray and existingColor or color
 end
 
 ---@param light rgbm @rgbm color to use if light mode
@@ -1180,7 +1178,8 @@ local function drawMessages(winWidth, winHalfWidth)
                 local messageUserIndexLast = lastDrawnUserIndex
                 local messageUsername = message[2]
                 local messageUsernameLast = lastDrawnUserName
-                local messageUsernameColor = chat.usernameColors[messageUsername] or rgbm.colors.gray
+                local messageUsernameColor = rgbm.colors.gray
+                if settings.chatUsernameColor then messageUsernameColor = chat.usernameColors[messageUsername] or rgbm.colors.gray end
                 local messageTextContent = message[3]
                 local messageTime = message[4]
                 local messageTimestamp = settings.badTime and to12hTime(os.date('%H:%M', messageTime) --[[@as string]]) .. ' ' .. player.timePeriod or os.date('%H:%M', messageTime) --[[@as string]]
@@ -1689,9 +1688,7 @@ if player.isOnline then
         if not hideMessage and message:len() > 0 then
             deleteOldestMessages()
 
-            if settings.chatUsernameColor and isPlayer then
-                getDriverColor(senderCarIndex)
-            end
+            if isPlayer then getDriverColor(senderCarIndex) end
 
             table.insert(chat.messages, { senderCarIndex, isPlayer and userName or 'Server', message, os.time() })
 
