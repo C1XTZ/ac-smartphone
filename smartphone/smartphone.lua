@@ -1182,6 +1182,7 @@ local function drawMessages(winWidth, winHalfWidth)
                 if settings.chatUsernameColor then messageUsernameColor = chat.usernameColors[messageUsername] or rgbm.colors.gray end
                 local messageTextContent = message[3]
                 local messageTime = message[4]
+                local messageShowTimestamp = message[5]
                 local messageTimestamp = settings.badTime and to12hTime(os.date('%H:%M', messageTime) --[[@as string]]) .. ' ' .. player.timePeriod or os.date('%H:%M', messageTime) --[[@as string]]
 
                 local fontWeight = app.font.regular
@@ -1215,7 +1216,7 @@ local function drawMessages(winWidth, winHalfWidth)
                     ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, colors.final.messageOwnText)
                     ui.popDWriteFont()
 
-                    if settings.chatShowTimestamps then
+                    if settings.chatShowTimestamps and messageShowTimestamp then
                         ui.pushDWriteFont(app.font.bold)
                         local timestampSize = ui.measureDWriteText(messageTimestamp, timestampFontSize)
                         ui.setCursor(vec2(math.ceil(winWidth - timestampSize.x - scale(6)), msgDist))
@@ -1261,7 +1262,7 @@ local function drawMessages(winWidth, winHalfWidth)
                     ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, messageTextColor)
                     ui.popDWriteFont()
 
-                    if settings.chatShowTimestamps then
+                    if settings.chatShowTimestamps and messageShowTimestamp then
                         ui.pushDWriteFont(app.font.bold)
                         local timestampSize = ui.measureDWriteText(messageTimestamp, timestampFontSize)
                         ui.setCursor(vec2(scale(5), msgDist))
@@ -1690,7 +1691,19 @@ if player.isOnline then
 
             if isPlayer then getDriverColor(senderCarIndex) end
 
-            table.insert(chat.messages, { senderCarIndex, isPlayer and userName or 'Server', message, os.time() })
+            local currentTime = os.time()
+            local currentTimeString = os.date('%H:%M', currentTime)
+
+            table.insert(chat.messages, { senderCarIndex, isPlayer and userName or 'Server', message, currentTime, false })
+
+            for i = #chat.messages, 1, -1 do
+                local msg = chat.messages[i]
+                if msg[1] == senderCarIndex and msg[4] and os.date('%H:%M', msg[4]) == currentTimeString then
+                    msg[5] = i == #chat.messages
+                else
+                    break
+                end
+            end
 
             if not settings.focusMode or isFriend or not isPlayer then moveAppUp() end
 
