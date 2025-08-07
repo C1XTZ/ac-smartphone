@@ -1857,6 +1857,8 @@ function onShowWindow()
 
     if settings.focusMode then settings.focusMode = false end
 
+    if settings.updateStatus == 5 then sendAppMessage('Update Available!\nInstall via App Settings') end
+
     if app.scale ~= math.round(settings.appScale, 1) then
         app.scale = math.round(settings.appScale, 1)
         app.images.phoneAtlasSize = ui.imageSize(app.images.phoneAtlasPath):scale(app.scale)
