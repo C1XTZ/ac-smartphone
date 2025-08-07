@@ -1543,6 +1543,28 @@ local releaseURL = 'https://api.github.com/repos/C1XTZ/ac-smartphone/releases/la
 local mainFile, assetFile = appName .. '.lua', appName .. '.zip'
 local carKeyFile = #io.scanDir(appFolder, '*.carkey') > 0
 
+---@param directory string @The directory to scan.
+---@return table @A list of files in the given directory.
+---@return table @A list of directories in the given directory.
+---Scans the given directory recursively and returns a list of files and directories.
+local function scanDirRecursive(directory)
+    local function scan(dir, fileList, dirList)
+        local files = io.scanDir(dir)
+        for _, file in ipairs(files) do
+            local fullPath = dir .. '\\' .. file
+            if io.dirExists(fullPath) then
+                table.insert(dirList, fullPath)
+                scan(fullPath, fileList, dirList)
+            else
+                table.insert(fileList, fullPath)
+            end
+        end
+    end
+    local fileList, dirList = {}, {}
+    scan(directory, fileList, dirList)
+    return fileList, dirList
+end
+
 ---@param downloadUrl string @The URL to download the update from
 ---Applies the update from the specified URL.
 local function updateApplyUpdate(downloadUrl)
@@ -1553,24 +1575,69 @@ local function updateApplyUpdate(downloadUrl)
             return
         end
 
-        local mainFileContent
-        for _, file in ipairs(io.scanZip(downloadResponse.body)) do
-            local content = io.loadFromZip(downloadResponse.body, file)
+        local zipData = downloadResponse.body
+        ac.pauseFilesWatching(true)
+
+        local updatedFiles, updatedDirs = {}, {}
+        for _, file in ipairs(io.scanZip(zipData)) do
+            local content = io.loadFromZip(zipData, file)
             if content then
-                local filePath = file:match('(.*)')
-                if filePath then
-                    filePath = filePath:gsub(appName .. '/', '')
-                    if filePath == mainFile then
-                        mainFileContent = content
-                    else
-                        if io.save(appFolder .. filePath, content) then print('Updating: ' .. file) end
+                local filePath = file:gsub('^' .. appName .. '/', '')
+                local dirPath = filePath:match('(.+)/')
+                if dirPath then
+                    updatedDirs[dirPath] = true
+                    local parts = {}
+                    for part in dirPath:gmatch('[^/]+') do
+                        table.insert(parts, part)
+                        local subDir = table.concat(parts, '/')
+                        updatedDirs[subDir] = true
+                    end
+                end
+                if filePath ~= mainFile then
+                    if io.save(appFolder .. filePath, content) then
+                        ac.log('Updating: ' .. file)
+                        updatedFiles[filePath] = true
                     end
                 end
             end
         end
 
-        if mainFileContent then
-            if io.save(appFolder .. mainFile, mainFileContent) then print('Updating: ' .. mainFile) end
+        local mainFileContent
+        for _, file in ipairs(io.scanZip(zipData)) do
+            local content = io.loadFromZip(zipData, file)
+            if content then
+                local filePath = file:gsub('^' .. appName .. '/', '')
+                if filePath == mainFile then
+                    mainFileContent = content
+                    break
+                end
+            end
+        end
+
+        local currentFiles, currentDirs = scanDirRecursive(appFolder)
+        for _, file in ipairs(currentFiles) do
+            local relativePath = file:sub(#appFolder + 1):gsub('\\', '/')
+            if relativePath:sub(1, 1) == '/' then relativePath = relativePath:sub(2) end
+            if not updatedFiles[relativePath] and not file:match('%.carkey$') then
+                io.deleteFile(file)
+                ac.log('Removing file: ' .. relativePath)
+            end
+        end
+
+        for i = #currentDirs, 1, -1 do
+            local dir = currentDirs[i]
+            local relativePath = dir:sub(#appFolder + 1):gsub('\\', '/')
+            if relativePath:sub(1, 1) == '/' then relativePath = relativePath:sub(2) end
+            if not updatedDirs[relativePath] then
+                io.deleteDir(dir)
+                ac.log('Removing directory: ' .. relativePath)
+            end
+        end
+
+        ac.pauseFilesWatching(false)
+
+        if mainFileContent and io.save(appFolder .. mainFile, mainFileContent) then
+            ac.log('Updating: ' .. mainFile)
         end
 
         settings.updateStatus = 1
@@ -1587,10 +1654,26 @@ local function updateCommunityData()
             return error('Couldn\'t get community data from github.')
         end
 
-        local data = stringify.parse(response.body)
+        local data = stringify.parse(response.body) --[[@as table]]
         if not data or not communities then return error('Web request or Communities table is nil.') end
         if communities.version[1] == data.version[1] then
             return ac.log('Already using latest community data.')
+        end
+
+        ac.pauseFilesWatching(true)
+
+        local newImages = {}
+        for name, community in pairs(data) do
+            if name ~= 'default' and name ~= 'version' and community.image then
+                newImages[community.image] = true
+            end
+        end
+
+        for name, community in pairs(communities) do
+            if name ~= 'default' and name ~= 'version' and community.image and not newImages[community.image] then
+                io.deleteFile(community.image)
+                ac.log('Removed community image: ' .. community.image)
+            end
         end
 
         local file = io.open(ac.getFolder(ac.FolderID.ACAppsLua) .. '\\smartphone\\src\\communities\\data\\list.lua', 'w+')
@@ -1599,7 +1682,7 @@ local function updateCommunityData()
             file:close()
         end
 
-        for name, community in pairs(data --[[@as table]]) do
+        for name, community in pairs(data) do
             if name ~= 'default' and community.image then
                 local filename = community.image:match('([^\\]+)$')
                 local remoteImageUrl = 'https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/smartphone/src/communities/img/' .. filename
@@ -1612,7 +1695,9 @@ local function updateCommunityData()
                 end)
             end
         end
+
         settings.dataCheckFailed = false
+        ac.pauseFilesWatching(false)
         return ac.log('Updated to latest community data.')
     end)
 end
@@ -1632,7 +1717,7 @@ local function updateCheckVersion(forced)
         end
 
         local latestRelease = JSON.parse(response.body)
-        local tagName, releaseAssets, getDownloadUrl = latestRelease.tag_name, latestRelease.assets, function(asset) return asset.browser_download_url end
+        local tagName, releaseAssets = latestRelease.tag_name, latestRelease.assets
 
         if not (tagName and tagName:match('^v%d%d?%.%d%d?$')) then
             settings.updateStatus = 4
@@ -1651,7 +1736,7 @@ local function updateCheckVersion(forced)
             local downloadUrl
             for _, asset in ipairs(releaseAssets) do
                 if asset.name == assetFile then
-                    downloadUrl = getDownloadUrl(asset)
+                    downloadUrl = asset.browser_download_url
                     break
                 end
             end
