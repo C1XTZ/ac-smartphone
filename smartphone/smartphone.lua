@@ -203,9 +203,12 @@ local chat = {
         'checksums',
         'teleported to pits',
     },
+    popup = {
+        hovered = nil,
+        vertSpacing = -18 * ac.getUI().uiScale,
+    },
     emojis = {},
     usernameColors = {},
-    popupVertSpacing = -18 * ac.getUI().uiScale,
     latestNonServerMessage = nil,
 }
 
@@ -913,12 +916,18 @@ local function chatPlayerPopup(userIndex, userName)
     local car = ac.getCar(userIndex)
     if not car or car:driverName() ~= userName then return end
 
-    if ui.itemClicked(ui.MouseButton.Right) then
+    if ui.mouseClicked(ui.MouseButton.Right) then
         playAudio(audio.keyboard.enter)
-        ui.openPopup('chatPlayerPopup' .. userIndex)
+        ui.openPopup('chatPlayerPopup' .. userName)
     end
 
-    if ui.beginPopup('chatPlayerPopup' .. userIndex, ui.WindowFlags.None, 0) then
+    --note: I know that ui.setDriverPopup() exists, but the "Tag in Chat" would insert the name into the csp chat app, which makes it useless.
+    --      Since thats probably one of the more used buttons, I decided to make a custom popup instead.
+    --      However, that means that none of the Admin tools (Setting Ballast/Restrictor, Giving Penalties and Kick/Banning) are available.
+    --      Setting Ballast/Restictor/Penalties using Lua requires physics access which apps do not have online. Kick Banning is not possible at all (Only initiating a Vote).
+    --      I could make buttons that type out commands but Kunos acServer and AssettoServer have different command syntax.
+    --      Checking which server integration is used would be a pain in the ass and the app isnt really meant to be used in league racing anyways so I wont bother.
+    if ui.beginPopup('chatPlayerPopup' .. userName, nil, 0) then
         moveAppUp()
 
         if ui.modernMenuItem('Tag in chat', ui.Icons.Tag, false, ui.SelectableFlags.None, false) then
@@ -929,18 +938,18 @@ local function chatPlayerPopup(userIndex, userName)
             ui.closePopup()
         end
 
-        ui.newLine(chat.popupVertSpacing)
+        ui.newLine(chat.popup.vertSpacing)
         ui.separator()
 
         if player.cspVersion >= 3459 then
             local friendString = ac.DriverTags(userName).friend and 'Remove as Friend' or 'Mark as Friend'
-            ui.newLine(chat.popupVertSpacing)
+            ui.newLine(chat.popup.vertSpacing)
             if ui.modernMenuItem(friendString, ui.Icons.Befriend, false, ui.SelectableFlags.DontClosePopups, false) then
                 playAudio(audio.keyboard.enter)
                 ac.DriverTags(userName).friend = not ac.DriverTags(userName).friend
             end
 
-            ui.newLine(chat.popupVertSpacing)
+            ui.newLine(chat.popup.vertSpacing)
             if ui.modernMenuItem('Mute', ui.Icons.Ban, false, ui.SelectableFlags.DontClosePopups, false) then
                 playAudio(audio.keyboard.enter)
                 ui.modalPopup(
@@ -959,18 +968,20 @@ local function chatPlayerPopup(userIndex, userName)
         end
 
         if car.isConnected then
-            ui.newLine(chat.popupVertSpacing)
+            ui.newLine(chat.popup.vertSpacing)
             ui.separator()
 
-            local watchString = ac.getCar(userIndex).focused and 'Stop Watching' or 'Watch Closely'
-            ui.newLine(chat.popupVertSpacing)
+            local watchString = car.focused and 'Stop Watching' or 'Watch Closely'
+            ui.newLine(chat.popup.vertSpacing)
             if ui.modernMenuItem(watchString, ui.Icons.VideoCamera, false, ui.SelectableFlags.DontClosePopups, false) then
                 playAudio(audio.keyboard.enter)
-                if ac.getCar(userIndex).focused then ac.focusCar(0) else ac.focusCar(userIndex) end
+                if car.focused then ac.focusCar(0) else ac.focusCar(userIndex) end
             end
         end
 
         ui.endPopup()
+    else
+        chat.popup.hovered = nil
     end
 end
 
@@ -1167,6 +1178,7 @@ local function drawMessages(winWidth, winHalfWidth)
         local messagePadding = vec2(15, 10):scale(app.scale)
         local messageMaxWidth = scale(250)
         local messageRounding = scale(10)
+
         if #chat.messages > 0 then
             local msgDist = scale(370)
             local lastDrawnUserIndex = nil
@@ -1247,8 +1259,8 @@ local function drawMessages(winWidth, winHalfWidth)
                             if ui.itemHovered() then
                                 ui.setMouseCursor(ui.MouseCursor.Hand)
                                 if ac.getDriverName(messageUserIndex) == messageUsername then ui.setDriverTooltip(messageUserIndex) end
+                                chat.popup.hovered = { userIndex = messageUserIndex, username = messageUsername }
                             end
-                            chatPlayerPopup(messageUserIndex, messageUsername)
                         end
                     end
 
@@ -1305,6 +1317,10 @@ local function drawMessages(winWidth, winHalfWidth)
 
                 ::continue::
             end
+        end
+
+        if chat.popup.hovered then
+            chatPlayerPopup(chat.popup.hovered.userIndex, chat.popup.hovered.username)
         end
 
         if (app.hovered and not chat.emojiPicker) and ui.mouseWheel() ~= 0 then
