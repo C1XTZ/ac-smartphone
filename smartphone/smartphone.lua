@@ -52,6 +52,7 @@ local settings = ac.storage {
 
     connectionEvents = true,
     connectionEventsFriendsOnly = true,
+    connectionEventsHideTraffic = true,
 
     enableAudio = true,
     enableKeyboard = true,
@@ -228,6 +229,8 @@ local audio = {
         timeout = 0.4,
     },
 }
+
+local nonTrafficPlayers = {}
 
 local flags = {
     window = bit.bor(ui.WindowFlags.NoDecoration, ui.WindowFlags.NoBackground, ui.WindowFlags.NoNav, ui.WindowFlags.NoInputs, ui.WindowFlags.NoScrollbar),
@@ -502,6 +505,16 @@ local function loadEmojis()
     end
 
     chat.emojis = emojis
+end
+
+---Populates the nonTrafficPlayers table with the names of players that are not hidding labels. AssettoServer traffic cars if HideAiCars is enabled for example.
+local function getNonTrafficPlayers()
+    for i, car in ac.iterateCars() do
+        local driverName = ac.getDriverName(i - 1)
+        if driverName and driverName ~= '' and not car.isHidingLabels then
+            nonTrafficPlayers[driverName] = true
+        end
+    end
 end
 
 --#endregion
@@ -1838,10 +1851,18 @@ if player.isOnline then
     ---@param action string @joined/left string
     ---Adds system messages for join/leave events.
     local function connectionHandler(connectedCarIndex, action)
-        local userName = ac.getDriverName(connectedCarIndex) or 'Someone'
-        local isFriend = userName ~= 'Someone' and checkIfFriend(userName) or false
+        local car = ac.getCar(connectedCarIndex)
+        local userName = ac.getDriverName(connectedCarIndex) or 'A Player'
 
-        if not settings.connectionEventsFriendsOnly or isFriend then
+        if userName ~= 'A Player' and car then
+            if action == ' joined' and not car.isHidingLabels then nonTrafficPlayers[userName] = true end
+        end
+
+        local isFriend = userName ~= 'A Player' and checkIfFriend(userName) or false
+        local hideNonFriend = settings.connectionEventsFriendsOnly and not isFriend
+        local hideTraffic = settings.connectionEventsHideTraffic and not nonTrafficPlayers[userName]
+
+        if not hideTraffic and not hideNonFriend then
             deleteOldestMessages()
             table.insert(chat.messages, { -1, 'Server', userName .. action .. ' the Server', os.time() })
 
@@ -1853,6 +1874,10 @@ if player.isOnline then
             end
 
             moveAppUp()
+        end
+
+        if userName ~= 'A Player' and car then
+            if action == ' left' then nonTrafficPlayers[userName] = nil end
         end
     end
 
@@ -1870,6 +1895,7 @@ function onShowWindow()
     updateColors()
     updateSongInfo(true)
     loadEmojis()
+    getNonTrafficPlayers()
 
     if settings.focusMode then settings.focusMode = false end
 
@@ -2064,6 +2090,9 @@ function script.windowMainSettings()
             lastItemHoveredTooltip('If enabled, shows server message when a player joins/leaves the server.')
             if settings.connectionEvents then
                 ui.indent()
+
+                if ui.checkbox('Hide Traffic', settings.connectionEventsHideTraffic) then settings.connectionEventsHideTraffic = not settings.connectionEventsHideTraffic end
+                lastItemHoveredTooltip('If enabled, hides join/leave messages of hidden AssettoServer traffic cars.')
 
                 if ui.checkbox('Friends Only', settings.connectionEventsFriendsOnly) then settings.connectionEventsFriendsOnly = not settings.connectionEventsFriendsOnly end
                 lastItemHoveredTooltip('If enabled, only shows join/leave messages of friends.')
