@@ -454,7 +454,7 @@ local function sendAppMessage(message, deleteAfter)
 end
 
 ---Loads emojis from the data_emoji.txt file, fully supporting emoji grapheme clusters.
----Disclosure: this piece of shit was vibecoded because it is black magic to me.
+---Disclosure: this piece of shit was written by Claude, it is black magic to me.
 local function loadEmojis()
     local path = ac.getFolder(ac.FolderID.ExtCfgSys) .. '\\data_emoji.txt'
     local f = io.open(path, 'r')
@@ -627,7 +627,9 @@ local audioIndexes = {}
 local function playTestAudio(tbl)
     local t = {}
     for _, v in pairs(tbl) do
-        t[#t + 1] = v
+        if type(v) == 'table' and v.file then
+            t[#t + 1] = v
+        end
     end
 
     local key = tbl
