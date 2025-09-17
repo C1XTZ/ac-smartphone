@@ -1070,8 +1070,8 @@ local function drawTime()
     local timePosition = vec2(23, 22):scale(app.scale) + vec2(0, movement.smooth)
     ui.setCursor(timePosition)
     ui.pushDWriteFont(app.font.bold)
-    local timeTextSize = ui.measureDWriteText(timeText, timeSize)
-    ui.dwriteTextAligned(timeText, timeSize, ui.Alignment.Start, ui.Alignment.Center, timeTextSize, false, colors.final.elements)
+    local timeTextSize = ui.measureDWriteText('00:00', timeSize)
+    ui.dwriteTextAligned(timeText, timeSize, ui.Alignment.End, ui.Alignment.Center, timeTextSize, false, colors.final.elements)
     ui.popDWriteFont()
 
     if app.hovered then
