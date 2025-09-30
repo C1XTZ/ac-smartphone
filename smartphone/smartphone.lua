@@ -698,7 +698,7 @@ local function updateSongInfo(forced)
         return
     end
 
-    if current.artist == '' and current.title == '' and not current.isPlaying then
+    if (current.artist == '' and current.title == '') or not current.isPlaying then
         songInfo.final = ''
         if songInfo.dynamicIslandSize.x == 80 then setDynamicIslandSize(false) end
         songInfo.isPaused = true
@@ -1159,8 +1159,8 @@ local function drawSongInfo(winHalfWidth)
             end
         end
         local songFontSize = scale(12)
-        local songPosition = vec2(scale(88), scale(22) + movement.smooth)
-        local songTextSize = vec2(136, 15):scale(app.scale)
+        local songPosition = vec2(scale(89), scale(22) + movement.smooth)
+        local songTextSize = vec2(135, 15):scale(app.scale)
         drawSongInfoText(songInfo.final, songPosition, songTextSize, songFontSize)
         if app.hovered and songInfo.final ~= '' then
             if ui.rectHovered(songPosition, songPosition + songTextSize, true) then
