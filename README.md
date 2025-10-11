@@ -1,17 +1,19 @@
 # Smartphone App for AC
 
+[![](https://img.shields.io/github/v/release/c1xtz/ac-smartphone?sort=date&display_name=tag&style=for-the-badge&logo=github&label=Download%20Latest&color=black)](https://github.com/C1XTZ/ac-smartphone/releases/latest)
+
 Chat replacement app in the style of an iPhone and iMessage.
 
 If you're looking for a more "oldschool" feel, try my [Mobilephone](https://github.com/C1XTZ/ac-mobilephone/) app.
 
 ### Current Features:
 
-- **Dark Mode**
-- **Displays current reallife time (24h/12h formats) - Left click to send it to chat**
-- **Displays currently playing music information - Left click to send it to chat**
-- **Displays your ping - Left click to send it to chat**
-- **Support for Custom Community Pictures, linking to a URL**
-  - Owners of communities that want to be added can contact me with the following information:
+- **Light / Dark Mode**
+- **Time Display** – Shows real-life time in 24h/12h format (left-click to send to chat)
+- **Now Playing** – Displays currently playing song information (left-click to send to chat)
+- **Ping Display** – Shows your ping as connection bars, can be hovered to show the exact number (left-click to send to chat)
+- **Custom Community Pictures** – Support for community branding with clickable links.
+  - Community owners can contact me with the following information to be added:
     ```ini
     Server IPs:     ;List of IP addresses of your servers. IP's should not change all the time.
     Image:          ;Image that you want to be displayed.
@@ -19,12 +21,12 @@ If you're looking for a more "oldschool" feel, try my [Mobilephone](https://gith
     Tooltip Text:   ;Text that you want to be displayed in the tooltip.
     ```
     ![](https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/.github/img/communityexample.png)
-- **Ingame chat - Right click a message to @mention the sender**
-- **Emoji Picker - Same Emojis as the regular chat app**
-- **iOS 18 Sounds - Keystrokes, Messages, Notifications**
-- **Hides annoying messages from other apps**
+- **In-Game Chat** – Hover over usernames to see information (right-click to open user options)
+- **Emoji Picker** – Same emojis as the standard chat app
+- **iOS 18 Sounds** – Keystrokes, messages, and notification sounds
+- **Message Filtering** – Hides spam from other apps
   - Example: `PLP: running version 1.21, 2-60-3-True-3.3-0.9-3-2-8-5-0|C1XTZ`
-- **Many adjustable settings as seen below - images might be outdated, always check ingame**
+- **Customizable Settings** – Extensive options to personalize your experience by opening the settings via the cogwheel
 
 <p align="center">
 <img width="130" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/.github/img/updater.png"> <img width="130" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/.github/img/appsettings.png"> <img width="130" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/.github/img/preview.gif"> <img width="130" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/.github/img/chatsettings.png"> <img width="130" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/.github/img/audiosettings.png"> <img width="130" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/.github/img/colorsettings.png">
