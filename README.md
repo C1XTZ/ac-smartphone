@@ -66,13 +66,28 @@ Full license details are available in the [`smartphone/CODELICENSE.txt`](./smart
 
 ## Exceptions
 
-### **SRP Logo**
+### **Community Logos**
+
+<details>
+  <summary>Click to expand</summary>
+
+#### **Shutoko Revival Project Logo**
 
 [`srp-logo-socials.png`](./smartphone/src/communities/img/srp-logo-socials.png)
 
 - **License:** All rights reserved by Shutoko Revival Project
   - You may distribute the image **unchanged**, provided it **remains bundled with this app**.
 - **Standalone redistribution, modification, or commercial use** requires explicit permission from [Shutoko Revival Project](https://shutokorevivalproject.com).
+
+#### **ONESTEP Logo**
+
+[`onestep-logo.png`](./smartphone/src/communities/img/onestep-logo.png)
+
+- **License:** All rights reserved by ONESTEP Assetto Corsa Mods
+  - You may distribute the image **unchanged**, provided it **remains bundled with this app**.
+- **Standalone redistribution, modification, or commercial use** requires explicit permission from [ONESTEP Assetto Corsa Mods](https://discord.gg/onestepassettocorsa).
+
+</details>
 
 ### **Inter Font**
 
