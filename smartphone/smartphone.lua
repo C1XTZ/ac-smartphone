@@ -1737,7 +1737,7 @@ end
 ---Checks for updates and handles the app update process.
 local function updateCheckVersion(forced)
     local now = os.time()
-    local checkInterval = settings.updateLastCheck and 3600 or 43200
+    local checkInterval = 28800
     if now - settings.updateLastCheck <= checkInterval and not forced then return end
     settings.updateLastCheck = now
 
@@ -1846,9 +1846,7 @@ if player.isOnline then
         end
         return false
     end)
-end
 
-if player.isOnline then
     ---@param connectedCarIndex number @Car index of the car that joined/left
     ---@param action string @joined/left string
     ---Adds system messages for join/leave events.
@@ -1890,6 +1888,13 @@ if player.isOnline then
     ac.onClientDisconnected(function(connectedCarIndex)
         if settings.connectionEvents then connectionHandler(connectedCarIndex, ' left') end
     end)
+
+    --Before CSP 0.3.0p110 (3637) the onOnlineWelcome event was broken and returned a empty string
+    if player.cspVersion >= 3637 then
+        ac.onOnlineWelcome(function(message, config)
+            sendAppMessage(message)
+        end)
+    end
 end
 
 function onShowWindow()
