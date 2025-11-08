@@ -274,15 +274,11 @@ local function utf8sub(s, i, j)
     local pos = 1
     local bytes = s:len()
     local len = 0
-
     local l = (i >= 0 and j >= 0) or utf8len(s)
     local startChar = (i >= 0) and i or l + i + 1
     local endChar = (j >= 0) and j or l + j + 1
-
     if startChar > endChar then return '' end
-
     local startByte, endByte = 1, bytes
-
     while pos <= bytes do
         len = len + 1
 
@@ -295,7 +291,6 @@ local function utf8sub(s, i, j)
             break
         end
     end
-
     return s:sub(startByte, endByte)
 end
 
@@ -348,7 +343,6 @@ local function to12hTime(timeString)
         hour = hour % 12
         if hour == 0 then hour = 12 end
     end
-
     if hour < 10 then hour = '0' .. hour end
     return string.format('%s:%02d', hour, minute)
 end
@@ -443,14 +437,13 @@ end
 local function sendAppMessage(message, deleteAfter)
     table.insert(chat.messages, { -1, 'App', message, os.time() })
     local msgIndex = #chat.messages
+    moveAppUp()
 
     if deleteAfter then
         setTimeout(function()
             table.remove(chat.messages, msgIndex)
         end, deleteAfter)
     end
-
-    moveAppUp()
 end
 
 ---Loads emojis from the data_emoji.txt file, fully supporting emoji grapheme clusters.
@@ -461,11 +454,9 @@ local function loadEmojis()
     if not f then return {} end
     local content = f:read('*a')
     f:close()
-
     local emojis = {}
     local vs16 = '\239\184\143'
     local zwj = '\226\128\141'
-
     for line in content:gmatch('[^\r\n]+') do
         if line:byte(1) ~= 35 and line:find('%S') then
             local i = 1
@@ -483,7 +474,6 @@ local function loadEmojis()
                         cluster = cluster .. vs16
                         i = i + 3
                     end
-
                     while line:sub(i, i + 2) == zwj do
                         cluster = cluster .. zwj
                         i = i + 3
@@ -497,13 +487,11 @@ local function loadEmojis()
                             i = i + 3
                         end
                     end
-
                     emojis[#emojis + 1] = cluster
                 end
             end
         end
     end
-
     chat.emojis = emojis
 end
 
@@ -577,6 +565,7 @@ local function updateAppMovement(dt)
     if movement.down and movement.timer <= 0 then
         movement.distance = math.floor(movement.distance + dt * 100 * settings.appMoveSpeed)
         movement.smooth = math.floor(math.smootherstep(math.lerpInvSat(movement.distance, 0, scaledMaxDistance)) * scaledMaxDistance)
+
         if movement.distance >= scaledMaxDistance then
             movement.distance = scaledMaxDistance
             movement.down = false
@@ -584,6 +573,7 @@ local function updateAppMovement(dt)
     elseif movement.up and movement.timer > 0 then
         movement.distance = math.floor(movement.distance - dt * 100 * settings.appMoveSpeed)
         movement.smooth = math.floor(math.smootherstep(math.lerpInvSat(movement.distance, 0, scaledMaxDistance)) * scaledMaxDistance)
+
         if movement.distance <= 0 then
             movement.distance = 0
             movement.up = false
@@ -596,6 +586,7 @@ end
 ---Plays the specified audio event.
 local function playAudio(event)
     if not settings.enableAudio or not event then return end
+
     local categoryFound
     for category, events in pairs(audio) do
         for _, eventData in pairs(events) do
@@ -652,6 +643,7 @@ local function automaticModeSwitch()
     end
 
     local sim = ac.getSim()
+    --ac.getSunAngle() is broken online before 0.2.10 (3459)
     if player.cspVersion >= 3459 then
         local sunAngle = ac.getSunAngle()
         local timeHours = sim.timeHours
@@ -681,17 +673,17 @@ end
 --#region SONG INFO FUNCTIONS
 
 ---@param enable boolean @sets the width of the island
----@return vec2 @updated size of the island
 ---Sets the width of the dynamic island.
 local function setDynamicIslandSize(enable)
     local width = enable and 80 or 40
-    return songInfo.dynamicIslandSize:set(width, 20)
+    songInfo.dynamicIslandSize:set(width, 20)
 end
 
 ---@param forced? boolean @Whether to force updating the song information even if the artist and title have not changed.
 ---Updates the global songInfo table with the currently playing track’s artist and title, handles cases of unknown artists or paused playback, and formats the scrolling text display.
 local function updateSongInfo(forced)
     if not settings.songInfo then return end
+
     local current = ac.currentlyPlaying()
 
     if not forced and current.artist == songInfo.artist and current.title == songInfo.title and current.isPlaying == not songInfo.isPaused then
@@ -700,6 +692,7 @@ local function updateSongInfo(forced)
 
     if (current.artist == '' and current.title == '') or not current.isPlaying then
         songInfo.final = ''
+
         if songInfo.dynamicIslandSize.x == 80 then setDynamicIslandSize(false) end
         songInfo.isPaused = true
     else
@@ -712,6 +705,7 @@ local function updateSongInfo(forced)
 
         songInfo.final = (songInfo.artist ~= '' and songInfo.artist:lower() ~= 'unknown artist') and (songInfo.artist .. ' - ' .. songInfo.title) or songInfo.title
         songInfo.hasCover = current.hasCover
+
         if songInfo.dynamicIslandSize.x == 40 then setDynamicIslandSize(true) end
         songInfo.isPaused = not current.isPlaying
     end
@@ -724,10 +718,12 @@ end
 ---Draws text that can either be static and centered, or scrolling horizontally.
 local function drawSongInfoText(text, pos, size, fontSize)
     if not text or text == '' then return end
-    local static = false
-    ui.pushDWriteFont(app.font.bold)
-    local textSize = ui.measureDWriteText(text, fontSize)
 
+    local static = false
+
+    ui.pushDWriteFont(app.font.bold)
+
+    local textSize = ui.measureDWriteText(text, fontSize)
     if textSize.x <= size.x - scale(4) and not settings.songInfoscrollAlways then
         static = true
     end
@@ -740,12 +736,14 @@ local function drawSongInfoText(text, pos, size, fontSize)
         local scrollDirection = settings.songInfoScrollDirection == 0 and -1 or 1
         local scrollTime = os.clock() * settings.songInfoScrollSpeed
         local scrollX = scrollDirection * (scrollTime % stepW)
+
         ui.pushClipRect(pos, pos + size)
         for i = -1, math.ceil(size.x / stepW) do
             ui.dwriteDrawText(text, fontSize, vec2(pos.x + scrollX + i * stepW, pos.y + (size.y - textSize.y) / 2), rgbm.colors.white)
         end
         ui.popClipRect()
     end
+
     ui.popDWriteFont()
 end
 
@@ -828,6 +826,7 @@ local function deleteOldestMessages()
     local currentTime = os.time()
     local index = 1
     local removedMsg = false
+
     while index <= #chat.messages do
         if #chat.messages > settings.chatKeepSize and currentTime - chat.messages[index][4] > (settings.chatOlderThan * 60) then
             table.remove(chat.messages, index)
@@ -842,7 +841,6 @@ local function deleteOldestMessages()
         for i = 1, #chat.messages do
             activeUsernames[chat.messages[i][2]] = true
         end
-
         for username, _ in pairs(chat.usernameColors) do
             if not activeUsernames[username] then
                 chat.usernameColors[username] = nil
@@ -938,8 +936,8 @@ local function chatPlayerPopup(userIndex, userName)
 
     --note: I know that ui.setDriverPopup() exists, but the "Tag in Chat" would insert the name into the csp chat app, which makes it useless.
     --      Since thats probably one of the more used buttons, I decided to make a custom popup instead.
-    --      However, that means that none of the Admin tools (Setting Ballast/Restrictor, Giving Penalties and Kick/Banning) are available.
-    --      Setting Ballast/Restictor/Penalties using Lua requires physics access which apps do not have online. Kick Banning is not possible at all (Only initiating a Vote).
+    --      Which means that none of the Admin tools (Setting Ballast/Restrictor, Giving Penalties and Kick/Banning) are available.
+    --      Setting Ballast/Restictor/Penalties using Lua requires physics access which apps do not have online. Kick & Banning is not possible at all (Only initiating a Vote).
     --      I could make buttons that type out commands but Kunos acServer and AssettoServer have different command syntax.
     --      Checking which server integration is used would be a pain in the ass and the app isnt really meant to be used in league racing anyways so I wont bother.
     if ui.beginPopup('chatPlayerPopup' .. userName, nil, 0) then
@@ -970,10 +968,8 @@ local function chatPlayerPopup(userIndex, userName)
                 ui.modalPopup(
                     'Confirm Mute',
                     'Are you sure you want to mute ' .. userName .. '?\nYou will no longer be able to read their chat messages.\nUnmute them via the Drivers list in the CSP Chat app.',
-                    'Confirm',
-                    'Cancel',
-                    ui.Icons.Confirm,
-                    ui.Icons.Cancel,
+                    'Confirm', 'Cancel',
+                    ui.Icons.Confirm, ui.Icons.Cancel,
                     function(confirmed)
                         if confirmed then ac.DriverTags(userName).muted = not ac.DriverTags(userName).muted end
                         playAudio(audio.keyboard.enter)
@@ -1068,6 +1064,7 @@ local function drawTime()
     local timeText = settings.badTime and to12hTime(time) or time
     local timeSize = scale(13)
     local timePosition = vec2(23, 22):scale(app.scale) + vec2(0, movement.smooth)
+
     ui.setCursor(timePosition)
     ui.pushDWriteFont(app.font.bold)
     local timeTextSize = ui.measureDWriteText('00:00', timeSize)
@@ -1077,6 +1074,7 @@ local function drawTime()
     if app.hovered then
         local tooltipText = player.isOnline and 'Current Time: ' .. timeText .. '\nClick to send to chat.' or 'Current Time: ' .. timeText
         lastItemHoveredTooltip(tooltipText, player.isOnline and true or false)
+
         if ui.itemClicked(ui.MouseButton.Left) and player.isOnline then
             timeText = settings.badTime and timeText .. ' ' .. player.timePeriod or timeText
             sendChatMessage('It\'s currently ' .. timeText .. ' my local time.')
@@ -1109,6 +1107,7 @@ local function drawHeader(winWidth, winHalfWidth)
     local headerSize = vec2(winWidth - scale(11), scale(100) + movement.smooth)
     local headerText = 'Server Chat'
     local headerTextFontsize = scale(12)
+
     ui.pushDWriteFont(app.font.regular)
     local headerTextSize = ui.measureDWriteText(headerText, headerTextFontsize)
 
@@ -1122,7 +1121,7 @@ local function drawHeader(winWidth, winHalfWidth)
     local headerImagePosition = vec2(129, 47):scale(app.scale) + vec2(0, movement.smooth)
     local headerImageRounding = scale(20)
 
-    if not communities then return error('Communities table is nil.') end
+    if not communities then return error('Communities table does not exist, probably caused by a broken app install.') end
 
     if ui.isImageReady(communities[player.serverCommunity].image) then
         ui.drawImageRounded(communities[player.serverCommunity].image, headerImagePosition, headerImagePosition + headerImageSize, headerImageRounding, ui.CornerFlags.All)
@@ -1146,22 +1145,26 @@ end
 ---Draws the song information.
 local function drawSongInfo(winHalfWidth)
     if settings.songInfo then
-        --I'm using --[[@as ui.MediaPlayer]] here because ac.MusicData is not in the valid imageSources for some reason?
         if not songInfo.isPaused then
             local imageSize = vec2(16, 16):scale(app.scale)
             local imageOffset = vec2(-75, 22):scale(app.scale)
             local imageRounding = scale(4)
             local imagePos = vec2(winHalfWidth + imageOffset.x, imageOffset.y + movement.smooth)
+
             if songInfo.hasCover then
+                --I'm using --[[@as ui.MediaPlayer]] here because ac.MusicData is not in the valid imageSources for some reason?
                 ui.drawImageRounded(ac.currentlyPlaying() --[[@as ui.MediaPlayer]], imagePos, imagePos + imageSize, imageRounding, ui.CornerFlags.All)
             else
                 ui.drawImageRounded(app.images.defaultCover, imagePos, imagePos + imageSize, imageRounding, ui.CornerFlags.All)
             end
         end
+
         local songFontSize = scale(12)
         local songPosition = vec2(scale(89), scale(22) + movement.smooth)
         local songTextSize = vec2(135, 15):scale(app.scale)
+
         drawSongInfoText(songInfo.final, songPosition, songTextSize, songFontSize)
+
         if app.hovered and songInfo.final ~= '' then
             if ui.rectHovered(songPosition, songPosition + songTextSize, true) then
                 local tooltipText = player.isOnline and 'Current Song: ' .. songInfo.artist .. ' - ' .. songInfo.title .. '\nClick to send to chat.' or 'Current Song: ' .. songInfo.artist .. ' - ' .. songInfo.title
@@ -1353,6 +1356,7 @@ local function drawEmojiPicker(winHeight)
     local buttonSize = vec2(24, 24):scale(app.scale)
     local buttonBgRad = scale(12)
     local emojiSizePicker = scale(20)
+
     ui.pushDWriteFont(app.font.regular)
     local emojiSize = ui.measureDWriteText('😀', emojiSizePicker)
     if movement.distance > 0 and chat.emojiPicker then chat.emojiPicker = false end
@@ -1393,7 +1397,6 @@ local function drawEmojiPicker(winHeight)
     local bottomPadding = scale(8)
 
     ui.setCursor(vec2(windowPos.x, winHeight - windowPos.y - chat.input.offset))
-
     ui.childWindow('EmojiPickerBG', windowSize, false, flags.emojiWindow, function()
         ui.drawRectFilled(vec2(0, 0), windowSize, colors.final.message, rounding)
 
@@ -1443,12 +1446,15 @@ local function drawInputCustom(winHeight)
     local inputBoxSize = inputSize - vec2(5, 5):scale(app.scale)
     local inputFontSize = scale(settings.chatFontSize)
     local inputWrap = scale(190)
+
     ui.setCursor(vec2(scale(42), (winHeight - scale(32) - chat.input.offset) + movement.smooth))
     ui.childWindow('ChatInput', inputSize, false, flags.input, function()
         ui.beginOutline()
         ui.drawRectFilled(vec2(2, 2):scale(app.scale), inputBoxSize, colors.final.display, scale(10))
         ui.endOutline(pickThemeColor(colors.transparent.black10, colors.transparent.white10), math.max(1, math.round(1 * app.scale, 1)))
+
         local displayText = ''
+
         ui.pushDWriteFont(app.font.regular)
 
         if player.isOnline then
@@ -1483,6 +1489,7 @@ local function drawInputCustom(winHeight)
             end
 
             displayText = chat.input.text
+
             if chat.input.active and math.floor(os.clock() * 2) % 2 == 0 then
                 local textSize = ui.measureDWriteText(displayText, inputFontSize, inputWrap).y
                 local withCaret = ui.measureDWriteText(displayText .. '|', inputFontSize, inputWrap).y
@@ -1504,6 +1511,7 @@ local function drawInputCustom(winHeight)
         end
 
         local inputTextSize = ui.measureDWriteText(displayText, inputFontSize, inputWrap):max(vec2(0, math.round(17.291 * app.scale, 3)))
+
         ui.setCursor(vec2(10, 6):scale(app.scale))
         ui.pushClipRect(ui.getCursor(), ui.getCursor() + inputBoxSize - vec2(0, 9):scale(app.scale) + movement.smooth)
         ui.dwriteTextAligned(displayText, inputFontSize, ui.Alignment.Start, ui.Alignment.End, inputTextSize, true, colors.final.input)
@@ -1844,6 +1852,7 @@ if player.isOnline then
                 end
             end
         end
+
         return false
     end)
 
@@ -1950,6 +1959,7 @@ function script.windowMainSettings()
 
             if settings.updateStatus > 0 then ui.textColored(updateStatus.text[settings.updateStatus], updateStatus.color[settings.updateStatus]) end
         end)
+
         ui.tabItem('App', function()
             ui.indent()
 
@@ -1979,10 +1989,10 @@ function script.windowMainSettings()
                         ui.text('Current Sun Angle: ' .. math.round(ac.getSunAngle(), 1) .. '°')
 
                         settings.darkModeAutoDarkAngle = ui.slider('##darkModeAutoDarkAngle', settings.darkModeAutoDarkAngle, 0, 180, 'Evening Sun Angle: ' .. '%.0f°')
-                        lastItemHoveredTooltip('The angle at which the app will switch to dark mode.\nLower values mean earlier in the day.')
+                        lastItemHoveredTooltip('Sun angle at which the app will switch to dark mode.\nLower values mean earlier in the day.')
 
                         settings.darkModeAutoLightAngle = ui.slider('##darkModeAutoLightAngle', settings.darkModeAutoLightAngle, 0, 180, 'Morning Sun Angle: ' .. '%.0f°')
-                        lastItemHoveredTooltip('The angle at which the app will switch to light mode.\nLower values mean later in the day.')
+                        lastItemHoveredTooltip('Sun angle at which the app will switch to light mode.\nLower values mean later in the day.')
                     else
                         local sim = ac.getSim()
                         ui.text(string.format('Current Time: %02d:%02d', sim.timeHours, sim.timeMinutes))
@@ -2164,6 +2174,7 @@ function script.windowMainSettings()
 
                 if ui.checkbox('Enable Notification Audio', settings.enableNotification) then settings.enableNotification = not settings.enableNotification end
                 lastItemHoveredTooltip('Toggles notification sounds.')
+
                 if settings.enableNotification then
                     ui.indent()
 
