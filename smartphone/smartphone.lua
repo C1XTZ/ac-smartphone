@@ -313,6 +313,15 @@ local function scale(value)
     return math.floor(app.scale * value)
 end
 
+---@param v vec2
+---@return vec2
+---Rounds the given vec2, since text and images drawn at fractional coordinates are blurry.
+local function roundVec2(v)
+    v.x = math.ceil(v.x)
+    v.y = math.ceil(v.y)
+    return v
+end
+
 ---@param songString string @combined 'artist - title' string usually, whatever your mp3 player spits out
 ---@return string artist @artist name string
 ---@return string title @song title string
@@ -729,7 +738,7 @@ local function drawSongInfoText(text, pos, size, fontSize)
     end
 
     if static then
-        ui.setCursor(pos)
+        ui.setCursor(roundVec2(pos))
         ui.dwriteTextAligned(text, fontSize, ui.Alignment.Center, ui.Alignment.Center, size, false, rgbm.colors.white)
     else
         local stepW = textSize.x + settings.songInfoSpacing
@@ -739,7 +748,7 @@ local function drawSongInfoText(text, pos, size, fontSize)
 
         ui.pushClipRect(pos, pos + size)
         for i = -1, math.ceil(size.x / stepW) do
-            ui.dwriteDrawText(text, fontSize, vec2(pos.x + scrollX + i * stepW, pos.y + (size.y - textSize.y) / 2), rgbm.colors.white)
+            ui.dwriteDrawText(text, fontSize, roundVec2(vec2(pos.x + scrollX + i * stepW, pos.y + (size.y - textSize.y) / 2)), rgbm.colors.white)
         end
         ui.popClipRect()
     end
@@ -1011,8 +1020,7 @@ local function drawiPhone()
     ui.childWindow('OnTopImages', vec2(app.images.phoneAtlasSize.x / 2, app.images.phoneAtlasSize.y), false, flags.window, function()
         ui.drawImage(app.images.phoneAtlasPath, vec2(0, movement.smooth), vec2(app.images.phoneAtlasSize.x / 2, app.images.phoneAtlasSize.y + movement.smooth), rgbm.colors.white, vec2(0 / 2, 0), vec2(1 / 2, 1))
         if not (settings.darkMode or player.phoneMode) then
-            local padding = scale(2)
-            ui.drawImage(app.images.phoneAtlasPath, vec2(padding, movement.smooth), vec2(math.ceil(app.images.phoneAtlasSize.x / 2 - padding), app.images.phoneAtlasSize.y + movement.smooth), colors.glowColor, vec2(1 / 2, 0), vec2(2 / 2, 1))
+            ui.drawImage(app.images.phoneAtlasPath, roundVec2(vec2(0, movement.smooth)), roundVec2(vec2(math.ceil(app.images.phoneAtlasSize.x / 2), app.images.phoneAtlasSize.y + movement.smooth)), colors.glowColor, vec2(1 / 2, 0), vec2(2 / 2, 1))
         end
     end)
 end
@@ -1065,7 +1073,7 @@ local function drawTime()
     local timeSize = scale(13)
     local timePosition = vec2(23, 22):scale(app.scale) + vec2(0, movement.smooth)
 
-    ui.setCursor(timePosition)
+    ui.setCursor(roundVec2(timePosition))
     ui.pushDWriteFont(app.font.bold)
     local timeTextSize = ui.measureDWriteText('00:00', timeSize)
     ui.dwriteTextAligned(timeText, timeSize, ui.Alignment.End, ui.Alignment.Center, timeTextSize, false, colors.final.elements)
@@ -1113,7 +1121,7 @@ local function drawHeader(winWidth, winHalfWidth)
 
     ui.drawRectFilled(vec2(headerPadding.x, headerPadding.y + movement.smooth), headerSize, colors.final.header, scale(30), ui.CornerFlags.Top)
     ui.drawSimpleLine(vec2(headerPadding.x, headerSize.y), vec2(headerSize.x, headerSize.y), colors.final.headerLine)
-    ui.setCursor(vec2(math.floor(winHalfWidth - (headerTextSize.x / 2)), scale(84) + movement.smooth))
+    ui.setCursor(roundVec2(vec2(math.floor(winHalfWidth - (headerTextSize.x / 2)), scale(84) + movement.smooth)))
     ui.dwriteTextAligned(headerText, headerTextFontsize, 0, 1, headerTextSize, false, colors.final.elements)
     ui.popDWriteFont()
 
@@ -1352,7 +1360,7 @@ end
 ---@param winHeight number @Window height.
 ---Draws the emoji picker button and window.
 local function drawEmojiPicker(winHeight)
-    local buttonPos = vec2(26, 17):scale(app.scale)
+    local buttonPos = vec2(28, 17):scale(app.scale)
     local buttonSize = vec2(24, 24):scale(app.scale)
     local buttonBgRad = scale(12)
     local emojiSizePicker = scale(20)
@@ -1512,7 +1520,7 @@ local function drawInputCustom(winHeight)
 
         local inputTextSize = ui.measureDWriteText(displayText, inputFontSize, inputWrap):max(vec2(0, math.round(17.291 * app.scale, 3)))
 
-        ui.setCursor(vec2(10, 6):scale(app.scale))
+        ui.setCursor(roundVec2(vec2(10, 5):scale(app.scale)))
         ui.pushClipRect(ui.getCursor(), ui.getCursor() + inputBoxSize - vec2(0, 9):scale(app.scale) + movement.smooth)
         ui.dwriteTextAligned(displayText, inputFontSize, ui.Alignment.Start, ui.Alignment.End, inputTextSize, true, colors.final.input)
         ui.popDWriteFont()
