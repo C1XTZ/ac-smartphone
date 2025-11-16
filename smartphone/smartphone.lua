@@ -1011,7 +1011,7 @@ end
 
 ---Draws the background.
 local function drawDisplay()
-    ui.drawRectFilled(vec2(scale(5), 0 + movement.smooth), ui.windowSize() - vec2(5, 0):scale(app.scale), colors.final.display, scale(50), ui.CornerFlags.Top)
+    ui.drawRectFilled(vec2(scale(5), 2 + movement.smooth), ui.windowSize() - vec2(5, 0):scale(app.scale), colors.final.display, scale(50), ui.CornerFlags.Top)
 end
 
 ---Draws the iPhone images.
@@ -1071,7 +1071,7 @@ local function drawTime()
     local time = os.date('%H:%M') --[[@as string]]
     local timeText = settings.badTime and to12hTime(time) or time
     local timeSize = scale(13)
-    local timePosition = vec2(23, 22):scale(app.scale) + vec2(0, movement.smooth)
+    local timePosition = vec2(20, 22):scale(app.scale) + vec2(0, movement.smooth)
 
     ui.setCursor(roundVec2(timePosition))
     ui.pushDWriteFont(app.font.bold)
@@ -1927,7 +1927,7 @@ function onShowWindow()
 
     if app.scale ~= math.round(settings.appScale, 1) then
         app.scale = math.round(settings.appScale, 1)
-        app.images.phoneAtlasSize = ui.imageSize(app.images.phoneAtlasPath):scale(app.scale)
+        app.images.phoneAtlasSize = ui.imageSize(app.images.phoneAtlasPath):div(vec2(2,2)):scale(app.scale)
     end
 
     player.serverCommunity = getServerCommunity()
@@ -1975,7 +1975,7 @@ function script.windowMainSettings()
             if app.scale ~= math.round(settings.appScale, 1) then
                 moveAppUp()
                 app.scale = math.round(settings.appScale, 1)
-                app.images.phoneAtlasSize = ui.imageSize(app.images.phoneAtlasPath):scale(app.scale)
+                app.images.phoneAtlasSize = ui.imageSize(app.images.phoneAtlasPath):div(vec2(2,2)):scale(app.scale)
             end
 
             ui.unindent()
@@ -2267,7 +2267,7 @@ function script.windowMain(dt)
     app.hovered = ui.windowHovered(bit.bor(ui.HoveredFlags.AllowWhenBlockedByPopup, ui.HoveredFlags.ChildWindows, ui.HoveredFlags.AllowWhenBlockedByActiveItem))
     player.car = ac.getCar(0)
 
-    if app.images.phoneAtlasSize == vec2(0, 0) then app.images.phoneAtlasSize = ui.imageSize(app.images.phoneAtlasPath):scale(app.scale) end
+    if app.images.phoneAtlasSize == vec2(0, 0) then app.images.phoneAtlasSize = ui.imageSize(app.images.phoneAtlasPath):div(vec2(2,2)):scale(app.scale) end
     if app.hovered or chat.input.active then moveAppUp() end
     if settings.forceBottom then forceAppToBottom() end
 
