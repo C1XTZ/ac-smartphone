@@ -1,5 +1,5 @@
 --made by C1XTZ
---if you're reading any of this let me preface this by saying: If you're going 'what the fuck is this idiot doing??' it's likely that I said the same thing while writing it.
+--if you're reading any of this let me preface this by saying: If you're going: what the fuck is this idiot doing?? its likely that I said the same thing while writing it.
 ---@meta
 ---@diagnostic disable: lowercase-global
 
@@ -313,13 +313,27 @@ local function scale(value)
     return math.floor(app.scale * value)
 end
 
----@param v vec2
----@return vec2
+---@overload fun(v: vec2): vec2 @vec2 to round.
+---@overload fun(x: number, y: number): vec2 @x and y values to round.
+---@overload fun(x: number, y: number, scale: number): vec2 @x, y, and scale values to round after scaling.
+---@param v vec2|number @vec2 to round, or the x value if providing two numbers.
+---@param y? number @Optional y value (only if providing two numbers).
+---@param scale? number @Optional scale value to apply before rounding.
+---@return vec2 @The rounded vec2.
 ---Rounds the given vec2, since text and images drawn at fractional coordinates are blurry.
-local function roundVec2(v)
-    v.x = math.ceil(v.x)
-    v.y = math.ceil(v.y)
-    return v
+local function roundVec2(v, y, scale)
+    local v2
+    if scale ~= nil then
+        v2 = vec2(v --[[@as number]], y):scale(scale)
+    elseif y ~= nil then
+        v2 = vec2(v --[[@as number]], y)
+    else
+        v2 = v --[[@as vec2]]
+    end
+
+    v2:set(math.ceil(v2.x), math.ceil(v2.y))
+
+    return v2
 end
 
 ---@param songString string @combined 'artist - title' string usually, whatever your mp3 player spits out
@@ -422,12 +436,20 @@ end
 local function getDriverColor(index)
     local name = ac.getDriverName(index)
     if not name or name == '' then return end
+
     local color = ac.DriverTags(name).color:clone()
-    if (index == 0 and color == rgbm.colors.yellow) or (index > 0 and color == rgbm.colors.white) then
+    local isDefaultColor = (index == 0 and color == rgbm.colors.yellow) or (index > 0 and color == rgbm.colors.white)
+    if isDefaultColor then
         color:set(rgbm.colors.gray)
     end
+
     local existingColor = chat.usernameColors[name]
-    if not existingColor or existingColor == rgbm.colors.gray or color ~= rgbm.colors.gray then
+
+    local shouldUpdate =
+        (not existingColor and color ~= rgbm.colors.gray) or
+        (existingColor and ((existingColor == rgbm.colors.gray and color ~= rgbm.colors.gray) or existingColor ~= color))
+
+    if shouldUpdate then
         chat.usernameColors[name] = color
     end
 end
@@ -748,7 +770,7 @@ local function drawSongInfoText(text, pos, size, fontSize)
 
         ui.pushClipRect(pos, pos + size)
         for i = -1, math.ceil(size.x / stepW) do
-            ui.dwriteDrawText(text, fontSize, roundVec2(vec2(pos.x + scrollX + i * stepW, pos.y + (size.y - textSize.y) / 2)), rgbm.colors.white)
+            ui.dwriteDrawText(text, fontSize, roundVec2(pos.x + scrollX + i * stepW, pos.y + (size.y - textSize.y) / 2), rgbm.colors.white)
         end
         ui.popClipRect()
     end
@@ -943,7 +965,7 @@ local function chatPlayerPopup(userIndex, userName)
         ui.openPopup('chatPlayerPopup' .. userName)
     end
 
-    --note: I know that ui.setDriverPopup() exists, but the "Tag in Chat" would insert the name into the csp chat app, which makes it useless.
+    --note: I know that ui.setDriverPopup() exists, but the _Tag in Chat_ would insert the name into the csp chat app, which makes it useless.
     --      Since thats probably one of the more used buttons, I decided to make a custom popup instead.
     --      Which means that none of the Admin tools (Setting Ballast/Restrictor, Giving Penalties and Kick/Banning) are available.
     --      Setting Ballast/Restictor/Penalties using Lua requires physics access which apps do not have online. Kick & Banning is not possible at all (Only initiating a Vote).
@@ -1020,7 +1042,7 @@ local function drawiPhone()
     ui.childWindow('OnTopImages', vec2(app.images.phoneAtlasSize.x / 2, app.images.phoneAtlasSize.y), false, flags.window, function()
         ui.drawImage(app.images.phoneAtlasPath, vec2(0, movement.smooth), vec2(app.images.phoneAtlasSize.x / 2, app.images.phoneAtlasSize.y + movement.smooth), rgbm.colors.white, vec2(0 / 2, 0), vec2(1 / 2, 1))
         if not (settings.darkMode or player.phoneMode) then
-            ui.drawImage(app.images.phoneAtlasPath, roundVec2(vec2(0, movement.smooth)), roundVec2(vec2(math.ceil(app.images.phoneAtlasSize.x / 2), app.images.phoneAtlasSize.y + movement.smooth)), colors.glowColor, vec2(1 / 2, 0), vec2(2 / 2, 1))
+            ui.drawImage(app.images.phoneAtlasPath, roundVec2(0, movement.smooth), roundVec2(app.images.phoneAtlasSize.x / 2, app.images.phoneAtlasSize.y + movement.smooth), colors.glowColor, vec2(1 / 2, 0), vec2(2 / 2, 1))
         end
     end)
 end
@@ -1071,7 +1093,7 @@ local function drawTime()
     local time = os.date('%H:%M') --[[@as string]]
     local timeText = settings.badTime and to12hTime(time) or time
     local timeSize = scale(13)
-    local timePosition = vec2(20, 22):scale(app.scale) + vec2(0, movement.smooth)
+    local timePosition = vec2(22, 22):scale(app.scale) + vec2(0, movement.smooth)
 
     ui.setCursor(roundVec2(timePosition))
     ui.pushDWriteFont(app.font.bold)
@@ -1121,7 +1143,7 @@ local function drawHeader(winWidth, winHalfWidth)
 
     ui.drawRectFilled(vec2(headerPadding.x, headerPadding.y + movement.smooth), headerSize, colors.final.header, scale(30), ui.CornerFlags.Top)
     ui.drawSimpleLine(vec2(headerPadding.x, headerSize.y), vec2(headerSize.x, headerSize.y), colors.final.headerLine)
-    ui.setCursor(roundVec2(vec2(math.floor(winHalfWidth - (headerTextSize.x / 2)), scale(84) + movement.smooth)))
+    ui.setCursor(roundVec2(winHalfWidth - (headerTextSize.x / 2), scale(84) + movement.smooth))
     ui.dwriteTextAligned(headerText, headerTextFontsize, 0, 1, headerTextSize, false, colors.final.elements)
     ui.popDWriteFont()
 
@@ -1193,14 +1215,14 @@ local function drawMessages(winWidth, winHalfWidth)
     if not player.isOnline then return end
 
     ui.pushClipRect(vec2(0, 0), vec2(winWidth, (scale(500) - chat.input.offset) + movement.smooth))
-    ui.setCursor(vec2(13, 100):scale(app.scale) + vec2(0, movement.smooth))
-    ui.childWindow('Messages', vec2(266, 400 - chat.input.offset):scale(app.scale), false, flags.window, function()
+    ui.setCursor(vec2(10, 100):scale(app.scale) + vec2(0, movement.smooth))
+    ui.childWindow('Messages', vec2(270, 400 - chat.input.offset):scale(app.scale), false, flags.window, function()
         winWidth = ui.windowWidth()
         winHalfWidth = winWidth / 2
         local messageFontSize = scale(settings.chatFontSize)
         local usernameFontSize = scale(settings.chatFontSize - 2)
         local timestampFontSize = scale(settings.chatFontSize - 4)
-        local usernameOffset = vec2(scale(10), usernameFontSize + scale(13))
+        local usernameOffset = vec2(scale(13), usernameFontSize + scale(13))
         local messagePadding = vec2(15, 10):scale(app.scale)
         local messageMaxWidth = scale(250)
         local messageRounding = scale(10)
@@ -1249,15 +1271,15 @@ local function drawMessages(winWidth, winHalfWidth)
                     local messageTextSize = ui.measureDWriteText(messageTextContent, messageFontSize, scale(190))
                     msgDist = math.ceil(msgDist + messageTextSize.y)
                     ui.setCursor(vec2(winWidth - scale(5), msgDist))
-                    ui.drawRectFilled(ui.getCursor() - vec2(math.ceil(messageTextSize.x + messagePadding.x), math.ceil(messageTextSize.y + messagePadding.y)), ui.getCursor(), colors.final.messageOwn, messageRounding)
-                    ui.setCursor(ui.getCursor() - vec2(math.ceil(messageTextSize.x + messagePadding.x / 2), math.ceil(messageTextSize.y + messagePadding.y / 2)))
+                    ui.drawRectFilled(ui.getCursor() - roundVec2(messageTextSize.x + messagePadding.x, messageTextSize.y + messagePadding.y), ui.getCursor(), colors.final.messageOwn, messageRounding)
+                    ui.setCursor(ui.getCursor() - roundVec2(messageTextSize.x + messagePadding.x / 2, messageTextSize.y + messagePadding.y / 2))
                     ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, colors.final.messageOwnText)
                     ui.popDWriteFont()
 
                     if settings.chatShowTimestamps and messageShowTimestamp then
                         ui.pushDWriteFont(app.font.bold)
                         local timestampSize = ui.measureDWriteText(messageTimestamp, timestampFontSize)
-                        ui.setCursor(vec2(math.ceil(winWidth - timestampSize.x - scale(6)), msgDist))
+                        ui.setCursor(roundVec2(winWidth - timestampSize.x - scale(6), msgDist))
                         ui.dwriteTextAligned(messageTimestamp, timestampFontSize, ui.Alignment.Start, ui.Alignment.Start, timestampSize, true, rgbm.colors.gray)
                         ui.popDWriteFont()
                         msgDist = math.ceil(msgDist + timestampSize.y)
@@ -1277,7 +1299,7 @@ local function drawMessages(winWidth, winHalfWidth)
 
                     if (not messageUserIndexLast or messageUserIndexLast ~= messageUserIndex) or (not messageUsernameLast or messageUsernameLast ~= messageUsername) then
                         if messageUserIndexLast and messageUserIndexLast ~= -1 then msgDist = math.ceil(msgDist - usernameOffset.y / 2) end
-                        ui.setCursor(vec2(usernameOffset.x / 2, msgDist))
+                        ui.setCursor(roundVec2(usernameOffset.x / 2, msgDist))
                         ui.dwriteTextAligned(messageUsername, usernameFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(math.min(userNameTextSize.x, messageMaxWidth), userNameTextSize.y), false, messageUsernameColor)
                         msgDist = math.ceil(msgDist + usernameOffset.y)
 
@@ -1294,9 +1316,9 @@ local function drawMessages(winWidth, winHalfWidth)
                     ui.pushDWriteFont(fontWeight)
                     local messageTextSize = ui.measureDWriteText(messageTextContent, messageFontSize, scale(190))
                     msgDist = math.ceil(msgDist + messageTextSize.y)
-                    ui.setCursor(vec2(math.ceil(messageTextSize.x + messagePadding.x + scale(5)), msgDist))
-                    ui.drawRectFilled(ui.getCursor() - vec2(math.ceil(messageTextSize.x + messagePadding.x), math.ceil(messageTextSize.y + messagePadding.y)), ui.getCursor(), bubbleColor, messageRounding)
-                    ui.setCursor(ui.getCursor() - vec2(math.ceil(messageTextSize.x + messagePadding.x / 2), math.ceil(messageTextSize.y + messagePadding.y / 2)))
+                    ui.setCursor(roundVec2(messageTextSize.x + messagePadding.x + scale(5), msgDist))
+                    ui.drawRectFilled(ui.getCursor() - roundVec2(messageTextSize.x + messagePadding.x, messageTextSize.y + messagePadding.y), ui.getCursor(), bubbleColor, messageRounding)
+                    ui.setCursor(ui.getCursor() - roundVec2(messageTextSize.x + messagePadding.x / 2, messageTextSize.y + messagePadding.y / 2))
                     ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, messageTextColor)
                     ui.popDWriteFont()
 
@@ -1316,19 +1338,19 @@ local function drawMessages(winWidth, winHalfWidth)
 
                     if lastDrawnUserIndex == nil then
                         msgDist = math.ceil(msgDist - messageTextSize.y / 2)
-                        ui.setCursor(vec2(math.ceil(winHalfWidth - messageTextSize.x / 2), math.ceil(msgDist)))
+                        ui.setCursor(roundVec2(winHalfWidth - messageTextSize.x / 2, msgDist))
                         ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Center, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgbm.colors.gray)
                         ui.popDWriteFont()
                         msgDist = math.ceil(msgDist + messageTextSize.y + messagePadding.y / 2)
                     else
                         if lastDrawnUserIndex == messageUserIndex then
-                            ui.setCursor(vec2(math.ceil(winHalfWidth - messageTextSize.x / 2), math.ceil(msgDist)))
+                            ui.setCursor(roundVec2(winHalfWidth - messageTextSize.x / 2, msgDist))
                             ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Center, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgbm.colors.gray)
                             ui.popDWriteFont()
                             msgDist = math.ceil(msgDist + messageTextSize.y + messagePadding.y / 2)
                         else
                             msgDist = math.ceil(msgDist - messagePadding.y)
-                            ui.setCursor(vec2(math.ceil(winHalfWidth - messageTextSize.x / 2), math.ceil(msgDist)))
+                            ui.setCursor(roundVec2(winHalfWidth - messageTextSize.x / 2, msgDist))
                             ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Center, ui.Alignment.Start, vec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgbm.colors.gray)
                             ui.popDWriteFont()
                             msgDist = math.ceil(msgDist + messageTextSize.y + messagePadding.y / 2)
@@ -1520,7 +1542,7 @@ local function drawInputCustom(winHeight)
 
         local inputTextSize = ui.measureDWriteText(displayText, inputFontSize, inputWrap):max(vec2(0, math.round(17.291 * app.scale, 3)))
 
-        ui.setCursor(roundVec2(vec2(10, 5):scale(app.scale)))
+        ui.setCursor(roundVec2(10, 5, app.scale))
         ui.pushClipRect(ui.getCursor(), ui.getCursor() + inputBoxSize - vec2(0, 9):scale(app.scale) + movement.smooth)
         ui.dwriteTextAligned(displayText, inputFontSize, ui.Alignment.Start, ui.Alignment.End, inputTextSize, true, colors.final.input)
         ui.popDWriteFont()
@@ -1927,7 +1949,7 @@ function onShowWindow()
 
     if app.scale ~= math.round(settings.appScale, 1) then
         app.scale = math.round(settings.appScale, 1)
-        app.images.phoneAtlasSize = ui.imageSize(app.images.phoneAtlasPath):div(vec2(2,2)):scale(app.scale)
+        app.images.phoneAtlasSize = ui.imageSize(app.images.phoneAtlasPath):div(vec2(2, 2)):scale(app.scale)
     end
 
     player.serverCommunity = getServerCommunity()
@@ -1975,7 +1997,7 @@ function script.windowMainSettings()
             if app.scale ~= math.round(settings.appScale, 1) then
                 moveAppUp()
                 app.scale = math.round(settings.appScale, 1)
-                app.images.phoneAtlasSize = ui.imageSize(app.images.phoneAtlasPath):div(vec2(2,2)):scale(app.scale)
+                app.images.phoneAtlasSize = ui.imageSize(app.images.phoneAtlasPath):div(vec2(2, 2)):scale(app.scale)
             end
 
             ui.unindent()
@@ -2138,7 +2160,7 @@ function script.windowMainSettings()
                 ui.indent()
 
                 if ui.checkbox('Include AssettoServer Race Challenge Messages', settings.chatHideRaceMsg) then settings.chatHideRaceMsg = not settings.chatHideRaceMsg end
-                lastItemHoveredTooltip('If enabled, includes "X just beat Y in a Race." server messages.')
+                lastItemHoveredTooltip('If enabled, also hides "X just beat Y in a Race." server messages.')
 
                 ui.unindent()
             end
@@ -2267,7 +2289,7 @@ function script.windowMain(dt)
     app.hovered = ui.windowHovered(bit.bor(ui.HoveredFlags.AllowWhenBlockedByPopup, ui.HoveredFlags.ChildWindows, ui.HoveredFlags.AllowWhenBlockedByActiveItem))
     player.car = ac.getCar(0)
 
-    if app.images.phoneAtlasSize == vec2(0, 0) then app.images.phoneAtlasSize = ui.imageSize(app.images.phoneAtlasPath):div(vec2(2,2)):scale(app.scale) end
+    if app.images.phoneAtlasSize == vec2(0, 0) then app.images.phoneAtlasSize = ui.imageSize(app.images.phoneAtlasPath):div(vec2(2, 2)):scale(app.scale) end
     if app.hovered or chat.input.active then moveAppUp() end
     if settings.forceBottom then forceAppToBottom() end
 
