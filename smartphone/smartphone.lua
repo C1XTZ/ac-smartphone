@@ -133,7 +133,7 @@ local app = {
         regular = ui.DWriteFont('Inter Variable Text', '.\\src\\ttf'):weight(ui.DWriteFont.Weight.Medium),
         bold = ui.DWriteFont('Inter Variable Text', '.\\src\\ttf'):weight(ui.DWriteFont.Weight.Bold),
     },
-    modernButtonOffset = (-8) * ac.getUI().uiScale
+    modernButtonOffset = -8 * ac.getUI().uiScale,
 }
 
 local player = {
@@ -144,7 +144,7 @@ local player = {
     serverIP = ac.getServerIP(),
     serverCommunity = 'default',
     timePeriod = '',
-    phoneMode = settings.darkMode
+    phoneMode = settings.darkMode,
 }
 
 local communities = stringify.parse(io.load('.\\apps\\lua\\smartphone\\src\\communities\\data\\list.lua') --[[@as string]]) --[[@as table]]
@@ -155,7 +155,7 @@ local movement = {
     down = true,
     up = false,
     distance = 0,
-    smooth = 0
+    smooth = 0,
 }
 
 local songInfo = {
@@ -283,9 +283,7 @@ local function utf8sub(s, i, j)
         len = len + 1
 
         if len == startChar then startByte = pos end
-        pos = pos + (s:byte(pos) >= 0xF0 and 4 or
-            s:byte(pos) >= 0xE0 and 3 or
-            s:byte(pos) >= 0xC0 and 2 or 1)
+        pos = pos + (s:byte(pos) >= 0xF0 and 4 or s:byte(pos) >= 0xE0 and 3 or s:byte(pos) >= 0xC0 and 2 or 1)
         if len == endChar then
             endByte = pos - 1
             break
@@ -309,22 +307,20 @@ end
 ---@param value number @The value to be scaled.
 ---@return number @The scaled value.
 ---Scales the given value by the app scale.
-local function scale(value)
-    return math.floor(app.scale * value)
-end
+local function scale(value) return math.floor(app.scale * value) end
 
 ---@overload fun(v: vec2): vec2 @vec2 to round.
 ---@overload fun(x: number, y: number): vec2 @x and y values to round.
----@overload fun(x: number, y: number, scale: number): vec2 @x, y, and scale values to round after scaling.
+---@overload fun(x: number, y: number, s: number): vec2 @x, y, and scale values to round after scaling.
 ---@param v vec2|number @vec2 to round, or the x value if providing two numbers.
 ---@param y? number @Optional y value (only if providing two numbers).
----@param scale? number @Optional scale value to apply before rounding.
+---@param s? number @Optional scale value to apply before rounding.
 ---@return vec2 @The rounded vec2.
 ---Rounds the given vec2, since text and images drawn at fractional coordinates are blurry.
-local function roundVec2(v, y, scale)
+local function roundVec2(v, y, s)
     local v2
-    if scale ~= nil then
-        v2 = vec2(v --[[@as number]], y):scale(scale)
+    if s ~= nil then
+        v2 = vec2(v --[[@as number]], y):scale(s --[[@as number]])
     elseif y ~= nil then
         v2 = vec2(v --[[@as number]], y)
     else
@@ -392,9 +388,7 @@ local function getServerCommunity()
     for community, data in pairs(communities) do
         if (community ~= 'default' or community ~= 'version') and data.ips then
             for _, ip in ipairs(data.ips) do
-                if ip == player.serverIP then
-                    return community
-                end
+                if ip == player.serverIP then return community end
             end
         end
     end
@@ -439,28 +433,20 @@ local function getDriverColor(index)
 
     local color = ac.DriverTags(name).color:clone()
     local isDefaultColor = (index == 0 and color == rgbm.colors.yellow) or (index > 0 and color == rgbm.colors.white)
-    if isDefaultColor then
-        color:set(rgbm.colors.gray)
-    end
+    if isDefaultColor then color:set(rgbm.colors.gray) end
 
     local existingColor = chat.usernameColors[name]
 
-    local shouldUpdate =
-        (not existingColor and color ~= rgbm.colors.gray) or
-        (existingColor and ((existingColor == rgbm.colors.gray and color ~= rgbm.colors.gray) or existingColor ~= color))
+    local shouldUpdate = (not existingColor and color ~= rgbm.colors.gray) or (existingColor and ((existingColor == rgbm.colors.gray and color ~= rgbm.colors.gray) or existingColor ~= color))
 
-    if shouldUpdate then
-        chat.usernameColors[name] = color
-    end
+    if shouldUpdate then chat.usernameColors[name] = color end
 end
 
 ---@param light rgbm @rgbm color to use if light mode
 ---@param dark rgbm @rgbm color to use if dark mode
 ---@return rgbm @rgbm color to be used for the given mode
 ---Picks the appropriate color based on the current mode.
-local function pickThemeColor(light, dark)
-    return (settings.darkMode or player.phoneMode) and dark or light
-end
+local function pickThemeColor(light, dark) return (settings.darkMode or player.phoneMode) and dark or light end
 
 ---@param message any @The message to be sent.
 ---@param deleteAfter? number @The amount of time to wait before deleting the message.
@@ -470,11 +456,7 @@ local function sendAppMessage(message, deleteAfter)
     local msgIndex = #chat.messages
     moveAppUp()
 
-    if deleteAfter then
-        setTimeout(function()
-            table.remove(chat.messages, msgIndex)
-        end, deleteAfter)
-    end
+    if deleteAfter then setTimeout(function() table.remove(chat.messages, msgIndex) end, deleteAfter) end
 end
 
 ---Loads emojis from the data_emoji.txt file, fully supporting emoji grapheme clusters.
@@ -530,9 +512,7 @@ end
 local function getNonTrafficPlayers()
     for i, car in ac.iterateCars() do
         local driverName = ac.getDriverName(i - 1)
-        if driverName and driverName ~= '' and not car.isHidingLabels then
-            nonTrafficPlayers[driverName] = true
-        end
+        if driverName and driverName ~= '' and not car.isHidingLabels then nonTrafficPlayers[driverName] = true end
     end
 end
 
@@ -565,13 +545,9 @@ local appBottom
 local function forceAppToBottom()
     if not appWindow or not appWindow:valid() then return end
 
-    if not appBottom or appBottom ~= screenSpace - appWindow:size().y then
-        appBottom = screenSpace - appWindow:size().y
-    end
+    if not appBottom or appBottom ~= screenSpace - appWindow:size().y then appBottom = screenSpace - appWindow:size().y end
 
-    if appWindow:position().y ~= appBottom and not ui.isMouseDragging(ui.MouseButton.Left, 0) then
-        appWindow:move(vec2(appWindow:position().x, appBottom))
-    end
+    if appWindow:position().y ~= appBottom and not ui.isMouseDragging(ui.MouseButton.Left, 0) then appWindow:move(vec2(appWindow:position().x, appBottom)) end
 end
 
 ---@param dt number @Delta time in seconds since last update.
@@ -649,16 +625,12 @@ local audioIndexes = {}
 local function playTestAudio(tbl)
     local t = {}
     for _, v in pairs(tbl) do
-        if type(v) == 'table' and v.file then
-            t[#t + 1] = v
-        end
+        if type(v) == 'table' and v.file then t[#t + 1] = v end
     end
 
     local key = tbl
     audioIndexes[key] = (audioIndexes[key] or 0) + 1
-    if audioIndexes[key] > #t then
-        audioIndexes[key] = 1
-    end
+    if audioIndexes[key] > #t then audioIndexes[key] = 1 end
 
     return playAudio(t[audioIndexes[key]])
 end
@@ -680,9 +652,7 @@ local function automaticModeSwitch()
         local timeHours = sim.timeHours
 
         local shouldBeDark = false
-        if (timeHours > 12 and sunAngle > settings.darkModeAutoDarkAngle) or (timeHours < 12 and sunAngle > settings.darkModeAutoLightAngle) then
-            shouldBeDark = true
-        end
+        if (timeHours > 12 and sunAngle > settings.darkModeAutoDarkAngle) or (timeHours < 12 and sunAngle > settings.darkModeAutoLightAngle) then shouldBeDark = true end
 
         if player.phoneMode ~= shouldBeDark then
             player.phoneMode = shouldBeDark
@@ -717,9 +687,7 @@ local function updateSongInfo(forced)
 
     local current = ac.currentlyPlaying()
 
-    if not forced and current.artist == songInfo.artist and current.title == songInfo.title and current.isPlaying == not songInfo.isPaused then
-        return
-    end
+    if not forced and current.artist == songInfo.artist and current.title == songInfo.title and current.isPlaying == not songInfo.isPaused then return end
 
     if (current.artist == '' and current.title == '') or not current.isPlaying then
         songInfo.final = ''
@@ -755,9 +723,7 @@ local function drawSongInfoText(text, pos, size, fontSize)
     ui.pushDWriteFont(app.font.bold)
 
     local textSize = ui.measureDWriteText(text, fontSize)
-    if textSize.x <= size.x - scale(4) and not settings.songInfoscrollAlways then
-        static = true
-    end
+    if textSize.x <= size.x - scale(4) and not settings.songInfoscrollAlways then static = true end
 
     if static then
         ui.setCursor(roundVec2(pos))
@@ -819,22 +785,16 @@ local function matchMessage(isPlayer, message)
 
     if isPlayer then
         for _, pattern in ipairs(chat.playerHideStrings) do
-            if message:match(pattern) then
-                return true
-            end
+            if message:match(pattern) then return true end
         end
     else
         for _, reason in ipairs(chat.serverHideStrings) do
             if lowerMessage:find(reason) then
                 if lowerMessage:find(lowerPlayerName) then
-                    setTimeout(function()
-                        playAudio(audio.notification.critical)
-                    end, audio.notification.timeout)
+                    setTimeout(function() playAudio(audio.notification.critical) end, audio.notification.timeout)
                 else
-                    if (lowerMessage:find('^you') or lowerMessage:find('^it is currently night')) then
-                        setTimeout(function()
-                            playAudio(audio.notification.critical)
-                        end, audio.notification.timeout)
+                    if lowerMessage:find('^you') or lowerMessage:find('^it is currently night') then
+                        setTimeout(function() playAudio(audio.notification.critical) end, audio.notification.timeout)
                     else
                         return true
                     end
@@ -843,9 +803,7 @@ local function matchMessage(isPlayer, message)
         end
 
         if settings.chatHideRaceMsg and lowerMessage:find('in a race%%%.$') then
-            if not lowerMessage:find('you') and not lowerMessage:find(lowerPlayerName) then
-                return true
-            end
+            if not lowerMessage:find('you') and not lowerMessage:find(lowerPlayerName) then return true end
         end
     end
 
@@ -873,9 +831,7 @@ local function deleteOldestMessages()
             activeUsernames[chat.messages[i][2]] = true
         end
         for username, _ in pairs(chat.usernameColors) do
-            if not activeUsernames[username] then
-                chat.usernameColors[username] = nil
-            end
+            if not activeUsernames[username] then chat.usernameColors[username] = nil end
         end
     end
 end
@@ -887,7 +843,7 @@ local function handleKeyboardInput()
     local typed = keyboardInput:queue()
     local inputMaxLen = math.floor(490 * (13 / settings.chatFontSize) ^ 2)
 
-    if (ui.keyPressed(ui.Key.Backspace) or ui.keyPressed(ui.Key.Delete)) then
+    if ui.keyPressed(ui.Key.Backspace) or ui.keyPressed(ui.Key.Delete) then
         playAudio(audio.keyboard.delete)
     elseif ui.keyboardButtonPressed(ui.getKeyIndex(ui.Key.Space), true) then
         playAudio(audio.keyboard.enter)
@@ -999,8 +955,10 @@ local function chatPlayerPopup(userIndex, userName)
                 ui.modalPopup(
                     'Confirm Mute',
                     'Are you sure you want to mute ' .. userName .. '?\nYou will no longer be able to read their chat messages.\nUnmute them via the Drivers list in the CSP Chat app.',
-                    'Confirm', 'Cancel',
-                    ui.Icons.Confirm, ui.Icons.Cancel,
+                    'Confirm',
+                    'Cancel',
+                    ui.Icons.Confirm,
+                    ui.Icons.Cancel,
                     function(confirmed)
                         if confirmed then ac.DriverTags(userName).muted = not ac.DriverTags(userName).muted end
                         playAudio(audio.keyboard.enter)
@@ -1017,7 +975,11 @@ local function chatPlayerPopup(userIndex, userName)
             ui.newLine(chat.popup.vertSpacing)
             if ui.modernMenuItem(watchString, ui.Icons.VideoCamera, false, ui.SelectableFlags.DontClosePopups, false) then
                 playAudio(audio.keyboard.enter)
-                if car.focused then ac.focusCar(0) else ac.focusCar(userIndex) end
+                if car.focused then
+                    ac.focusCar(0)
+                else
+                    ac.focusCar(userIndex)
+                end
             end
         end
 
@@ -1032,9 +994,7 @@ end
 --#region DRAWING FUNCTIONS
 
 ---Draws the background.
-local function drawDisplay()
-    ui.drawRectFilled(vec2(scale(5), 2 + movement.smooth), ui.windowSize() - vec2(5, 0):scale(app.scale), colors.final.display, scale(50), ui.CornerFlags.Top)
-end
+local function drawDisplay() ui.drawRectFilled(vec2(scale(5), 2 + movement.smooth), ui.windowSize() - vec2(5, 0):scale(app.scale), colors.final.display, scale(50), ui.CornerFlags.Top) end
 
 ---Draws the iPhone images.
 local function drawiPhone()
@@ -1107,7 +1067,7 @@ local function drawTime()
 
         if ui.itemClicked(ui.MouseButton.Left) and player.isOnline then
             timeText = settings.badTime and timeText .. ' ' .. player.timePeriod or timeText
-            sendChatMessage('It\'s currently ' .. timeText .. ' my local time.')
+            sendChatMessage("It's currently " .. timeText .. ' my local time.')
         end
     end
 end
@@ -1200,9 +1160,7 @@ local function drawSongInfo(winHalfWidth)
                 local tooltipText = player.isOnline and 'Current Song: ' .. songInfo.artist .. ' - ' .. songInfo.title .. '\nClick to send to chat.' or 'Current Song: ' .. songInfo.artist .. ' - ' .. songInfo.title
                 if not ui.isMouseDragging(ui.MouseButton.Left, 0) and player.isOnline then ui.setMouseCursor(ui.MouseCursor.Hand) end
                 ui.tooltip(app.tooltipPadding, function() ui.text(tooltipText) end)
-                if ui.mouseClicked(ui.MouseButton.Left) and player.isOnline then
-                    sendChatMessage('I\'m currently listening to: ' .. songInfo.final)
-                end
+                if ui.mouseClicked(ui.MouseButton.Left) and player.isOnline then sendChatMessage("I'm currently listening to: " .. songInfo.final) end
             end
         end
     end
@@ -1367,9 +1325,7 @@ local function drawMessages(winWidth, winHalfWidth)
             end
         end
 
-        if chat.popup.hovered then
-            chatPlayerPopup(chat.popup.hovered.userIndex, chat.popup.hovered.username)
-        end
+        if chat.popup.hovered then chatPlayerPopup(chat.popup.hovered.userIndex, chat.popup.hovered.username) end
 
         if (app.hovered and not chat.emojiPicker) and ui.mouseWheel() ~= 0 then
             local mouseWheel = (ui.mouseWheel() * -1) * (scale(settings.chatScrollDistance))
@@ -1456,9 +1412,7 @@ local function drawEmojiPicker(winHeight)
                 end
 
                 ui.sameLine(0, emojiOffset.y)
-                if i % emojisPerRow == 0 and i ~= emojiCount then
-                    ui.newLine(emojiOffset.y)
-                end
+                if i % emojisPerRow == 0 and i ~= emojiCount then ui.newLine(emojiOffset.y) end
             end
 
             ui.newLine(bottomPadding)
@@ -1491,9 +1445,7 @@ local function drawInputCustom(winHeight)
             chat.input.hovered = ui.windowHovered(ui.HoveredFlags.RectOnly)
             local inputClicked = chat.input.hovered and ui.mouseClicked(ui.MouseButton.Left)
 
-            if chat.input.hovered then
-                ui.setMouseCursor(ui.MouseCursor.TextInput)
-            end
+            if chat.input.hovered then ui.setMouseCursor(ui.MouseCursor.TextInput) end
 
             if not chat.input.sendHovered then
                 if inputClicked or chat.mentioned ~= '' then
@@ -1524,9 +1476,7 @@ local function drawInputCustom(winHeight)
                 local textSize = ui.measureDWriteText(displayText, inputFontSize, inputWrap).y
                 local withCaret = ui.measureDWriteText(displayText .. '|', inputFontSize, inputWrap).y
 
-                if withCaret > textSize then
-                    inputWrap = inputWrap + scale(4)
-                end
+                if withCaret > textSize then inputWrap = inputWrap + scale(4) end
 
                 displayText = displayText .. '|'
             end
@@ -1587,12 +1537,12 @@ end
 
 local updateStatus = {
     text = {
-        [0] = 'C1XTZ: You shouldn\'t be reading this',
+        [0] = "C1XTZ: You shouldn't be reading this",
         [1] = 'Updated: The app was successfully updated',
         [2] = 'No Change: The latest version is already installed',
         [3] = 'No Change: A newer version is already installed',
         [4] = 'Error: Something went wrong, aborted update',
-        [5] = 'Update Available to Download and Install'
+        [5] = 'Update Available to Download and Install',
     },
     color = {
         [0] = rgbm.colors.white,
@@ -1600,8 +1550,8 @@ local updateStatus = {
         [2] = rgbm.colors.white,
         [3] = rgbm.colors.white,
         [4] = rgbm.colors.red,
-        [5] = rgbm.colors.lime
-    }
+        [5] = rgbm.colors.lime,
+    },
 }
 
 local appName = 'smartphone'
@@ -1705,9 +1655,7 @@ local function updateApplyUpdate(downloadUrl)
 
         ac.pauseFilesWatching(false)
 
-        if mainFileContent and io.save(appFolder .. mainFile, mainFileContent) then
-            ac.log('Updating: ' .. mainFile)
-        end
+        if mainFileContent and io.save(appFolder .. mainFile, mainFileContent) then ac.log('Updating: ' .. mainFile) end
 
         settings.updateStatus = 1
         settings.updateAvailable = false
@@ -1720,22 +1668,18 @@ local function updateCommunityData()
     web.get('https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/smartphone/src/communities/data/list.lua', function(err, response)
         if err or response.status ~= 200 then
             settings.dataCheckFailed = true
-            return error('Couldn\'t get community data from github.')
+            return error("Couldn't get community data from github.")
         end
 
         local data = stringify.parse(response.body) --[[@as table]]
         if not data or not communities then return error('Web request or Communities table is nil.') end
-        if communities.version[1] == data.version[1] then
-            return ac.log('Already using latest community data.')
-        end
+        if communities.version[1] == data.version[1] then return ac.log('Already using latest community data.') end
 
         ac.pauseFilesWatching(true)
 
         local newImages = {}
         for name, community in pairs(data) do
-            if name ~= 'default' and name ~= 'version' and community.image then
-                newImages[community.image] = true
-            end
+            if name ~= 'default' and name ~= 'version' and community.image then newImages[community.image] = true end
         end
 
         for name, community in pairs(communities) do
@@ -1758,7 +1702,7 @@ local function updateCommunityData()
                 web.get(remoteImageUrl, function(err2, response2)
                     if err2 or response2.status ~= 200 then
                         settings.dataCheckFailed = true
-                        return err2('Couldn\'t get community data from github.')
+                        return err2("Couldn't get community data from github.")
                     end
                     io.save(community.image, response2.body)
                 end)
@@ -1821,9 +1765,7 @@ local function updateCheckVersion(forced)
             settings.updateStatus = 5
         end
 
-        if settings.updateStatus ~= 5 then
-            updateCommunityData()
-        end
+        if settings.updateStatus ~= 5 then updateCommunityData() end
     end)
 end
 
@@ -1867,19 +1809,11 @@ if player.isOnline then
                 if senderCarIndex == 0 then
                     playAudio(audio.message.send)
                 else
-                    if isFriend or settings.messagesNonFriends then
-                        playAudio(audio.message.receive)
-                    end
-                    if (isFriend and settings.notificationsFriendMessages) or (isMentioned and settings.notificationsMentions) then
-                        setTimeout(function()
-                            playAudio(audio.notification.regular)
-                        end, audio.notification.timeout)
-                    end
+                    if isFriend or settings.messagesNonFriends then playAudio(audio.message.receive) end
+                    if (isFriend and settings.notificationsFriendMessages) or (isMentioned and settings.notificationsMentions) then setTimeout(function() playAudio(audio.notification.regular) end, audio.notification.timeout) end
                 end
             else
-                if settings.messagesServer then
-                    playAudio(audio.message.receive)
-                end
+                if settings.messagesServer then playAudio(audio.message.receive) end
             end
         end
 
@@ -1906,11 +1840,7 @@ if player.isOnline then
             table.insert(chat.messages, { -1, 'Server', userName .. action .. ' the Server', os.time() })
 
             if settings.messagesServer and (settings.messagesNonFriends or isFriend) then playAudio(audio.message.receive) end
-            if settings.notificationsFriendConnections and isFriend then
-                setTimeout(function()
-                    playAudio(audio.notification.regular)
-                end, audio.notification.timeout)
-            end
+            if settings.notificationsFriendConnections and isFriend then setTimeout(function() playAudio(audio.notification.regular) end, audio.notification.timeout) end
 
             moveAppUp()
         end
@@ -1929,11 +1859,7 @@ if player.isOnline then
     end)
 
     --Before CSP 0.3.0p110 (3637) the onOnlineWelcome event was broken and returned a empty string
-    if player.cspVersion >= 3637 then
-        ac.onOnlineWelcome(function(message, config)
-            sendAppMessage(message)
-        end)
-    end
+    if player.cspVersion >= 3637 then ac.onOnlineWelcome(function(message, config) sendAppMessage(message) end) end
 end
 
 function onShowWindow()

@@ -1,3 +1,5 @@
+---@meta
+---@diagnostic disable: exp-in-action
 {
   version = { 22102025 },
   default = { url = "https://github.com/C1XTZ/ac-smartphone", text = "Smartphone App on Github", image = ".\\apps\\lua\\smartphone\\src\\img\\default.png" },
