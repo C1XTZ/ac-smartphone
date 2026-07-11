@@ -20,11 +20,6 @@ local settings = ac.storage {
   forceBottom = true,
   focusMode = false,
 
-  updateLastCheck = 0,
-  updateStatus = 0,
-  updateAvailable = false,
-  updateURL = '',
-
   appMove = false,
   appMoveTimer = 10,
   appMoveSpeed = 10,
@@ -66,8 +61,6 @@ local settings = ac.storage {
   notificationsMentions = true,
   notificationsFriendConnections = true,
   notificationsFriendMessages = true,
-
-  dataCheckFailed = false,
 
   customColor = false,
   messageColorSelf = rgbm(0, 0.49, 1, 1),
@@ -147,7 +140,7 @@ local player = {
   phoneMode = settings.darkMode,
 }
 
-local communities = stringify.parse(io.load('.\\apps\\lua\\smartphone\\src\\communities\\data\\list.lua') --[[@as string]]) --[[@as table]]
+local communities = stringify.parse(io.load('.\\apps\\lua\\smartphone\\src\\communities\\data\\list.lua') --[[@as string]]) ---@cast communities table
 
 local movement = {
   maxDistance = 487,
@@ -319,12 +312,15 @@ local function scale(value) return math.floor(app.scale * value) end
 ---Rounds the given vec2, since text and images drawn at fractional coordinates are blurry.
 local function roundVec2(v, y, s)
   local v2
-  if s ~= nil then
-    v2 = vec2(v --[[@as number]], y):scale(s --[[@as number]])
-  elseif y ~= nil then
-    v2 = vec2(v --[[@as number]], y)
+
+  if type(v) == 'number' then
+    if type(s) == 'number' then
+      v2 = vec2(v, y):scale(s)
+    else
+      v2 = vec2(v, y)
+    end
   else
-    v2 = v --[[@as vec2]]
+    v2 = v
   end
 
   v2:set(math.ceil(v2.x), math.ceil(v2.y))
@@ -1050,7 +1046,7 @@ end
 
 ---Draws the time.
 local function drawTime()
-  local time = os.date('%H:%M') --[[@as string]]
+  local time = os.date('%H:%M') ---@cast time string
   local timeText = settings.badTime and to12hTime(time) or time
   local timeSize = scale(13)
   local timePosition = vec2(22, 22):scale(app.scale) + vec2(0, movement.smooth)
@@ -1201,7 +1197,7 @@ local function drawMessages(winWidth, winHalfWidth)
         local messageTextContent = message[3]
         local messageTime = message[4]
         local messageShowTimestamp = message[5]
-        local messageTimestamp = settings.badTime and to12hTime(os.date('%H:%M', messageTime) --[[@as string]]) .. ' ' .. player.timePeriod or os.date('%H:%M', messageTime) --[[@as string]]
+        local messageTimestamp = settings.badTime and to12hTime(os.date('%H:%M', messageTime) --[[@as string]]) .. ' ' .. player.timePeriod or os.date('%H:%M', messageTime) ---@cast messageTimestamp string
 
         local fontWeight = app.font.regular
 
@@ -1535,239 +1531,16 @@ end
 
 --#region APP UPDATER
 
-local updateStatus = {
-  text = {
-    [0] = "C1XTZ: You shouldn't be reading this",
-    [1] = 'Updated: The app was successfully updated',
-    [2] = 'No Change: The latest version is already installed',
-    [3] = 'No Change: A newer version is already installed',
-    [4] = 'Error: Something went wrong, aborted update',
-    [5] = 'Update Available to Download and Install',
-  },
-  color = {
-    [0] = rgbm.colors.white,
-    [1] = rgbm.colors.lime,
-    [2] = rgbm.colors.white,
-    [3] = rgbm.colors.white,
-    [4] = rgbm.colors.red,
-    [5] = rgbm.colors.lime,
-  },
-}
+local Updater = require('updater/universal')
+local Communities = require('updater/communities')
 
-local appName = 'smartphone'
-local appFolder = ac.getFolder(ac.FolderID.ACApps) .. '\\lua\\' .. appName .. '\\'
-local manifest = ac.INIConfig.load(appFolder .. '\\manifest.ini', ac.INIFormat.Extended)
-local appVersion = manifest:get('ABOUT', 'VERSION', 0.01)
-local releaseURL = 'https://api.github.com/repos/C1XTZ/ac-smartphone/releases/latest'
-local mainFile, assetFile = appName .. '.lua', appName .. '.zip'
+local appFolder = ac.getFolder(ac.FolderID.ScriptOrigin) .. '\\'
 local carKeyFile = #io.scanDir(appFolder, '*.carkey') > 0
 
----@param directory string @The directory to scan.
----@return table @A list of files in the given directory.
----@return table @A list of directories in the given directory.
----Scans the given directory recursively and returns a list of files and directories.
-local function scanDirRecursive(directory)
-  local function scan(dir, fileList, dirList)
-    local files = io.scanDir(dir)
-    for _, file in ipairs(files) do
-      local fullPath = dir .. '\\' .. file
-      if io.dirExists(fullPath) then
-        table.insert(dirList, fullPath)
-        scan(fullPath, fileList, dirList)
-      else
-        table.insert(fileList, fullPath)
-      end
-    end
-  end
-  local fileList, dirList = {}, {}
-  scan(directory, fileList, dirList)
-  return fileList, dirList
-end
-
----@param downloadUrl string @The URL to download the update from
----Applies the update from the specified URL.
-local function updateApplyUpdate(downloadUrl)
-  web.get(downloadUrl, function(downloadErr, downloadResponse)
-    if downloadErr then
-      settings.updateStatus = 4
-      error(downloadErr)
-      return
-    end
-
-    local zipData = downloadResponse.body
-    ac.pauseFilesWatching(true)
-
-    local updatedFiles, updatedDirs = {}, {}
-    for _, file in ipairs(io.scanZip(zipData)) do
-      local content = io.loadFromZip(zipData, file)
-      if content then
-        local filePath = file:gsub('^' .. appName .. '/', '')
-        local dirPath = filePath:match('(.+)/')
-        if dirPath then
-          updatedDirs[dirPath] = true
-          local parts = {}
-          for part in dirPath:gmatch('[^/]+') do
-            table.insert(parts, part)
-            local subDir = table.concat(parts, '/')
-            updatedDirs[subDir] = true
-          end
-        end
-        if filePath ~= mainFile then
-          if io.save(appFolder .. filePath, content) then
-            ac.log('Updating: ' .. file)
-            updatedFiles[filePath] = true
-          end
-        end
-      end
-    end
-
-    local mainFileContent
-    for _, file in ipairs(io.scanZip(zipData)) do
-      local content = io.loadFromZip(zipData, file)
-      if content then
-        local filePath = file:gsub('^' .. appName .. '/', '')
-        if filePath == mainFile then
-          mainFileContent = content
-          break
-        end
-      end
-    end
-
-    local currentFiles, currentDirs = scanDirRecursive(appFolder)
-    for _, file in ipairs(currentFiles) do
-      local relativePath = file:sub(#appFolder + 1):gsub('\\', '/')
-      if relativePath:sub(1, 1) == '/' then relativePath = relativePath:sub(2) end
-      if not updatedFiles[relativePath] and not file:match('%.carkey$') then
-        io.deleteFile(file)
-        ac.log('Removing file: ' .. relativePath)
-      end
-    end
-
-    for i = #currentDirs, 1, -1 do
-      local dir = currentDirs[i]
-      local relativePath = dir:sub(#appFolder + 1):gsub('\\', '/')
-      if relativePath:sub(1, 1) == '/' then relativePath = relativePath:sub(2) end
-      if not updatedDirs[relativePath] then
-        io.deleteDir(dir)
-        ac.log('Removing directory: ' .. relativePath)
-      end
-    end
-
-    ac.pauseFilesWatching(false)
-
-    if mainFileContent and io.save(appFolder .. mainFile, mainFileContent) then ac.log('Updating: ' .. mainFile) end
-
-    settings.updateStatus = 1
-    settings.updateAvailable = false
-    settings.updateURL = ''
-  end)
-end
-
----Updates the community data from github.
-local function updateCommunityData()
-  web.get('https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/smartphone/src/communities/data/list.lua', function(err, response)
-    if err or response.status ~= 200 then
-      settings.dataCheckFailed = true
-      return error("Couldn't get community data from github.")
-    end
-
-    local data = stringify.parse(response.body) --[[@as table]]
-    if not data or not communities then return error('Web request or Communities table is nil.') end
-    if communities.version[1] == data.version[1] then return ac.log('Already using latest community data.') end
-
-    ac.pauseFilesWatching(true)
-
-    local newImages = {}
-    for name, community in pairs(data) do
-      if name ~= 'default' and name ~= 'version' and community.image then newImages[community.image] = true end
-    end
-
-    for name, community in pairs(communities) do
-      if name ~= 'default' and name ~= 'version' and community.image and not newImages[community.image] then
-        io.deleteFile(community.image)
-        ac.log('Removed community image: ' .. community.image)
-      end
-    end
-
-    local file = io.open(ac.getFolder(ac.FolderID.ACAppsLua) .. '\\smartphone\\src\\communities\\data\\list.lua', 'w+')
-    if file then
-      file:write(stringify(data))
-      file:close()
-    end
-
-    for name, community in pairs(data) do
-      if name ~= 'default' and community.image then
-        local filename = community.image:match('([^\\]+)$')
-        local remoteImageUrl = 'https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/smartphone/src/communities/img/' .. filename
-        web.get(remoteImageUrl, function(err2, response2)
-          if err2 or response2.status ~= 200 then
-            settings.dataCheckFailed = true
-            return error("Couldn't get community data from github.")
-          end
-          io.save(community.image, response2.body)
-        end)
-      end
-    end
-
-    settings.dataCheckFailed = false
-    ac.pauseFilesWatching(false)
-    return ac.log('Updated to latest community data.')
-  end)
-end
-
----@param forced? boolean @Forces the update check to run.
----Checks for updates and handles the app update process.
-local function updateCheckVersion(forced)
-  local now = os.time()
-  local checkInterval = 28800
-  if now - settings.updateLastCheck <= checkInterval and not forced then return end
-  settings.updateLastCheck = now
-
-  web.get(releaseURL, function(err, response)
-    if err then
-      settings.updateStatus = 4
-      return error(err)
-    end
-
-    local latestRelease = JSON.parse(response.body)
-    local tagName, releaseAssets = latestRelease.tag_name, latestRelease.assets
-
-    if not (tagName and tagName:match('^v%d%d?%.%d%d?$')) then
-      settings.updateStatus = 4
-      return error('URL unavailable or no Version recognized, aborted update')
-    end
-
-    local version = tonumber(tagName:sub(2))
-
-    if appVersion > version then
-      settings.updateStatus = 3
-      settings.updateAvailable = false
-    elseif appVersion == version then
-      settings.updateStatus = 2
-      settings.updateAvailable = false
-    else
-      local downloadUrl
-      for _, asset in ipairs(releaseAssets) do
-        if asset.name == assetFile then
-          downloadUrl = asset.browser_download_url
-          break
-        end
-      end
-
-      if not downloadUrl then
-        settings.updateStatus = 4
-        return error('No matching asset found, aborted update')
-      end
-
-      sendAppMessage('Update Available!\nInstall via App Settings')
-      settings.updateAvailable = true
-      settings.updateURL = downloadUrl
-      settings.updateStatus = 5
-    end
-
-    if settings.updateStatus ~= 5 then updateCommunityData() end
-  end)
-end
+Updater.init {
+  onUpdateAvailable = function() sendAppMessage('Update Available!\nInstall via App Settings') end,
+  onCheckComplete = function() Communities.checkForUpdate(communities) end,
+}
 
 --#endregion
 
@@ -1863,7 +1636,7 @@ if player.isOnline then
 end
 
 function onShowWindow()
-  updateCheckVersion()
+  Updater.checkVersion()
   updateColors()
   updateSongInfo(true)
   loadEmojis()
@@ -1871,7 +1644,7 @@ function onShowWindow()
 
   if settings.focusMode then settings.focusMode = false end
 
-  if settings.updateStatus == 5 then sendAppMessage('Update Available!\nInstall via App Settings') end
+  if Updater.state.updateStatus == 5 then sendAppMessage('Update Available!\nInstall via App Settings') end
 
   if app.scale ~= math.round(settings.appScale, 1) then
     app.scale = math.round(settings.appScale, 1)
@@ -1887,34 +1660,7 @@ end
 
 function script.windowMainSettings()
   ui.tabBar('TabBar', function()
-    ui.tabItem('Update', function()
-      ui.text(appName:gsub('^%l', string.upper) .. ' Version ' .. string.format('%.2f', appVersion))
-
-      local updateButtonText = settings.updateAvailable and 'Install Update' or 'Check for Update'
-
-      if ui.modernButton(updateButtonText, 0, ui.ButtonFlags.None, nil, app.modernButtonOffset, nil) then
-        if settings.updateAvailable then
-          updateApplyUpdate(settings.updateURL)
-        else
-          updateCheckVersion(true)
-        end
-      end
-
-      local diff = os.time() - settings.updateLastCheck
-      if diff > 600 then settings.updateStatus = 0 end
-      local units = { 'seconds', 'minutes', 'hours', 'days' }
-      local values = { 1, 60, 3600, 86400 }
-
-      local i = #values
-      while i > 1 and diff < values[i] do
-        i = i - 1
-      end
-
-      local timeAgo = math.floor(diff / values[i])
-      ui.text('Last checked ' .. timeAgo .. ' ' .. units[i] .. ' ago')
-
-      if settings.updateStatus > 0 then ui.textColored(updateStatus.text[settings.updateStatus], updateStatus.color[settings.updateStatus]) end
-    end)
+    ui.tabItem('Update', function() Updater.drawUI() end)
 
     ui.tabItem('App', function()
       ui.indent()
