@@ -1,7 +1,5 @@
 --made by C1XTZ
 --if you're reading any of this let me preface this by saying: If you're going: what the fuck is this idiot doing?? its likely that I said the same thing while writing it.
----@meta
----@diagnostic disable: lowercase-global
 
 ui.setAsynchronousImagesLoading(true)
 
@@ -1635,6 +1633,8 @@ if player.isOnline then
   if player.cspVersion >= 3637 then ac.onOnlineWelcome(function(message, config) sendAppMessage(message) end) end
 end
 
+---Function to be called once when window opens, defined in `manifest.ini` as `FUNCTION_ON_SHOW = onShowWindow`
+---@diagnostic disable-next-line: lowercase-global
 function onShowWindow()
   Updater.checkVersion()
   updateColors()

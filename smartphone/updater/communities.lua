@@ -19,12 +19,12 @@ function Communities.checkForUpdate(currentCommunities)
       return
     end
 
-    local remoteData = stringify.parse(response.body)
-    ---@cast remoteData table
+    local remoteData = stringify.parse(response.body) ---@cast remoteData table
     if not remoteData or not currentCommunities then
       error('Web request or Communities table is nil.')
       return
     end
+
     if currentCommunities.version[1] == remoteData.version[1] then
       ac.log('Already using latest community data.')
       return
@@ -65,7 +65,9 @@ function Communities.checkForUpdate(currentCommunities)
     end
 
     Communities.state.dataCheckFailed = false
+
     ac.pauseFilesWatching(false)
+
     ac.log('Updated to latest community data.')
   end)
 end

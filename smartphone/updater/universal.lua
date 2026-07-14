@@ -1,6 +1,8 @@
 ---Universal updater shared across C1XTZ apps.
 local Updater = {}
 
+--#region UPDATER VARIABLES
+
 local scriptFolder = ac.getFolder(ac.FolderID.ScriptOrigin)
 local appName = scriptFolder:match('([^\\/]+)$')
 local appFolder = scriptFolder .. '\\'
@@ -19,12 +21,11 @@ local selfVersionsURL = selfRepoBase .. 'versions.json'
 
 local modernButtonOffset = -8 * ac.getUI().uiScale
 
-Updater.state = ac.storage {
-  updateLastCheck = 0,
-  updateStatus = 0,
-  updateAvailable = false,
-  updateURL = '',
-}
+local onUpdateAvailable, onCheckComplete
+
+local timeUnits = { 'seconds', 'minutes', 'hours', 'days' }
+local timeUnitSeconds = { 1, 60, 3600, 86400 }
+local versionText = appName:gsub('^%l', string.upper) .. ' Version ' .. string.format('%.2f', appVersion)
 
 local statusText = {
   [0] = "C1XTZ: You shouldn't be reading this",
@@ -34,6 +35,7 @@ local statusText = {
   [4] = 'Error: Something went wrong, aborted update',
   [5] = 'Update Available to Download and Install',
 }
+
 local statusColor = {
   [0] = rgbm.colors.white,
   [1] = rgbm.colors.lime,
@@ -43,7 +45,20 @@ local statusColor = {
   [5] = rgbm.colors.lime,
 }
 
-local onUpdateAvailable, onCheckComplete
+--#endregion
+
+--#region UPDATER PERSISTENT SETTINGS
+
+Updater.state = ac.storage {
+  updateLastCheck = 0,
+  updateStatus = 0,
+  updateAvailable = false,
+  updateURL = '',
+}
+
+--#endregion
+
+--#region UTILITY FUNCTIONS
 
 ---@param config {onUpdateAvailable: fun()?, onCheckComplete: fun()?}?
 ---Optionally register callbacks.
@@ -82,10 +97,15 @@ local function scanDirRecursive(directory)
       end
     end
   end
+
   local fileList, dirList = {}, {}
   scan(directory, fileList, dirList)
   return fileList, dirList
 end
+
+--#endregion
+
+--#region APP UPDATING
 
 ---Downloads and installs the update.
 function Updater.applyUpdate()
@@ -98,6 +118,7 @@ function Updater.applyUpdate()
     end
 
     local zipData = downloadResponse.body
+
     ac.pauseFilesWatching(true)
 
     local updatedFiles, updatedDirs = {}, {}
@@ -114,8 +135,11 @@ function Updater.applyUpdate()
             updatedDirs[table.concat(parts, '/')] = true
           end
         end
+
         if filePath ~= mainFile then
-          if io.save(appFolder .. filePath, content) then
+          local fullPath = appFolder .. filePath
+          io.createFileDir(fullPath)
+          if io.save(fullPath, content) then
             ac.log('Updating: ' .. file)
             updatedFiles[filePath] = true
           end
@@ -139,7 +163,7 @@ function Updater.applyUpdate()
     for _, file in ipairs(currentFiles) do
       local relativePath = file:sub(#appFolder + 1):gsub('\\', '/')
       if relativePath:sub(1, 1) == '/' then relativePath = relativePath:sub(2) end
-      if not updatedFiles[relativePath] and not file:match('%.carkey$') then
+      if not updatedFiles[relativePath] and not file:match('%.carkey$') and relativePath ~= mainFile then
         io.deleteFile(file)
         ac.log('Removing file: ' .. relativePath)
       end
@@ -165,7 +189,9 @@ function Updater.applyUpdate()
   end)
 end
 
---#region MANIFEST EDITING (Using io functions instead of going through `ac.INIConfig:save()` because that would re-serialize the whole file and as of CSP 3978 corrupts values containing `//` like the URL field.
+--#endregion
+
+--#region APP MANIFEST EDITING
 
 ---@return string? @Full `manifest.ini` contents
 ---Reads manifest.ini as plain text
@@ -199,8 +225,8 @@ local function replaceSection(text, sectionName, values)
   for key, value in pairs(values) do
     table.insert(lines, key .. ' = ' .. tostring(value))
   end
-  local newBlock = table.concat(lines, newline) .. newline
 
+  local newBlock = table.concat(lines, newline) .. newline
   local headerStart, headerEnd = text:find('%[' .. sectionName .. '%]')
   if not headerStart then
     local sep = (text:sub(-#newline) == newline) and '' or newline
@@ -214,7 +240,9 @@ end
 
 --#endregion
 
----Updater for the Updater, allows me to push updates to the updater files without needing to update and make a new release for every app seperately.
+--#region SELF UPDATING & APP VERSION CHECKING
+
+---Updater for the Updater, allows updates to be pushed to the updater itself without requiring a new version release for every app seperately.
 local function checkSelfUpdate()
   web.get(selfVersionsURL, function(err, response)
     if err or response.status ~= 200 then
@@ -230,7 +258,6 @@ local function checkSelfUpdate()
 
     local wantedFiles = remote[appName].files or {}
     local installed = manifest.sections['XTZ_UPDATER'] or {}
-
     local finalValues = {}
     for key in pairs(installed) do
       finalValues[key] = manifest:get('XTZ_UPDATER', key, 0.0)
@@ -279,7 +306,9 @@ local function checkSelfUpdate()
 
     local function finishIfDone()
       if pending > 0 then return end
+
       ac.pauseFilesWatching(false)
+
       if dirty then
         local text = readManifestText()
         if text then writeManifestText(replaceSection(text, 'XTZ_UPDATER', finalValues)) end
@@ -301,6 +330,7 @@ local function checkSelfUpdate()
           finalValues[entry.manifestKey] = entry.version
           dirty = true
         end
+
         pending = pending - 1
         finishIfDone()
       end)
@@ -367,11 +397,15 @@ function Updater.checkVersion(manual)
   end)
 end
 
+--#endregion
+
+--#region SETTINGS UI
+
 ---Draws the full 'Update' tab body.
 function Updater.drawUI()
   if ac.getPatchVersionCode() < 2651 then return end
 
-  ui.text(appName:gsub('^%l', string.upper) .. ' Version ' .. string.format('%.2f', appVersion))
+  ui.text(versionText)
 
   local buttonText = Updater.state.updateAvailable and 'Install Update' or 'Check for Update'
   if ui.modernButton(buttonText, 0, ui.ButtonFlags.None, nil, modernButtonOffset, nil) then
@@ -385,16 +419,17 @@ function Updater.drawUI()
   local diff = os.time() - Updater.state.updateLastCheck
   if diff > 600 then Updater.state.updateStatus = 0 end
 
-  local units = { 'seconds', 'minutes', 'hours', 'days' }
-  local values = { 1, 60, 3600, 86400 }
-  local i = #values
-  while i > 1 and diff < values[i] do
+  local i = #timeUnitSeconds
+  while i > 1 and diff < timeUnitSeconds[i] do
     i = i - 1
   end
-  local timeAgo = math.floor(diff / values[i])
-  ui.text('Last checked ' .. timeAgo .. ' ' .. units[i] .. ' ago')
+
+  local timeAgo = math.floor(diff / timeUnitSeconds[i])
+  ui.text('Last checked ' .. timeAgo .. ' ' .. timeUnits[i] .. ' ago')
 
   if Updater.state.updateStatus > 0 then ui.textColored(statusText[Updater.state.updateStatus], statusColor[Updater.state.updateStatus]) end
 end
+
+--#endregion
 
 return Updater
