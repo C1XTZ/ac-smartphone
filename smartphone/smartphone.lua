@@ -125,7 +125,6 @@ local app = {
     regular = ui.DWriteFont('Inter Variable Text', '.\\src\\ttf'):weight(ui.DWriteFont.Weight.Medium),
     bold = ui.DWriteFont('Inter Variable Text', '.\\src\\ttf'):weight(ui.DWriteFont.Weight.Bold),
   },
-  modernButtonOffset = -8 * ac.getUI().uiScale,
 }
 
 local player = {
@@ -198,7 +197,6 @@ local chat = {
   },
   popup = {
     hovered = nil,
-    vertSpacing = -18 * ac.getUI().uiScale,
   },
   emojis = {},
   usernameColors = {},
@@ -221,6 +219,12 @@ local audio = {
     timeout = 0.4,
   },
 }
+
+for category, events in pairs(audio) do
+  for _, event in pairs(events) do
+    if type(event) == 'table' and event.file then event.category = category end
+  end
+end
 
 local nonTrafficPlayers = {}
 
@@ -314,6 +318,12 @@ local function scaleVec2(x, y, offsetY) return vec2(math.ceil(app.scale * x), ma
 ---@return vec2 @ceiled vec2()
 ---Ceils and converts two numbers into a vec2()
 local function ceilVec2(x, y) return vec2(math.ceil(x), math.ceil(y)) end
+
+---@return number @Y offset, scaled by current UI scale.
+local function modernButtonOffset() return -8 * ac.getUI().uiScale end
+
+---@return number @Y offset, scaled by current UI scale.
+local function popupNewlineOffset() return -18 * ac.getUI().uiScale end
 
 ---@param songString string @combined 'artist - title' string usually, whatever your mp3 player spits out
 ---@return string artist @artist name string
@@ -673,12 +683,12 @@ local function updateColors()
 end
 
 local appWindow = ac.accessAppWindow('IMGUI_LUA_Smartphone_main')
-local screenSpace = ac.getSim().windowHeight
 local appBottom
 ---Forces the app to be at the bottom of the screen.
 local function forceAppToBottom()
   if not appWindow or not appWindow:valid() then return end
 
+  local screenSpace = ac.getSim().windowHeight
   if not appBottom or appBottom ~= screenSpace - appWindow:size().y then appBottom = screenSpace - appWindow:size().y end
 
   if appWindow:position().y ~= appBottom and not ui.isMouseDragging(ui.MouseButton.Left, 0) then appWindow:move(vec2(appWindow:position().x, appBottom)) end
@@ -726,20 +736,9 @@ end
 ---@param event table @audio event table (audio.category.event)
 ---Plays the specified audio event.
 local function playAudio(event)
-  if not settings.enableAudio or not event then return end
+  if not settings.enableAudio or not event or not event.category then return end
 
-  local categoryFound
-  for category, events in pairs(audio) do
-    for _, eventData in pairs(events) do
-      if event == eventData then
-        categoryFound = category
-        break
-      end
-    end
-    if categoryFound then break end
-  end
-  if not categoryFound then return end
-
+  local categoryFound = event.category
   local enableSetting = 'enable' .. categoryFound:sub(1, 1):upper() .. categoryFound:sub(2)
   if not settings[enableSetting] then return end
 
@@ -1072,18 +1071,18 @@ local function chatPlayerPopup(userIndex, userName)
       ui.closePopup()
     end
 
-    ui.newLine(chat.popup.vertSpacing)
+    ui.newLine(popupNewlineOffset())
     ui.separator()
 
     if player.cspVersion >= 3459 then
       local friendString = ac.DriverTags(userName).friend and 'Remove as Friend' or 'Mark as Friend'
-      ui.newLine(chat.popup.vertSpacing)
+      ui.newLine(popupNewlineOffset())
       if ui.modernMenuItem(friendString, ui.Icons.Befriend, false, ui.SelectableFlags.DontClosePopups, false) then
         playAudio(audio.keyboard.enter)
         ac.DriverTags(userName).friend = not ac.DriverTags(userName).friend
       end
 
-      ui.newLine(chat.popup.vertSpacing)
+      ui.newLine(popupNewlineOffset())
       if ui.modernMenuItem('Mute', ui.Icons.Ban, false, ui.SelectableFlags.DontClosePopups, false) then
         playAudio(audio.keyboard.enter)
         ui.modalPopup(
@@ -1102,11 +1101,11 @@ local function chatPlayerPopup(userIndex, userName)
     end
 
     if car.isConnected then
-      ui.newLine(chat.popup.vertSpacing)
+      ui.newLine(popupNewlineOffset())
       ui.separator()
 
       local watchString = car.focused and 'Stop Watching' or 'Watch Closely'
-      ui.newLine(chat.popup.vertSpacing)
+      ui.newLine(popupNewlineOffset())
       if ui.modernMenuItem(watchString, ui.Icons.VideoCamera, false, ui.SelectableFlags.DontClosePopups, false) then
         playAudio(audio.keyboard.enter)
         if car.focused then
@@ -1240,7 +1239,7 @@ local function drawHeader()
   ui.drawRectFilled(scaleVec2(11, 9, movement.smooth), scaleVec2(app.size.x - 11, headerHeight, movement.smooth), colors.final.header, scaleNum(cornerRadius), ui.CornerFlags.Top)
   ui.drawSimpleLine(scaleVec2(11, headerHeight, movement.smooth), scaleVec2(app.size.x - 11, headerHeight, movement.smooth), colors.final.headerLine)
 
-  local winHalf = scaleNum(app.size.x) / 2
+  local winHalf = scaleNum(app.size.x / 2)
   local text = 'Server Chat'
   local fontSize = scaleNum(12)
 
@@ -1803,10 +1802,8 @@ function onShowWindow()
     app.size = vec2(phoneFull.x / 4, phoneFull.y / 2)
   end
 
-  if app.scale ~= math.round(settings.appScale, 1) then
-    app.scale = math.round(settings.appScale, 1)
-    app.images.phoneAtlasSize = ui.imageSize(app.images.phoneAtlasPath):div(vec2(2, 2)):scale(app.scale)
-  end
+  app.scale = math.round(settings.appScale, 1)
+  app.images.phoneAtlasSize = ui.imageSize(app.images.phoneAtlasPath):div(vec2(2, 2)):scale(app.scale)
 
   player.serverCommunity = getServerCommunity()
 end
@@ -1969,7 +1966,7 @@ function script.windowMainSettings()
 
           settingsSlider('volumeKeyboard', 0.1, 10, 'Keystroke Volume: %.1f')
 
-          if ui.modernButton('Play Test Keystroke', 0, ui.ButtonFlags.None, nil, app.modernButtonOffset, nil) then playTestAudio(audio.keyboard) end
+          if ui.modernButton('Play Test Keystroke', 0, ui.ButtonFlags.None, nil, modernButtonOffset(), nil) then playTestAudio(audio.keyboard) end
 
           ui.unindent()
         end
@@ -1981,7 +1978,7 @@ function script.windowMainSettings()
 
           settingsSlider('volumeMessage', 0.1, 10, 'Message Volume: %.1f')
 
-          if ui.modernButton('Play Test Message', 0, ui.ButtonFlags.None, nil, app.modernButtonOffset, nil) then playTestAudio(audio.message) end
+          if ui.modernButton('Play Test Message', 0, ui.ButtonFlags.None, nil, modernButtonOffset(), nil) then playTestAudio(audio.message) end
 
           settingsCheckbox('Non-Friend Messages', 'messagesNonFriends', 'Plays message received sound for messages from non-friends.')
           settingsCheckbox('Server Messages', 'messagesServer', 'Plays message received sound for messages from the server.')
@@ -1996,7 +1993,7 @@ function script.windowMainSettings()
 
           settingsSlider('volumeNotification', 0.1, 10, 'Notification Volume: %.1f')
 
-          if ui.modernButton('Play Test Notification', 0, ui.ButtonFlags.None, nil, app.modernButtonOffset, nil) then playTestAudio(audio.notification) end
+          if ui.modernButton('Play Test Notification', 0, ui.ButtonFlags.None, nil, modernButtonOffset(), nil) then playTestAudio(audio.notification) end
 
           settingsCheckbox('@' .. player.driverName .. ' mentions', 'notificationsMentions', 'Plays notification when you are mentioned in chat.')
           settingsCheckbox('Friend Messages', 'notificationsFriendMessages', 'Plays notification when friend sends a chat message.')
@@ -2016,7 +2013,7 @@ function script.windowMainSettings()
         ui.text('Message Color Own')
         ui.setNextItemWidth(colorPickerWidth)
         local messageColorSelfChange = ui.colorPicker('Display Color Picker', settings.messageColorSelf, flags.colorpicker)
-        if ui.modernButton('Reset to default' .. '\u{200B}', 0, ui.ButtonFlags.None, nil, app.modernButtonOffset, nil) then
+        if ui.modernButton('Reset to default' .. '\u{200B}', 0, ui.ButtonFlags.None, nil, modernButtonOffset(), nil) then
           settings.messageColorSelf = colors.iMessageBlue:clone()
           updateColors()
         end
@@ -2026,7 +2023,7 @@ function script.windowMainSettings()
         ui.text('Message Color Friends')
         ui.setNextItemWidth(colorPickerWidth)
         local messageColorFriendChange = ui.colorPicker('Text Color Picker', settings.messageColorFriend, flags.colorpicker)
-        if ui.modernButton('Reset to default' .. '\u{200C}', 0, ui.ButtonFlags.None, nil, app.modernButtonOffset, nil) then
+        if ui.modernButton('Reset to default' .. '\u{200C}', 0, ui.ButtonFlags.None, nil, modernButtonOffset(), nil) then
           settings.messageColorFriend = colors.iMessageGreen:clone()
           updateColors()
         end
@@ -2061,7 +2058,6 @@ function script.windowMain(dt)
   app.hovered = ui.windowHovered(bit.bor(ui.HoveredFlags.AllowWhenBlockedByPopup, ui.HoveredFlags.ChildWindows, ui.HoveredFlags.AllowWhenBlockedByActiveItem))
   player.car = ac.getCar(0)
 
-  if app.images.phoneAtlasSize == vec2(0, 0) then app.images.phoneAtlasSize = ui.imageSize(app.images.phoneAtlasPath):div(vec2(2, 2)):scale(app.scale) end
   if app.hovered or chat.input.active then moveAppUp() end
   if settings.forceBottom then forceAppToBottom() end
 
