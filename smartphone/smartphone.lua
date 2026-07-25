@@ -501,42 +501,155 @@ local function loadEmojis()
   if not f then return {} end
   local content = f:read('*a')
   f:close()
+
+  -- UTF-8 helpers -----------------------------------------------------------
+  local VS16 = '\239\184\143' -- U+FE0F Variation Selector-16
+  local ZWJ = '\226\128\141' -- U+200D Zero Width Joiner
+
+  local function codepoint_bytes(first_byte)
+    if first_byte >= 0xF0 then
+      return 4
+    elseif first_byte >= 0xE0 then
+      return 3
+    elseif first_byte >= 0xC0 then
+      return 2
+    else
+      return 1
+    end
+  end
+
+  -- Check if a 4‑byte codepoint is a skin‑tone modifier (U+1F3FB‑U+1F3FF)
+  local function is_skin_tone(b1, b2, b3, b4) return b1 == 0xF0 and b2 == 0x9F and b3 == 0x8F and b4 >= 0xBB and b4 <= 0xBF end
+
+  -- Check if a 4‑byte codepoint is a Regional Indicator (U+1F1E6‑U+1F1FF)
+  local function is_regional_indicator(b1, b2, b3, b4) return b1 == 0xF0 and b2 == 0x9F and b3 == 0x87 and b4 >= 0xA6 and b4 <= 0xBF end
+
+  -- Check if a 3‑byte codepoint is U+20E3 (combining enclosing keycap)
+  local function is_keycap(b1, b2, b3) return b1 == 0xE2 and b2 == 0x83 and b3 == 0xA3 end
+
+  -- Check if a 4‑byte codepoint is a tag character (U+E0020‑U+E007F)
+  local function is_tag(b1, b2, b3, b4)
+    if b1 ~= 0xF3 or b2 ~= 0x80 then return false end
+    if b3 == 0x80 then return b4 >= 0xA0 and b4 <= 0xBF end
+    if b3 == 0x81 then return b4 >= 0x80 and b4 <= 0xBF end
+    return false
+  end
+
+  -- Extract the next extended grapheme cluster starting at `pos`.
+  -- Returns the cluster string and the new position.
+  local function getNextCluster(line, pos)
+    local start = pos
+    local b = line:byte(pos)
+    if not b or b <= 32 then return '', pos end
+
+    local cplen = codepoint_bytes(b)
+    local cluster = line:sub(pos, pos + cplen - 1)
+    pos = pos + cplen
+
+    -- --- Special handling for multi‑codepoint bases ------------------------
+    -- 1) Pair of Regional Indicators → flag
+    if cplen == 4 then
+      local b1, b2, b3, b4 = string.byte(cluster, 1, 4)
+      if is_regional_indicator(b1, b2, b3, b4) and pos + 3 <= #line then
+        local nb1, nb2, nb3, nb4 = line:byte(pos, pos + 3)
+        if is_regional_indicator(nb1, nb2, nb3, nb4) then
+          cluster = cluster .. line:sub(pos, pos + 3)
+          pos = pos + 4
+          return cluster, pos -- no further modifiers on flags
+        end
+      end
+
+      -- 2) Black flag U+1F3F4 followed by tag sequence → subdivision flag
+      if b1 == 0xF0 and b2 == 0x9F and b3 == 0x8F and b4 == 0xB4 then
+        while pos <= #line do
+          local tb = line:byte(pos)
+          local tlen = codepoint_bytes(tb)
+          if tlen ~= 4 then break end
+          local tb1, tb2, tb3, tb4 = line:byte(pos, pos + 3)
+          if not is_tag(tb1, tb2, tb3, tb4) then break end
+          cluster = cluster .. line:sub(pos, pos + 3)
+          pos = pos + 4
+          -- Cancel tag U+E007F ends the sequence
+          if tb1 == 0xF3 and tb2 == 0x80 and tb3 == 0x81 and tb4 == 0xBF then break end
+        end
+        return cluster, pos
+      end
+    end
+
+    -- --- Common modifiers that can follow any base --------------------------
+    -- Optional Variation Selector‑16
+    if pos + 2 <= #line and line:sub(pos, pos + 2) == VS16 then
+      cluster = cluster .. VS16
+      pos = pos + 3
+    end
+
+    -- Optional skin‑tone modifier (right after base+VS16)
+    if pos + 3 <= #line then
+      local sb1, sb2, sb3, sb4 = line:byte(pos, pos + 3)
+      if is_skin_tone(sb1, sb2, sb3, sb4) then
+        cluster = cluster .. line:sub(pos, pos + 3)
+        pos = pos + 4
+      end
+    end
+
+    -- Optional keycap combining character (after VS16, before ZWJ)
+    if pos + 2 <= #line then
+      local kb1, kb2, kb3 = line:byte(pos, pos + 2)
+      if is_keycap(kb1, kb2, kb3) then
+        cluster = cluster .. line:sub(pos, pos + 2)
+        pos = pos + 3
+      end
+    end
+
+    -- --- Zero or more ZWJ sequences -----------------------------------------
+    while pos + 2 <= #line and line:sub(pos, pos + 2) == ZWJ do
+      cluster = cluster .. ZWJ
+      pos = pos + 3
+
+      -- The character after ZWJ
+      if pos > #line then break end
+      local nb = line:byte(pos)
+      local nlen = codepoint_bytes(nb)
+      cluster = cluster .. line:sub(pos, pos + nlen - 1)
+      pos = pos + nlen
+
+      -- Optional VS16 after that character
+      if pos + 2 <= #line and line:sub(pos, pos + 2) == VS16 then
+        cluster = cluster .. VS16
+        pos = pos + 3
+      end
+
+      -- Optional skin tone after this ZWJ element
+      if pos + 3 <= #line then
+        local sb1, sb2, sb3, sb4 = line:byte(pos, pos + 3)
+        if is_skin_tone(sb1, sb2, sb3, sb4) then
+          cluster = cluster .. line:sub(pos, pos + 3)
+          pos = pos + 4
+        end
+      end
+    end
+
+    return cluster, pos
+  end
+
+  -- --- Main file processing -------------------------------------------------
   local emojis = {}
   for line in content:gmatch('[^\r\n]+') do
     if line:byte(1) ~= 35 and line:find('%S') then
-      local i = 1
-      local len = #line
-      while i <= len do
-        local c = line:byte(i)
-        if c <= 32 then
-          i = i + 1
+      local pos = 1
+      while pos <= #line do
+        local b = line:byte(pos)
+        if b <= 32 then
+          pos = pos + 1
         else
-          local clen = (c >= 240 and 4) or (c >= 224 and 3) or (c >= 192 and 2) or 1
-          local cluster = line:sub(i, i + clen - 1)
-          i = i + clen
-
-          if line:sub(i, i + 2) == vs16 then
-            cluster = cluster .. vs16
-            i = i + 3
-          end
-          while line:sub(i, i + 2) == zwj do
-            cluster = cluster .. zwj
-            i = i + 3
-            if i > len then break end
-            local nc = line:byte(i)
-            local nlen = (nc >= 240 and 4) or (nc >= 224 and 3) or (nc >= 192 and 2) or 1
-            cluster = cluster .. line:sub(i, i + nlen - 1)
-            i = i + nlen
-            if line:sub(i, i + 2) == vs16 then
-              cluster = cluster .. vs16
-              i = i + 3
-            end
-          end
-          emojis[#emojis + 1] = cluster
+          local cluster, newPos = getNextCluster(line, pos)
+          if cluster ~= '' then emojis[#emojis + 1] = cluster end
+          pos = newPos
         end
       end
     end
   end
+
   chat.emojis = emojis
 end
 
@@ -1370,8 +1483,9 @@ end
 ---@param winHeight number @Window height.
 ---Draws the emoji picker button and window.
 local function drawEmojiPicker(winHeight)
-  local buttonPos = vec2(28, 17):scale(app.scale)
-  local buttonSize = vec2(24, 24):scale(app.scale)
+  local aS = app.scale
+  local buttonPos = vec2(28, 17):scale(aS)
+  local buttonSize = vec2(24, 24):scale(aS)
   local buttonBgRad = scale(12)
   local emojiSizePicker = scale(20)
 
@@ -1383,11 +1497,13 @@ local function drawEmojiPicker(winHeight)
   local cursorPos = ui.getCursor()
   ui.drawImage(app.images.emojiPicker, cursorPos - buttonSize / 2, cursorPos + buttonSize / 2, colors.final.emojiPicker)
 
-  if not player.isOnline then return end
+  if not player.isOnline then
+    ui.popDWriteFont()
+    return
+  end
 
   if app.hovered then
-    cursorPos = ui.getCursor()
-    chat.emojiPickerHovered = ui.rectHovered(cursorPos - buttonSize / 2, cursorPos + buttonSize / 2 + movement.smooth)
+    chat.emojiPickerHovered = ui.rectHovered(cursorPos - buttonSize / 2, cursorPos + buttonSize / 2)
 
     if chat.emojiPickerHovered and ui.mouseReleased(ui.MouseButton.Left) then
       chat.emojiPicker = not chat.emojiPicker
@@ -1405,11 +1521,12 @@ local function drawEmojiPicker(winHeight)
     return
   end
 
-  local windowSize = vec2(185, 235):scale(app.scale)
-  local windowPos = vec2(18, 272):scale(app.scale)
+  local windowSize = vec2(185, 235):scale(aS)
+  local windowPos = vec2(18, 272):scale(aS)
   local rounding = scale(10)
-  local emojiStartPos = vec2(5, 0):scale(app.scale)
-  local emojiOffset = vec2(0, 2):scale(app.scale)
+  local emojiStartPos = vec2(5, 5):scale(aS)
+  local emojiOffset = vec2(0, 2):scale(aS)
+  local emojiSpacing = emojiOffset.y
   local emojisPerRow = 6
   local emojiCount = #chat.emojis
   local bottomPadding = scale(8)
@@ -1418,38 +1535,34 @@ local function drawEmojiPicker(winHeight)
   ui.childWindow('EmojiPickerBG', windowSize, false, flags.emojiWindow, function()
     ui.drawRectFilled(vec2(0, 0), windowSize, colors.final.message, rounding)
 
-    ui.setCursor(vec2(0, 0))
-    ui.childWindow('EmojiPickerEmojis', windowSize, false, flags.emojiWindow, function()
-      ui.dummy(emojiStartPos)
-      ui.setCursorX(emojiStartPos.x)
-      ui.beginGroup(windowSize.x)
+    ui.setCursor(emojiStartPos)
+    ui.beginGroup(windowSize.x)
 
-      for i = 1, emojiCount do
-        cursorPos = ui.getCursor()
-        if ui.rectHovered(cursorPos, cursorPos + emojiSize) then
-          chat.emojiPickerHovered = true
-          if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
-          ui.drawRectFilled(cursorPos + emojiOffset, cursorPos + emojiSize + emojiOffset, colors.iMessageSelected, scale(5))
-        end
-
-        ui.beginOutline()
-        ui.dwriteText(chat.emojis[i], emojiSizePicker)
-        ui.endOutline(colors.transparent.black10, scale(2))
-
-        if ui.itemClicked(ui.MouseButton.Left, true) then
-          playAudio(audio.keyboard.keystroke)
-          if not chat.input.active then chat.input.active = true end
-          if chat.input.text == chat.input.placeholder then chat.input.text = '' end
-          chat.input.text = chat.input.text .. chat.emojis[i]
-        end
-
-        ui.sameLine(0, emojiOffset.y)
-        if i % emojisPerRow == 0 and i ~= emojiCount then ui.newLine(emojiOffset.y) end
+    for i = 1, emojiCount do
+      local itemCursor = ui.getCursor()
+      if ui.rectHovered(itemCursor, itemCursor + emojiSize) then
+        chat.emojiPickerHovered = true
+        if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
+        ui.drawRectFilled(itemCursor + emojiOffset, itemCursor + emojiSize + emojiOffset, colors.iMessageSelected, scale(5))
       end
 
-      ui.newLine(bottomPadding)
-      ui.endGroup()
-    end)
+      ui.beginOutline()
+      ui.dwriteText(chat.emojis[i], emojiSizePicker)
+      ui.endOutline(colors.transparent.black10, scale(2))
+
+      if ui.itemClicked(ui.MouseButton.Left, true) then
+        playAudio(audio.keyboard.keystroke)
+        if not chat.input.active then chat.input.active = true end
+        if chat.input.text == chat.input.placeholder then chat.input.text = '' end
+        chat.input.text = chat.input.text .. chat.emojis[i]
+      end
+
+      ui.sameLine(0, emojiSpacing)
+      if i % emojisPerRow == 0 and i ~= emojiCount then ui.newLine(emojiSpacing) end
+    end
+
+    ui.newLine(bottomPadding)
+    ui.endGroup()
   end)
 
   ui.popDWriteFont()
