@@ -113,6 +113,10 @@ local app = {
   size = vec2(0, 0),
   hovered = false,
   tooltipPadding = vec2(5, 5),
+  headerTextSize = nil,
+  headerTextScale = nil,
+  clockTextArea = nil,
+  clockTextAreaScale = nil,
   images = {
     phoneAtlasPath = '.\\src\\img\\phone.png',
     phoneAtlasSize = vec2(),
@@ -120,6 +124,7 @@ local app = {
     pingAtlasPath = '.\\src\\img\\connection.png',
     emojiPicker = '.\\src\\img\\picker.png',
     defaultCover = '.\\src\\img\\player.png',
+    ready = false,
   },
   font = {
     regular = ui.DWriteFont('Inter Variable Text', '.\\src\\ttf'):weight(ui.DWriteFont.Weight.Medium),
@@ -128,7 +133,6 @@ local app = {
 }
 
 local player = {
-  car = ac.getCar(0),
   driverName = ac.getDriverName(0),
   cspVersion = ac.getPatchVersionCode(),
   isOnline = ac.getSim().isOnlineRace,
@@ -156,6 +160,9 @@ local songInfo = {
   hasCover = false,
   isPaused = false,
   dynamicIslandSize = vec2(40, 20),
+  cachedTextSize = nil,
+  cachedTextSizeText = nil,
+  cachedTextSizeScale = nil,
   titleSplitPatterns = {
     '^(.-)%s*%- %s*(.+)$',
     '^(.-)%-([^%-]+)$',
@@ -169,6 +176,8 @@ local chat = {
   mentioned = '',
   emojiPicker = false,
   emojiPickerHovered = false,
+  emojiCharSize = nil,
+  emojiCharSizeScale = nil,
   input = {
     active = false,
     hovered = false,
@@ -201,6 +210,11 @@ local chat = {
   emojis = {},
   usernameColors = {},
   latestNonServerMessage = nil,
+  msgCacheGen = 0,
+  stableHeight = 0,
+  wasAtBottom = true,
+  lastTotalHeight = 0,
+  layoutPool = {},
 }
 
 local audio = {
@@ -301,17 +315,17 @@ local function moveAppUp()
 end
 
 ---@param x number @number to be scaled
----@param offsetY? number @optional vertical offset
+---@param smooth? boolean @whether to add the app's movement offset
 ---@return number @scaled number
----Scale and ceil a number by app.scale. Optionally adds a vertical offset.
-local function scaleNum(x, offsetY) return math.ceil(app.scale * x) + (offsetY or 0) end
+---Scale and ceil a number by app.scale. Optionally adds the app's movement offset.
+local function scaleNum(x, smooth) return math.ceil(app.scale * x) + (smooth and movement.smooth or 0) end
 
 ---@param x number @x to scale and ceil
 ---@param y number @y to scale and ceil
----@param offsetY? number @optional vertical offset
+---@param smooth? boolean @whether to add the app's movement offset
 ---@return vec2 @scaled and ceiled vec2()
----Scales, Ceils and converts two numbers into a vec2(). Optionally adds a vertical offset.
-local function scaleVec2(x, y, offsetY) return vec2(math.ceil(app.scale * x), math.ceil(app.scale * y) + (offsetY or 0)) end
+---Scales, Ceils and converts two numbers into a vec2(). Optionally adds the app's movement offset.
+local function scaleVec2(x, y, smooth) return vec2(math.ceil(app.scale * x), math.ceil(app.scale * y) + (smooth and movement.smooth or 0)) end
 
 ---@param x number @x to ceil
 ---@param y number @y to ceil
@@ -855,7 +869,18 @@ local function drawSongInfoText(text, pos, size, fontSize)
 
   ui.pushDWriteFont(app.font.bold)
 
-  local textSize = ui.measureDWriteText(text, fontSize)
+  if songInfo.cachedTextSize == nil or songInfo.cachedTextSizeText ~= text or songInfo.cachedTextSizeScale ~= app.scale then
+    songInfo.cachedTextSize = ui.measureDWriteText(text, fontSize)
+    songInfo.cachedTextSizeText = text
+    songInfo.cachedTextSizeScale = app.scale
+  end
+
+  local textSize = songInfo.cachedTextSize
+  if not textSize then
+    ui.popDWriteFont()
+    return
+  end
+
   if textSize.x <= size.x - scaleNum(4) and not settings.songInfoscrollAlways then static = true end
 
   if static then
@@ -1127,22 +1152,22 @@ end
 --#region DRAWING FUNCTIONS
 
 ---Draws the background.
-local function drawDisplay() ui.drawRectFilled(scaleVec2(5, 2, movement.smooth), scaleVec2(app.size.x - 5, app.size.y), colors.final.display, scaleNum(50), ui.CornerFlags.Top) end
+local function drawDisplay() ui.drawRectFilled(scaleVec2(5, 2, true), scaleVec2(app.size.x - 5, app.size.y), colors.final.display, scaleNum(50), ui.CornerFlags.Top) end
 
 ---Draws the iPhone images.
 local function drawiPhone()
   ui.setCursor(vec2(0, 0))
   ui.childWindow('OnTopImages', vec2(app.images.phoneAtlasSize.x / 2, app.images.phoneAtlasSize.y), false, flags.window, function()
-    ui.drawImage(app.images.phoneAtlasPath, scaleVec2(0, 0, movement.smooth), scaleVec2(app.size.x, app.size.y, movement.smooth), rgbm.colors.white, vec2(0, 0), vec2(1 / 2, 1))
-    if not (settings.darkMode or player.phoneMode) then ui.drawImage(app.images.phoneAtlasPath, scaleVec2(0, 0, movement.smooth), scaleVec2(app.size.x, app.size.y, movement.smooth), colors.glowColor, vec2(1 / 2, 0), vec2(1, 1)) end
+    ui.drawImage(app.images.phoneAtlasPath, scaleVec2(0, 0, true), scaleVec2(app.size.x, app.size.y, true), rgbm.colors.white, vec2(0, 0), vec2(1 / 2, 1))
+    if not (settings.darkMode or player.phoneMode) then ui.drawImage(app.images.phoneAtlasPath, scaleVec2(0, 0, true), scaleVec2(app.size.x, app.size.y, true), colors.glowColor, vec2(1 / 2, 0), vec2(1, 1)) end
   end)
 end
 
 ---Draws the ping.
 local function drawPing()
-  local ping = player.car.ping
+  local ping = ac.getCar(0).ping
   local pingSize = scaleVec2(20, 20)
-  local pingPos = scaleVec2(238, 20, movement.smooth)
+  local pingPos = scaleVec2(238, 20, true)
   local isHovered = app.hovered and ui.rectHovered(pingPos, pingPos + pingSize, true)
 
   if ping > -1 then
@@ -1187,11 +1212,22 @@ local function drawTime()
   local dummyStr = '00:00'
 
   ui.pushDWriteFont(app.font.bold)
-  local textSize = ui.measureDWriteText(dummyStr, fontSize)
-  local textArea = vec2(math.ceil(textSize.x), math.ceil(textSize.y))
+
+  if app.clockTextArea == nil or app.clockTextAreaScale ~= app.scale then
+    local textSize = ui.measureDWriteText(dummyStr, fontSize)
+    app.clockTextArea = vec2(math.ceil(textSize.x), math.ceil(textSize.y))
+    app.clockTextAreaScale = app.scale
+  end
+
+  local textArea = app.clockTextArea
+  if not textArea then
+    ui.popDWriteFont()
+    return
+  end
+
   local rightEdge = scaleNum(62)
   local areaLeft = rightEdge - textArea.x
-  local areaTop = scaleNum(22, movement.smooth)
+  local areaTop = scaleNum(22, true)
 
   ui.setCursor(vec2(areaLeft, areaTop))
   ui.dwriteTextAligned(timeText, fontSize, ui.Alignment.End, ui.Alignment.Center, textArea, false, colors.final.elements)
@@ -1213,14 +1249,14 @@ local function drawDynamicIsland()
   local islandHalfWidth = songInfo.dynamicIslandSize.x
   local islandHeight = songInfo.dynamicIslandSize.y
   local borderRadius = scaleNum(10)
-  local left = scaleVec2(app.size.x / 2 - islandHalfWidth, islandHeight, movement.smooth)
-  local right = scaleVec2(app.size.x / 2 + islandHalfWidth, islandHeight * 2, movement.smooth)
+  local left = scaleVec2(app.size.x / 2 - islandHalfWidth, islandHeight, true)
+  local right = scaleVec2(app.size.x / 2 + islandHalfWidth, islandHeight * 2, true)
 
   ui.drawRectFilled(left, right, rgbm.colors.black, borderRadius)
 
   if not settings.hideCamera or not settings.songInfo or songInfo.isPaused then
-    local islandTop = scaleNum(islandHeight, movement.smooth)
-    local islandBottom = scaleNum(islandHeight * 2, movement.smooth)
+    local islandTop = scaleNum(islandHeight, true)
+    local islandBottom = scaleNum(islandHeight * 2, true)
     local camTotalHeight = scaleNum(islandHeight - 2)
     local camSize = camTotalHeight / 2
     local camTop = islandTop + math.floor((islandBottom - islandTop - camTotalHeight) / 2)
@@ -1236,28 +1272,43 @@ local function drawHeader()
   local headerHeight = 100
   local cornerRadius = 30
 
-  ui.drawRectFilled(scaleVec2(11, 9, movement.smooth), scaleVec2(app.size.x - 11, headerHeight, movement.smooth), colors.final.header, scaleNum(cornerRadius), ui.CornerFlags.Top)
-  ui.drawSimpleLine(scaleVec2(11, headerHeight, movement.smooth), scaleVec2(app.size.x - 11, headerHeight, movement.smooth), colors.final.headerLine)
+  ui.drawRectFilled(scaleVec2(11, 9, true), scaleVec2(app.size.x - 11, headerHeight, true), colors.final.header, scaleNum(cornerRadius), ui.CornerFlags.Top)
+  ui.drawSimpleLine(scaleVec2(11, headerHeight, true), scaleVec2(app.size.x - 11, headerHeight, true), colors.final.headerLine)
 
   local winHalf = scaleNum(app.size.x / 2)
   local text = 'Server Chat'
   local fontSize = scaleNum(12)
 
   ui.pushDWriteFont(app.font.regular)
-  local textSize = ui.measureDWriteText(text, fontSize)
+
+  if app.headerTextSize == nil or app.headerTextScale ~= app.scale then
+    app.headerTextSize = ui.measureDWriteText(text, fontSize)
+    app.headerTextScale = app.scale
+  end
+
+  local textSize = app.headerTextSize
+  if not textSize then
+    ui.popDWriteFont()
+    return
+  end
+
   local textLeft = math.ceil(winHalf - textSize.x / 2)
-  local textTop = scaleNum(84, movement.smooth)
+  local textTop = scaleNum(84, true)
+
   ui.setCursor(vec2(textLeft, textTop))
   ui.dwriteTextAligned(text, fontSize, ui.Alignment.Start, ui.Alignment.Center, textSize, false, colors.final.elements)
   ui.popDWriteFont()
 
   local imgSize = scaleVec2(36, 36)
-  local imgPos = scaleVec2(129, 47, movement.smooth)
+  local imgPos = scaleVec2(129, 47, true)
   local imgRounding = scaleNum(20)
 
   if not communities then return error('Communities table does not exist, probably caused by a broken app install.') end
 
-  if ui.isImageReady(communities[player.serverCommunity].image) then
+  local community = communities[player.serverCommunity]
+  community.ready = community.ready or ui.isImageReady(community.image)
+
+  if community.ready then
     ui.drawImageRounded(communities[player.serverCommunity].image, imgPos, imgPos + imgSize, imgRounding, ui.CornerFlags.All)
   else
     ui.drawImageRounded(communities['default'].image, imgPos, imgPos + imgSize, imgRounding, ui.CornerFlags.All)
@@ -1280,8 +1331,8 @@ local function drawSongInfo()
   if settings.songInfo then
     if not songInfo.isPaused then
       local coverSize = scaleVec2(16, 16)
-      local islandTop = scaleNum(20, movement.smooth)
-      local islandBottom = scaleNum(40, movement.smooth)
+      local islandTop = scaleNum(20, true)
+      local islandBottom = scaleNum(40, true)
       local coverTop = islandTop + math.floor((islandBottom - islandTop - coverSize.x) / 2)
       local imgPosX = scaleNum(app.size.x / 2 - 75)
       local imgPos = vec2(imgPosX, coverTop)
@@ -1296,7 +1347,7 @@ local function drawSongInfo()
     end
 
     local fontSize = scaleNum(12)
-    local pos = scaleVec2(89, 22, movement.smooth)
+    local pos = scaleVec2(89, 22, true)
     local textSize = scaleVec2(135, 15)
     drawSongInfoText(songInfo.final, pos, textSize, fontSize)
 
@@ -1311,16 +1362,157 @@ local function drawSongInfo()
   end
 end
 
+---@param t number @unix timestamp
+---@return string @formatted time string
+---Formats a message's timestamp for display.
+local function formatMessageTimestamp(t)
+  local localTime = os.date('%H:%M', t) ---@cast localTime string
+  return settings.badTime and to12hTime(localTime) .. ' ' .. player.timePeriod or localTime
+end
+
+---@param message table @chat message entry
+---@param usernameFontSize number @font size for the username
+---@param messageFontSize number @font size for the message text
+---@param timestampFontSize number @font size for the timestamp
+---@param messageTime number @unix timestamp
+---@param messageShowTimestamp boolean @whether this message shows a timestamp
+---@param fontWeight ui.DWriteFont @font weight to measure the message text with
+---@param wrapWidth number @wrap width for the message text
+---@return table @cached {userNameTextSize, messageTextSize, timestampSize}
+---Gets the cached text sizes for a message, measuring and caching them if needed.
+local function getMessageSizes(message, usernameFontSize, messageFontSize, timestampFontSize, messageTime, messageShowTimestamp, fontWeight, wrapWidth)
+  if message.cache and message.cacheGen == chat.msgCacheGen then return message.cache end
+
+  local messageUserIndex = message[1]
+  local cache = {}
+
+  if messageUserIndex >= 0 then
+    ui.pushDWriteFont(app.font.bold)
+    cache.userNameTextSize = ui.measureDWriteText(message[2], usernameFontSize)
+    ui.popDWriteFont()
+  end
+
+  ui.pushDWriteFont(messageUserIndex >= 0 and fontWeight or app.font.bold)
+  cache.messageTextSize = ui.measureDWriteText(message[3], messageFontSize, wrapWidth)
+  ui.popDWriteFont()
+
+  if messageUserIndex >= 0 and messageShowTimestamp then
+    ui.pushDWriteFont(app.font.bold)
+    cache.timestampSize = ui.measureDWriteText(formatMessageTimestamp(messageTime), timestampFontSize)
+    ui.popDWriteFont()
+  end
+
+  message.cache = cache
+  message.cacheGen = chat.msgCacheGen
+  return cache
+end
+
+---@return table @pool of positioned message entries
+---@return number @number of valid entries in the pool
+---@return number @total height of all messages
+---Builds the message layout, reusing chat.layoutPool
+local function buildMessageLayout()
+  local messageFontSize = scaleNum(settings.chatFontSize)
+  local usernameFontSize = scaleNum(settings.chatFontSize - 2)
+  local timestampFontSize = scaleNum(settings.chatFontSize - 4)
+  local usernameOffsetY = scaleNum(usernameFontSize + 13)
+  local messagePadding = scaleVec2(15, 10)
+
+  local pool = chat.layoutPool
+  local entryCount = 0
+  local msgDist = scaleNum(370)
+  local lastDrawnUserIndex = nil
+  local lastDrawnUserName = nil
+
+  for i = 1, #chat.messages do
+    local message = chat.messages[i]
+    local messageUserIndex = message[1]
+    local messageUserIndexLast = lastDrawnUserIndex
+    local messageUsername = message[2]
+    local messageUsernameLast = lastDrawnUserName
+    local messageTextContent = message[3]
+    local messageTime = message[4]
+    local messageShowTimestamp = message[5]
+    local messageIsMentioned = message[6]
+
+    if (settings.focusMode and (messageUserIndex > 0 and not checkIfFriend(messageUsername))) or ac.DriverTags(messageUsername).muted then goto continue end
+
+    local fontWeight = app.font.regular
+    if (i == chat.latestNonServerMessage and settings.chatLatestBold) or (messageIsMentioned and messageUserIndex > 0) then fontWeight = app.font.bold end
+
+    local wrapWidth = messageUserIndex == -1 and scaleNum(220) or scaleNum(190)
+    local sizes = getMessageSizes(message, usernameFontSize, messageFontSize, timestampFontSize, messageTime, messageShowTimestamp, fontWeight, wrapWidth)
+    local messageTextSize = sizes.messageTextSize or vec2(0, 0)
+    local timestampSize = sizes.timestampSize or vec2(0, 0)
+
+    entryCount = entryCount + 1
+    local entry = pool[entryCount]
+    if not entry then
+      entry = {}
+      pool[entryCount] = entry
+    end
+
+    entry.userIndex = messageUserIndex
+    entry.username = messageUsername
+    entry.text = messageTextContent
+    entry.time = messageTime
+    entry.fontWeight = fontWeight
+    entry.sizes = sizes
+    entry.startY = msgDist
+    entry.usernameY = nil
+    entry.timestampY = nil
+
+    if messageUserIndex >= 0 then
+      local showUsernameLine = (not messageUserIndexLast or messageUserIndexLast ~= messageUserIndex) or (not messageUsernameLast or messageUsernameLast ~= messageUsername)
+
+      if showUsernameLine then
+        if messageUserIndexLast and messageUserIndexLast ~= -1 then msgDist = math.ceil(msgDist - usernameOffsetY / 2) end
+        entry.usernameY = msgDist
+        msgDist = math.ceil(msgDist + usernameOffsetY)
+      end
+
+      msgDist = math.ceil(msgDist + messageTextSize.y)
+      entry.bubbleY = msgDist
+
+      if settings.chatShowTimestamps and messageShowTimestamp then
+        entry.timestampY = msgDist
+        msgDist = math.ceil(msgDist + timestampSize.y)
+      end
+
+      msgDist = math.ceil(msgDist + messagePadding.y + messagePadding.y / 2)
+    else
+      if lastDrawnUserIndex == nil then
+        msgDist = math.ceil(msgDist - messageTextSize.y / 2)
+      elseif lastDrawnUserIndex ~= messageUserIndex then
+        msgDist = math.ceil(msgDist - messagePadding.y)
+      end
+      entry.textY = msgDist
+      msgDist = math.ceil(msgDist + messageTextSize.y + messagePadding.y / 2)
+    end
+
+    entry.endY = msgDist
+
+    lastDrawnUserIndex = messageUserIndex
+    lastDrawnUserName = messageUsername
+
+    ::continue::
+  end
+
+  return pool, entryCount, msgDist
+end
+
 ---Draws the chat messages.
 local function drawMessages()
   if not player.isOnline then return end
 
-  local clipTop = scaleVec2(0, 0, movement.smooth)
-  local clipBottom = scaleVec2(app.size.x, 500, movement.smooth)
+  local clipTop = scaleVec2(0, 0, true)
+  local clipBottom = scaleVec2(app.size.x, 500, true)
   ui.pushClipRect(clipTop, clipBottom)
 
-  ui.setCursor(scaleVec2(10, 100, movement.smooth))
+  ui.setCursor(scaleVec2(10, 100, true))
   local childSize = scaleVec2(270, 400 - chat.input.offset / app.scale)
+  local entries, entryCount, totalHeight = buildMessageLayout()
+  ui.setNextWindowContentSize(vec2(0, totalHeight))
   ui.childWindow('Messages', childSize, false, flags.window, function()
     local winWidth = ui.windowWidth()
     local winHalfWidth = winWidth / 2
@@ -1328,145 +1520,115 @@ local function drawMessages()
     local usernameFontSize = scaleNum(settings.chatFontSize - 2)
     local timestampFontSize = scaleNum(settings.chatFontSize - 4)
     local usernameOffsetX = scaleNum(13)
-    local usernameOffsetY = scaleNum(usernameFontSize + 13)
     local messagePadding = scaleVec2(15, 10)
     local messageMaxWidth = scaleNum(250)
     local messageRounding = scaleNum(10)
 
     if #chat.messages > 0 then
-      local msgDist = scaleNum(370)
-      local lastDrawnUserIndex = nil
-      local lastDrawnUserName = nil
+      local winHeight = ui.windowHeight()
+      local scrollBuffer = scaleNum(200)
 
-      for i = 1, #chat.messages do
-        local message = chat.messages[i]
-        local messageUserIndex = message[1]
-        local messageUserIndexLast = lastDrawnUserIndex
-        local messageUsername = message[2]
-        local messageUsernameLast = lastDrawnUserName
-        local messageUsernameColor = rgbm.colors.gray
-        if settings.chatUsernameColor then messageUsernameColor = chat.usernameColors[messageUsername] or rgbm.colors.gray end
-        local messageTextContent = message[3]
-        local messageTime = message[4]
-        local messageShowTimestamp = message[5]
-        local messageTimestamp = settings.badTime and to12hTime(os.date('%H:%M', messageTime) --[[@as string]]) .. ' ' .. player.timePeriod or os.date('%H:%M', messageTime) ---@cast messageTimestamp string
+      local totalHeightChanged = totalHeight ~= chat.lastTotalHeight
+      chat.lastTotalHeight = totalHeight
 
-        local fontWeight = app.font.regular
+      local hoveredAutoscroll = (not app.hovered or chat.scrollBool) or (chat.input.active and chat.input.hovered) and ui.getScrollY() ~= ui.getScrollMaxY()
+      local shouldPin = (chat.wasAtBottom and totalHeightChanged) or hoveredAutoscroll
+      local revealHeight = totalHeight
 
-        if (settings.focusMode and (messageUserIndex > 0 and not checkIfFriend(messageUsername))) or ac.DriverTags(messageUsername).muted then goto continue end
+      if shouldPin then
+        local scrollTarget = ui.getScrollMaxY()
+        if math.abs(ui.getScrollY() - scrollTarget) > 1 then
+          revealHeight = math.min(chat.stableHeight, totalHeight)
+          ui.setScrollY(scrollTarget, false, true)
+        else
+          chat.stableHeight = totalHeight
+        end
+      else
+        chat.stableHeight = totalHeight
+      end
 
-        if (i == chat.latestNonServerMessage and settings.chatLatestBold) or (messageTextContent:lower():find('%f[%a_]' .. player.driverName:lower() .. '%f[%A_]') and messageUserIndex > 0) then fontWeight = app.font.bold end
+      local visibleTop = ui.getScrollY() - scrollBuffer
+      local visibleBottom = ui.getScrollY() + winHeight + scrollBuffer
 
-        if messageUserIndex == 0 then
-          ui.pushDWriteFont(app.font.bold)
-          local userNameTextSize = ui.measureDWriteText(messageUsername, usernameFontSize)
+      for i = 1, entryCount do
+        local entry = entries[i]
+        local isVisible = entry.endY >= visibleTop and entry.startY <= visibleBottom and entry.endY <= revealHeight
 
-          if (not messageUserIndexLast or messageUserIndexLast ~= messageUserIndex) or (not messageUsernameLast or messageUsernameLast ~= messageUsername) then
-            if messageUserIndexLast and messageUserIndexLast ~= -1 then msgDist = math.ceil(msgDist - usernameOffsetY / 2) end
-            ui.setCursor(ceilVec2(usernameOffsetX, msgDist))
-            ui.dwriteTextAligned(messageUsername, usernameFontSize, ui.Alignment.End, ui.Alignment.Start, ceilVec2(messageMaxWidth, userNameTextSize.y), false, messageUsernameColor)
-            msgDist = math.ceil(msgDist + usernameOffsetY)
-          end
+        if isVisible then
+          local sizes = entry.sizes
+          local userNameTextSize = sizes.userNameTextSize
+          local messageTextSize = sizes.messageTextSize
+          local timestampSize = sizes.timestampSize
+          local messageUsernameColor = rgbm.colors.gray
+          if settings.chatUsernameColor then messageUsernameColor = chat.usernameColors[entry.username] or rgbm.colors.gray end
 
-          ui.popDWriteFont()
-          ui.pushDWriteFont(fontWeight)
-          local messageTextSize = ui.measureDWriteText(messageTextContent, messageFontSize, scaleNum(190))
-          msgDist = math.ceil(msgDist + messageTextSize.y)
-          ui.setCursor(ceilVec2(winWidth - scaleNum(5), msgDist))
-          ui.drawRectFilled(ui.getCursor() - ceilVec2(messageTextSize.x + messagePadding.x, messageTextSize.y + messagePadding.y), ui.getCursor(), colors.final.messageOwn, messageRounding)
-          ui.setCursor(ui.getCursor() - ceilVec2(messageTextSize.x + messagePadding.x / 2, messageTextSize.y + messagePadding.y / 2))
-          ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Start, ui.Alignment.Start, ceilVec2(messageTextSize.x, messageTextSize.y + messageRounding), true, colors.final.messageOwnText)
-          ui.popDWriteFont()
-
-          if settings.chatShowTimestamps and messageShowTimestamp then
-            ui.pushDWriteFont(app.font.bold)
-            local timestampSize = ui.measureDWriteText(messageTimestamp, timestampFontSize)
-            ui.setCursor(ceilVec2(winWidth - timestampSize.x - scaleNum(6), msgDist))
-            ui.dwriteTextAligned(messageTimestamp, timestampFontSize, ui.Alignment.Start, ui.Alignment.Start, ceilVec2(timestampSize.x, timestampSize.y), true, rgbm.colors.gray)
-            ui.popDWriteFont()
-            msgDist = math.ceil(msgDist + timestampSize.y)
-          end
-
-          msgDist = math.ceil(msgDist + messagePadding.y + messagePadding.y / 2)
-        elseif messageUserIndex > 0 then
-          local bubbleColor, messageTextColor = colors.final.message, pickThemeColor(rgbm.colors.black, rgbm.colors.white)
-
-          if checkIfFriend(messageUsername) then
-            bubbleColor = colors.final.messageFriend
-            messageTextColor = colors.final.messageFriendText
-          end
-
-          ui.pushDWriteFont(app.font.bold)
-          local userNameTextSize = ui.measureDWriteText(messageUsername, usernameFontSize)
-
-          if (not messageUserIndexLast or messageUserIndexLast ~= messageUserIndex) or (not messageUsernameLast or messageUsernameLast ~= messageUsername) then
-            if messageUserIndexLast and messageUserIndexLast ~= -1 then msgDist = math.ceil(msgDist - usernameOffsetY / 2) end
-            ui.setCursor(ceilVec2(usernameOffsetX / 2, msgDist))
-            ui.dwriteTextAligned(messageUsername, usernameFontSize, ui.Alignment.Start, ui.Alignment.Start, ceilVec2(math.min(userNameTextSize.x, messageMaxWidth), userNameTextSize.y), false, messageUsernameColor)
-            msgDist = math.ceil(msgDist + usernameOffsetY)
-
-            if app.hovered then
-              if ui.itemHovered() then
-                ui.setMouseCursor(ui.MouseCursor.Hand)
-                if ac.getDriverName(messageUserIndex) == messageUsername then ui.setDriverTooltip(messageUserIndex) end
-                chat.popup.hovered = { userIndex = messageUserIndex, username = messageUsername }
+          if entry.userIndex == 0 then
+            if entry.usernameY or entry.timestampY then
+              ui.pushDWriteFont(app.font.bold)
+              if entry.usernameY then
+                ui.setCursor(ceilVec2(usernameOffsetX, entry.usernameY))
+                ui.dwriteTextAligned(entry.username, usernameFontSize, ui.Alignment.End, ui.Alignment.Start, ceilVec2(messageMaxWidth, userNameTextSize.y), false, messageUsernameColor)
               end
+              if entry.timestampY then
+                ui.setCursor(ceilVec2(winWidth - timestampSize.x - scaleNum(6), entry.timestampY))
+                ui.dwriteTextAligned(formatMessageTimestamp(entry.time), timestampFontSize, ui.Alignment.Start, ui.Alignment.Start, ceilVec2(timestampSize.x, timestampSize.y), true, rgbm.colors.gray)
+              end
+              ui.popDWriteFont()
             end
-          end
 
-          ui.popDWriteFont()
-          ui.pushDWriteFont(fontWeight)
-          local messageTextSize = ui.measureDWriteText(messageTextContent, messageFontSize, scaleNum(190))
-          msgDist = math.ceil(msgDist + messageTextSize.y)
-          ui.setCursor(ceilVec2(messageTextSize.x + messagePadding.x + scaleNum(5), msgDist))
-          ui.drawRectFilled(ui.getCursor() - ceilVec2(messageTextSize.x + messagePadding.x, messageTextSize.y + messagePadding.y), ui.getCursor(), bubbleColor, messageRounding)
-          ui.setCursor(ui.getCursor() - ceilVec2(messageTextSize.x + messagePadding.x / 2, messageTextSize.y + messagePadding.y / 2))
-          ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Start, ui.Alignment.Start, ceilVec2(messageTextSize.x, messageTextSize.y + messageRounding), true, messageTextColor)
-          ui.popDWriteFont()
+            ui.pushDWriteFont(entry.fontWeight)
+            ui.setCursor(ceilVec2(winWidth - scaleNum(5), entry.bubbleY))
+            ui.drawRectFilled(ui.getCursor() - ceilVec2(messageTextSize.x + messagePadding.x, messageTextSize.y + messagePadding.y), ui.getCursor(), colors.final.messageOwn, messageRounding)
+            ui.setCursor(ui.getCursor() - ceilVec2(messageTextSize.x + messagePadding.x / 2, messageTextSize.y + messagePadding.y / 2))
+            ui.dwriteTextAligned(entry.text, messageFontSize, ui.Alignment.Start, ui.Alignment.Start, ceilVec2(messageTextSize.x, messageTextSize.y + messageRounding), true, colors.final.messageOwnText)
+            ui.popDWriteFont()
+          elseif entry.userIndex > 0 then
+            if entry.usernameY or entry.timestampY then
+              ui.pushDWriteFont(app.font.bold)
 
-          if settings.chatShowTimestamps and messageShowTimestamp then
+              if entry.usernameY then
+                ui.setCursor(ceilVec2(usernameOffsetX / 2, entry.usernameY))
+                ui.dwriteTextAligned(entry.username, usernameFontSize, ui.Alignment.Start, ui.Alignment.Start, ceilVec2(math.min(userNameTextSize.x, messageMaxWidth), userNameTextSize.y), false, messageUsernameColor)
+
+                if app.hovered then
+                  if ui.itemHovered() then
+                    ui.setMouseCursor(ui.MouseCursor.Hand)
+                    if ac.getDriverName(entry.userIndex) == entry.username then ui.setDriverTooltip(entry.userIndex) end
+                    chat.popup.hovered = { userIndex = entry.userIndex, username = entry.username }
+                  end
+                end
+              end
+
+              if entry.timestampY then
+                ui.setCursor(ceilVec2(scaleNum(5), entry.timestampY))
+                ui.dwriteTextAligned(formatMessageTimestamp(entry.time), timestampFontSize, ui.Alignment.Start, ui.Alignment.Start, ceilVec2(timestampSize.x, timestampSize.y), true, rgbm.colors.gray)
+              end
+
+              ui.popDWriteFont()
+            end
+
+            local bubbleColor, messageTextColor = colors.final.message, pickThemeColor(rgbm.colors.black, rgbm.colors.white)
+            if checkIfFriend(entry.username) then
+              bubbleColor = colors.final.messageFriend
+              messageTextColor = colors.final.messageFriendText
+            end
+
+            ui.pushDWriteFont(entry.fontWeight)
+            ui.setCursor(ceilVec2(messageTextSize.x + messagePadding.x + scaleNum(5), entry.bubbleY))
+            ui.drawRectFilled(ui.getCursor() - ceilVec2(messageTextSize.x + messagePadding.x, messageTextSize.y + messagePadding.y), ui.getCursor(), bubbleColor, messageRounding)
+            ui.setCursor(ui.getCursor() - ceilVec2(messageTextSize.x + messagePadding.x / 2, messageTextSize.y + messagePadding.y / 2))
+            ui.dwriteTextAligned(entry.text, messageFontSize, ui.Alignment.Start, ui.Alignment.Start, ceilVec2(messageTextSize.x, messageTextSize.y + messageRounding), true, messageTextColor)
+            ui.popDWriteFont()
+          elseif entry.userIndex == -1 then
             ui.pushDWriteFont(app.font.bold)
-            local timestampSize = ui.measureDWriteText(messageTimestamp, timestampFontSize)
-            ui.setCursor(ceilVec2(scaleNum(5), msgDist))
-            ui.dwriteTextAligned(messageTimestamp, timestampFontSize, ui.Alignment.Start, ui.Alignment.Start, ceilVec2(timestampSize.x, timestampSize.y), true, rgbm.colors.gray)
+            ui.setCursor(ceilVec2(winHalfWidth - messageTextSize.x / 2, entry.textY))
+            ui.dwriteTextAligned(entry.text, messageFontSize, ui.Alignment.Center, ui.Alignment.Start, ceilVec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgbm.colors.gray)
             ui.popDWriteFont()
-            msgDist = math.ceil(msgDist + timestampSize.y)
-          end
-
-          msgDist = math.ceil(msgDist + messagePadding.y + messagePadding.y / 2)
-        elseif messageUserIndex == -1 then
-          ui.pushDWriteFont(app.font.bold)
-          local messageTextSize = ui.measureDWriteText(messageTextContent, messageFontSize, scaleNum(220))
-
-          if lastDrawnUserIndex == nil then
-            msgDist = math.ceil(msgDist - messageTextSize.y / 2)
-            ui.setCursor(ceilVec2(winHalfWidth - messageTextSize.x / 2, msgDist))
-            ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Center, ui.Alignment.Start, ceilVec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgbm.colors.gray)
-            ui.popDWriteFont()
-            msgDist = math.ceil(msgDist + messageTextSize.y + messagePadding.y / 2)
-          else
-            if lastDrawnUserIndex == messageUserIndex then
-              ui.setCursor(ceilVec2(winHalfWidth - messageTextSize.x / 2, msgDist))
-              ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Center, ui.Alignment.Start, ceilVec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgbm.colors.gray)
-              ui.popDWriteFont()
-              msgDist = math.ceil(msgDist + messageTextSize.y + messagePadding.y / 2)
-            else
-              msgDist = math.ceil(msgDist - messagePadding.y)
-              ui.setCursor(ceilVec2(winHalfWidth - messageTextSize.x / 2, msgDist))
-              ui.dwriteTextAligned(messageTextContent, messageFontSize, ui.Alignment.Center, ui.Alignment.Start, ceilVec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgbm.colors.gray)
-              ui.popDWriteFont()
-              msgDist = math.ceil(msgDist + messageTextSize.y + messagePadding.y / 2)
-            end
           end
         end
-
-        lastDrawnUserIndex = messageUserIndex
-        lastDrawnUserName = messageUsername
-
-        if (not app.hovered or chat.scrollBool) or (chat.input.active and chat.input.hovered) and ui.getScrollY() ~= ui.getScrollMaxY() then ui.setScrollHereY(-1) end
-
-        ::continue::
       end
+
+      chat.wasAtBottom = (ui.getScrollMaxY() - ui.getScrollY()) < scaleNum(50)
     end
 
     if chat.popup.hovered then chatPlayerPopup(chat.popup.hovered.userIndex, chat.popup.hovered.username) end
@@ -1481,13 +1643,18 @@ end
 
 ---Draws the emoji picker button and window.
 local function drawEmojiPicker()
-  local buttonPos = scaleVec2(28, app.size.y - 17, movement.smooth)
+  local buttonPos = scaleVec2(28, app.size.y - 17, true)
   local buttonSize = scaleVec2(12, 12)
   local buttonBgRad = scaleNum(12)
   local emojiSizePicker = scaleNum(20)
 
   ui.pushDWriteFont(app.font.regular)
-  local emojiCharSize = ui.measureDWriteText('😀', emojiSizePicker)
+
+  if chat.emojiCharSize == nil or chat.emojiCharSizeScale ~= app.scale then
+    chat.emojiCharSize = ui.measureDWriteText('😀', emojiSizePicker)
+    chat.emojiCharSizeScale = app.scale
+  end
+  local emojiCharSize = chat.emojiCharSize
 
   ui.setCursor(buttonPos)
   local cursorPos = ui.getCursor()
@@ -1638,7 +1805,7 @@ local function drawInputCustom()
 
     local inputTextSize = ui.measureDWriteText(displayText, inputFontSize, inputWrap):max(vec2(0, scaleNum(17.291)))
     ui.setCursor(scaleVec2(10, 5))
-    ui.pushClipRect(ui.getCursor(), ui.getCursor() + inputBoxSize - scaleVec2(0, 9) + vec2(0, movement.smooth))
+    ui.pushClipRect(ui.getCursor(), ui.getCursor() + inputBoxSize - scaleVec2(0, 9) + vec2(0, true))
     ui.dwriteTextAligned(displayText, inputFontSize, ui.Alignment.Start, ui.Alignment.End, inputTextSize, true, colors.final.input)
     ui.popDWriteFont()
     ui.popClipRect()
@@ -1712,7 +1879,7 @@ if player.isOnline then
       local currentTime = os.time()
       local currentTimeString = os.date('%H:%M', currentTime)
 
-      table.insert(chat.messages, { senderCarIndex, isPlayer and userName or 'Server', message, currentTime, false })
+      table.insert(chat.messages, { senderCarIndex, isPlayer and userName or 'Server', message, currentTime, false, isMentioned })
 
       for i = #chat.messages, 1, -1 do
         local msg = chat.messages[i]
@@ -1725,7 +1892,11 @@ if player.isOnline then
 
       if not settings.focusMode or isFriend or not isPlayer then moveAppUp() end
 
-      if senderCarIndex ~= -1 then chat.latestNonServerMessage = #chat.messages end
+      if senderCarIndex ~= -1 then
+        local prevLatestMsg = chat.messages[chat.latestNonServerMessage]
+        if prevLatestMsg then prevLatestMsg.cache = nil end
+        chat.latestNonServerMessage = #chat.messages
+      end
 
       if isPlayer then
         if senderCarIndex == 0 then
@@ -1797,13 +1968,7 @@ function onShowWindow()
 
   if Updater.state.updateStatus == 5 then sendAppMessage('Update Available!\nInstall via App Settings') end
 
-  if app.size == vec2(0, 0) then
-    local phoneFull = ui.imageSize(app.images.phoneAtlasPath)
-    app.size = vec2(phoneFull.x / 4, phoneFull.y / 2)
-  end
-
-  app.scale = math.round(settings.appScale, 1)
-  app.images.phoneAtlasSize = ui.imageSize(app.images.phoneAtlasPath):div(vec2(2, 2)):scale(app.scale)
+  chat.msgCacheGen = chat.msgCacheGen + 1
 
   player.serverCommunity = getServerCommunity()
 end
@@ -1821,8 +1986,11 @@ function script.windowMainSettings()
 
       settingsSlider('appScale', 0.5, 2, 'App Scale: %.01f%', nil, function(newVal)
         moveAppUp()
-        app.scale = math.round(newVal, 1)
+        local roundedNewScale = math.round(newVal, 1)
+        settings.appScale = roundedNewScale
+        app.scale = roundedNewScale
         app.images.phoneAtlasSize = ui.imageSize(app.images.phoneAtlasPath):div(vec2(2, 2)):scale(app.scale)
+        chat.msgCacheGen = chat.msgCacheGen + 1
       end)
 
       ui.unindent()
@@ -1862,7 +2030,7 @@ function script.windowMainSettings()
 
       settingsCheckbox('Force App to Bottom', 'forceBottom', 'If enabled, app will be forced to the bottom of the screen.')
 
-      settingsCheckbox('Use 12h Clock', 'badTime', 'If enabled, uses 12 hour time format.\nMessage timestamps will include AM/PM.')
+      settingsCheckbox('Use 12h Clock', 'badTime', 'If enabled, uses 12 hour time format.\nMessage timestamps will include AM/PM.', function() chat.msgCacheGen = chat.msgCacheGen + 1 end)
 
       settingsCheckbox('Show Music Information', 'songInfo', 'If enabled, shows current song information if detected.\nCheck your CSP Music settings if there are issues.', function(newVal)
         if not newVal then
@@ -1892,7 +2060,7 @@ function script.windowMainSettings()
     ui.tabItem('Chat', function()
       ui.indent()
 
-      settingsSlider('chatFontSize', 6, 36, 'Chat Fontsize: %.0f')
+      settingsSlider('chatFontSize', 6, 36, 'Chat Fontsize: %.0f', nil, function() chat.msgCacheGen = chat.msgCacheGen + 1 end)
       settingsSlider('chatScrollDistance', 1, 100, 'Chat Scroll Distance: %.0f', 'Distance to scroll the chat per mousewheel scroll.')
 
       ui.unindent()
@@ -1939,7 +2107,10 @@ function script.windowMainSettings()
         ui.unindent()
       end
 
-      settingsCheckbox('Highlight Latest Message', 'chatLatestBold', 'If enabled, text of the latest message will always be bold.')
+      settingsCheckbox('Highlight Latest Message', 'chatLatestBold', 'If enabled, text of the latest message will always be bold.', function()
+        local latestMsg = chat.messages[chat.latestNonServerMessage]
+        if latestMsg then latestMsg.cache = nil end
+      end)
 
       settingsCheckbox('Hide Kick Ban Messages', 'chatHideKickBan', 'If enabled, hides kick and ban messages from other players.')
 
@@ -2051,14 +2222,26 @@ end
 --#region APP MAIN WINDOW
 
 function script.windowMain(dt)
+  app.images.ready = app.images.ready or ui.isImageReady(app.images.phoneAtlasPath)
+  if not app.images.ready then return end
+
+  local rounded = math.round(settings.appScale, 1)
+  settings.appScale = settings.appScale ~= rounded and rounded or settings.appScale
+  app.scale = app.scale ~= settings.appScale and settings.appScale or app.scale
+
+  if app.size == vec2(0, 0) or app.images.phoneAtlasSize == vec2(0, 0) then
+    local phoneFull = ui.imageSize(app.images.phoneAtlasPath)
+    app.size = app.size == vec2(0, 0) and vec2(phoneFull.x / 4, phoneFull.y / 2) or app.size
+    app.images.phoneAtlasSize = app.images.phoneAtlasSize == vec2(0, 0) and phoneFull:div(vec2(2, 2)):scale(app.scale) or app.images.phoneAtlasSize
+  end
+
   updateAppMovement(dt)
   automaticModeSwitch()
   updateSongInfo()
 
   app.hovered = ui.windowHovered(bit.bor(ui.HoveredFlags.AllowWhenBlockedByPopup, ui.HoveredFlags.ChildWindows, ui.HoveredFlags.AllowWhenBlockedByActiveItem))
-  player.car = ac.getCar(0)
-
   if app.hovered or chat.input.active then moveAppUp() end
+
   if settings.forceBottom then forceAppToBottom() end
 
   ui.childWindow('Phone', vec2(app.images.phoneAtlasSize.x / 2, app.images.phoneAtlasSize.y), false, flags.window, function()
