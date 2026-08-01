@@ -1,7 +1,7 @@
 on:
   push:
     tags:
-      - "v*"
+      - 'v*'
 
 jobs:
   build:
@@ -72,16 +72,16 @@ jobs:
       - name: Archive Release
         uses: thedoctor0/zip-release@0.7.1
         with:
-          type: "zip"
-          filename: "smartphone.zip"
-          path: "./smartphone/"
+          type: 'zip'
+          filename: 'smartphone.zip'
+          path: './smartphone/'
 
       - name: Create Release
         uses: ncipollo/release-action@v1.12.0
         with:
-          artifacts: "smartphone.zip"
+          artifacts: 'smartphone.zip'
           tag: ${{ github.ref }}
-          name: "Smartphone ${{ github.ref_name }}"
+          name: 'Smartphone ${{ github.ref_name }}'
           makeLatest: true
           body: |
             <p align="center"><img src="https://github.com/C1XTZ/ac-smartphone/blob/main/.github/img/repopreview.png" width="700"/></p>
@@ -90,6 +90,13 @@ jobs:
 
             ## Updating & Installation:
             ### Oldest Supported CSP Version: CSP 0.2.3 (3044)
+
+            > [!IMPORTANT]
+            > **Manual Update May Be Required**
+            > If you are updating from a version older than **v1.33**, a manual updating of the app is required.
+            > Using the in-game updater on older versions will cause the app to crash on startup and remain unuseable until reinstalled.
+            > Your user settings are safe and will not be affected by reinstalling.
+
             ### Updating Ingame:
               ![](https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/.github/img/updater.png)
             1. Open the Smartphone Ingame
@@ -97,16 +104,16 @@ jobs:
             3. Click the `Check for Update` button
             4. Click the `Install Update` button
 
-            ### Automatic Installation via Content Manager: 
+            ### Automatic Installation via Content Manager:
             1. Download `smartphone.zip`
             2. Drag & Drop `smartphone.zip` into Content Manager and click `Install`
 
-            ### Manual Installation: 
+            ### Manual Installation:
             1. Download `smartphone.zip`
             2. Extract and place the `smartphone` folder inside the `\apps\lua` folder of your Assetto Corsa installation.
             (By default: `C:\Steam\steamapps\common\assettocorsa\apps\lua`)
 
             ## Known Issues:
             - Username colors might be incorrect on servers that use custom name color scripts for players that reconnect in a different carslot.
-            - Song Information will sometimes be picked up from the wrong source (e.g. Browser instead of Spotify), or not at all.  
+            - Song Information will sometimes be picked up from the wrong source (e.g. Browser instead of Spotify), or not at all.
               Make sure that `Show desktop overlay when using media keys` is enabled in your Spotify settings or try adding unwanted programs to the `Ignored processes` in the your CSP Music module settings.
