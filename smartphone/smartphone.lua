@@ -47,6 +47,15 @@ local settings = ac.storage {
   connectionEventsFriendsOnly = true,
   connectionEventsHideTraffic = true,
 
+  notifBannerEnabled = true,
+  notifBannerMessages = true,
+  notifBannerConnections = true,
+  notifBannerCarName = true,
+  notifBannerDuration = 5,
+  notifBannerHideWhenAppUp = false,
+  notifBannerFullRaise = false,
+  notifBannerServerPriority = false,
+
   enableAudio = true,
   enableKeyboard = true,
   enableMessage = true,
@@ -54,8 +63,8 @@ local settings = ac.storage {
   volumeKeyboard = 1,
   volumeMessage = 1,
   volumeNotification = 1,
-  messagesNonFriends = true,
-  messagesServer = false,
+  messagesFriendsOnly = false,
+  messagesServer = true,
   notificationsMentions = true,
   notificationsFriendConnections = true,
   notificationsFriendMessages = true,
@@ -76,6 +85,7 @@ local colors = {
     black50 = rgbm(0, 0, 0, 0.5),
     white50 = rgbm(1, 1, 1, 0.5),
   },
+  footerText = rgbm(0.4, 0.4, 0.4, 1),
   glowColor = rgbm(1, 1, 1, 0.65),
   displayColorLight = rgbm.colors.white,
   displayColorDark = rgbm.colors.black,
@@ -92,6 +102,13 @@ local colors = {
   emojiPickerButtonDark = rgbm(1, 1, 1, 0.33),
   emojiPickerButtonBGLight = rgbm(0, 0, 0, 0.1),
   emojiPickerButtonBGDark = rgbm(1, 1, 1, 0.15),
+  notifBgColorLight = rgbm(0.88, 0.88, 0.88, 1),
+  notifBgColorDark = rgbm(0.1, 0.1, 0.1, 1),
+  notifBgBlurColorLight = rgbm(1, 1, 1, 1),
+  notifBgBlurColorDark = rgbm(0.33, 0.33, 0.33, 1),
+  notifTitleColorLight = rgbm(0, 0, 0, 0.66),
+  notifTitleColorDark = rgbm(1, 1, 1, 0.33),
+  communityAverage = rgbm(),
   final = {
     display = rgbm(),
     header = rgbm(),
@@ -105,6 +122,9 @@ local colors = {
     input = rgbm(),
     emojiPicker = rgbm(),
     emojiPickerBG = rgbm(),
+    notifBg = rgbm(),
+    notifBgBlur = rgbm(),
+    notifTitle = rgbm(),
   },
 }
 
@@ -124,6 +144,7 @@ local app = {
     pingAtlasPath = '.\\src\\img\\connection.png',
     emojiPicker = '.\\src\\img\\picker.png',
     defaultCover = '.\\src\\img\\player.png',
+    defaultMessage = '.\\src\\img\\messages.png',
     ready = false,
   },
   font = {
@@ -146,11 +167,22 @@ local communities = stringify.parse(io.load('.\\apps\\lua\\smartphone\\src\\comm
 
 local movement = {
   maxDistance = 487,
+  notifDistance = 145,
+  notifTailDelay = 0.35,
+  forceFullUp = true,
   timer = settings.appMoveTimer,
+  notifTailTimer = 0.35,
   down = true,
   up = false,
   distance = 0,
   smooth = 0,
+}
+
+local notification = {
+  maxDistance = 90,
+  duration = settings.notifBannerDuration,
+  speed = 1.5,
+  queue = {},
 }
 
 local songInfo = {
@@ -307,8 +339,9 @@ end
 --#region UTILITY FUNCTIONS
 
 ---Moves the app up.
-local function moveAppUp()
+local function moveAppUp(full)
   if settings.appMove then
+    if full then movement.forceFullUp = true end
     movement.timer = settings.appMoveTimer
     movement.up = true
   end
@@ -338,6 +371,9 @@ local function modernButtonOffset() return -8 * ac.getUI().uiScale end
 
 ---@return number @Y offset, scaled by current UI scale.
 local function popupNewlineOffset() return -18 * ac.getUI().uiScale end
+
+---@return number @X offset, scaled by current UI scale.
+local function settingsIndentOffset() return 25 * ac.getUI().uiScale end
 
 ---@param songString string @combined 'artist - title' string usually, whatever your mp3 player spits out
 ---@return string artist @artist name string
@@ -393,7 +429,7 @@ local function getServerCommunity()
   if not player.isOnline then return 'default' end
 
   for community, data in pairs(communities) do
-    if (community ~= 'default' or community ~= 'version') and data.ips then
+    if data.ips then
       for _, ip in ipairs(data.ips) do
         if ip == player.serverIP then return community end
       end
@@ -674,6 +710,14 @@ local function getNonTrafficPlayers()
   end
 end
 
+---@return table? @the currently displaying notification queue
+---Finds the single queue item currently sliding in/holding/sliding out.
+local function getActiveNotification()
+  for _, notif in ipairs(notification.queue) do
+    if notif.state == 'active' then return notif end
+  end
+end
+
 --#endregion
 
 --#region GENERAL LOGIC FUNCTIONS
@@ -688,12 +732,59 @@ local function updateColors()
   colors.final.message:set(pickThemeColor(colors.iMessageLightGray, colors.iMessageDarkGray))
   colors.final.emojiPicker:set(pickThemeColor(colors.emojiPickerButtonLight, colors.emojiPickerButtonDark))
   colors.final.emojiPickerBG:set(pickThemeColor(colors.emojiPickerButtonBGLight, colors.emojiPickerButtonBGDark))
+  colors.final.notifBg:set(pickThemeColor(colors.notifBgColorLight, colors.notifBgColorDark))
+  colors.final.notifBgBlur:set(pickThemeColor(colors.communityAverage:clone():mul(colors.notifBgBlurColorLight), colors.communityAverage:clone():mul(colors.notifBgBlurColorDark)))
+  colors.final.notifTitle:set(pickThemeColor(colors.notifTitleColorLight, colors.notifTitleColorDark))
 
   colors.final.messageOwn:set(settings.customColor and settings.messageColorSelf or colors.iMessageBlue)
   colors.final.messageFriend:set(settings.customColor and settings.messageColorFriend or colors.iMessageGreen)
 
   colors.final.messageOwnText:set(getLuminance(colors.final.messageOwn) <= 0.225 and rgbm.colors.white or rgbm.colors.black)
   colors.final.messageFriendText:set(getLuminance(colors.final.messageFriend) <= 0.225 and rgbm.colors.white or rgbm.colors.black)
+end
+
+---@param imagePath string
+---Calculates the average color of the community image, for notification banner glow
+local function getAverageCommunityImageColor(imagePath)
+  if colors.communityAverage ~= rgbm() then return end
+
+  local imgSize = ui.imageSize(imagePath)
+  if imgSize.x == 0 or imgSize.y == 0 then
+    print('Image not loaded or invalid')
+    return
+  end
+
+  local canvas = ui.ExtraCanvas(imgSize, 1, render.AntialiasingMode.None)
+  canvas:update(function() ui.drawImage(imagePath, vec2(0, 0), imgSize) end)
+  canvas:accessData(function(err, data)
+    if err then
+      print('Failed to access data: ' .. err)
+      return
+    end
+
+    local totalR, totalG, totalB = 0, 0, 0
+    local count = 0
+    local w, h = data:size():unpack()
+
+    for y = 0, h - 1 do
+      for x = 0, w - 1 do
+        local col = data:color(x, y)
+        totalR = totalR + col.r
+        totalG = totalG + col.g
+        totalB = totalB + col.b
+        count = count + 1
+      end
+    end
+
+    local avgR = totalR / count
+    local avgG = totalG / count
+    local avgB = totalB / count
+
+    colors.communityAverage = rgbm(avgR, avgG, avgB, 1)
+    updateColors()
+
+    canvas:dispose()
+  end)
 end
 
 local appWindow = ac.accessAppWindow('IMGUI_LUA_Smartphone_main')
@@ -708,8 +799,19 @@ local function forceAppToBottom()
   if appWindow:position().y ~= appBottom and not ui.isMouseDragging(ui.MouseButton.Left, 0) then appWindow:move(vec2(appWindow:position().x, appBottom)) end
 end
 
----@param dt number @Delta time in seconds since last update.
 ---Updates movement state
+---@param current number @current value
+---@param target number @value to move toward
+---@param step number @maximum change allowed this call
+---@return number @current moved toward target by up to step, without overshooting
+---Moves a value toward a target by a fixed step, clamping so it never overshoots past the target.
+local function moveToward(current, target, step)
+  local delta = target - current
+  if math.abs(delta) <= step then return target end
+  return math.floor(current + (delta > 0 and step or -step))
+end
+
+---@param dt number @Delta time in seconds since last update.
 local function updateAppMovement(dt)
   if not settings.appMove then
     if movement.distance ~= 0 then
@@ -721,30 +823,128 @@ local function updateAppMovement(dt)
 
   local scaledMaxDistance = scaleNum(movement.maxDistance)
 
-  if movement.distance == 0 and movement.timer > 0 then
-    movement.timer = movement.timer - dt
+  if app.hovered or chat.input.active then movement.forceFullUp = true end
+
+  local isPeekRaise = settings.notifBannerEnabled and not movement.forceFullUp
+
+  local peekDistance = 0
+  if isPeekRaise and not settings.notifBannerFullRaise then
+    peekDistance = scaleNum(movement.maxDistance - movement.notifDistance)
+    if peekDistance < 0 then peekDistance = 0 end
+  end
+
+  local targetUpDistance = movement.forceFullUp and 0 or peekDistance
+  local moveSpeedBase = (movement.forceFullUp or isPeekRaise) and 100 or 50
+  local minimumStayApplies = movement.forceFullUp or settings.notifBannerFullRaise
+
+  if movement.distance <= targetUpDistance and not movement.up then
     movement.down = true
-    return
+
+    if movement.timer > 0 then movement.timer = movement.timer - dt end
+
+    local minimumStayMet = not minimumStayApplies or movement.timer <= 0
+    local hasNotif = getActiveNotification() ~= nil
+    if minimumStayMet and not hasNotif then
+      movement.notifTailTimer = movement.notifTailTimer - dt
+    else
+      movement.notifTailTimer = movement.notifTailDelay
+    end
+
+    if not (minimumStayMet and not hasNotif and movement.notifTailTimer <= 0) then return end
+
+    movement.timer = 0
   end
 
   if movement.down and movement.timer <= 0 then
-    movement.distance = math.floor(movement.distance + dt * 100 * settings.appMoveSpeed)
+    movement.distance = math.floor(movement.distance + dt * moveSpeedBase * (settings.appMoveSpeed * app.scale))
     movement.smooth = math.floor(math.smootherstep(math.lerpInvSat(movement.distance, 0, scaledMaxDistance)) * scaledMaxDistance)
 
     if movement.distance >= scaledMaxDistance then
       movement.distance = scaledMaxDistance
       movement.down = false
+      movement.forceFullUp = false
+      movement.up = true
     end
   elseif movement.up and movement.timer > 0 then
-    movement.distance = math.floor(movement.distance - dt * 100 * settings.appMoveSpeed)
+    movement.distance = moveToward(movement.distance, targetUpDistance, dt * moveSpeedBase * (settings.appMoveSpeed * app.scale))
     movement.smooth = math.floor(math.smootherstep(math.lerpInvSat(movement.distance, 0, scaledMaxDistance)) * scaledMaxDistance)
 
-    if movement.distance <= 0 then
-      movement.distance = 0
+    if movement.distance == targetUpDistance then
       movement.up = false
       movement.timer = settings.appMoveTimer
     end
   end
+end
+
+---@param title string @bold title line, e.g. the sender's username
+---@param body string @message text shown below the title
+---@param isServer boolean? @whether this is a server message, used for queue priority
+---Queues a notification banner. With server priority off, notifications queue and show in order. With it on, user messages get gracefully skipped.
+local function showNotification(title, body, isServer)
+  local queue = notification.queue
+  local entry = { title = title, body = body, isServer = isServer or false }
+  local active = getActiveNotification()
+
+  if not active or (settings.notifBannerServerPriority and not active.isServer) then
+    if active then active.state = 'covering' end
+    entry.state, entry.distance, entry.smooth, entry.phase, entry.timer = 'active', 0, 0, 'in', 0
+    queue[#queue + 1] = entry
+    return
+  end
+
+  if settings.notifBannerServerPriority and entry.isServer then
+    while #queue > 0 and queue[#queue].state == 'queued' and not queue[#queue].isServer do
+      table.remove(queue)
+    end
+  end
+
+  entry.state = 'queued'
+  queue[#queue + 1] = entry
+end
+
+---@param dt number @Delta time in seconds since last update.
+---Updates the notification banner's slide animation.
+local function updateNotifications(dt)
+  local queue = notification.queue
+  local notif = getActiveNotification()
+  if not notif then return end
+
+  local maxDistance = scaleNum(notification.maxDistance)
+
+  if notif.phase == 'in' then
+    notif.distance = moveToward(notif.distance, maxDistance, dt * 100 * (notification.speed * app.scale))
+
+    if notif.distance >= maxDistance then
+      notif.phase = 'hold'
+      notif.timer = notification.duration
+      for i = #queue, 1, -1 do
+        if queue[i].state == 'covering' then table.remove(queue, i) end
+      end
+    end
+  elseif notif.phase == 'hold' then
+    notif.timer = notif.timer - dt
+    if notif.timer <= 0 then notif.phase = 'out' end
+  elseif notif.phase == 'out' then
+    notif.distance = moveToward(notif.distance, 0, dt * 100 * (notification.speed * app.scale))
+
+    if notif.distance <= 0 then
+      for i, s in ipairs(queue) do
+        if s == notif then
+          table.remove(queue, i)
+          break
+        end
+      end
+      for _, s in ipairs(queue) do
+        if s.state == 'queued' then
+          s.state, s.distance, s.smooth, s.phase, s.timer = 'active', 0, 0, 'in', 0
+          break
+        end
+      end
+      return
+    end
+  end
+
+  notif.smooth = math.floor(math.smootherstep(math.lerpInvSat(notif.distance, 0, maxDistance)) * maxDistance)
 end
 
 ---@param event table @audio event table (audio.category.event)
@@ -1112,7 +1312,7 @@ local function chatPlayerPopup(userIndex, userName)
         playAudio(audio.keyboard.enter)
         ui.modalPopup(
           'Confirm Mute',
-          'Are you sure you want to mute ' .. userName .. '?\nYou will no longer be able to read their chat messages.\nUnmute them via the Drivers list in the CSP Chat app.',
+          'Are you sure you want to mute ' .. userName .. '?\nYou will no longer be able to read their chat messages\nUnmute them via the Drivers list in the CSP Chat app',
           'Confirm',
           'Cancel',
           ui.Icons.Confirm,
@@ -1172,9 +1372,13 @@ local function drawPing()
 
   if ping > -1 then
     if isHovered then
-      ui.tooltip(app.tooltipPadding, function() ui.text('Current Ping: ' .. ping .. ' ms\nClick to send to chat.') end)
+      ui.tooltip(app.tooltipPadding, function()
+        ui.text('Current Ping: ' .. ping .. ' ms')
+        ui.separator()
+        ui.textColored('Click to send to chat', colors.footerText)
+      end)
       if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
-      if ui.mouseReleased(ui.MouseButton.Left) then sendChatMessage('I currently have a ping of ' .. ping .. ' ms.') end
+      if ui.mouseReleased(ui.MouseButton.Left) then sendChatMessage('I currently have a ping of ' .. ping .. ' ms') end
     end
 
     local textureStartUV, textureEndUV
@@ -1194,7 +1398,7 @@ local function drawPing()
 
     ui.drawImage(app.images.pingAtlasPath, pingPos, pingPos + pingSize, colors.final.elements, vec2(textureStartUV, 0), vec2(textureEndUV, 1))
   else
-    if isHovered then ui.tooltip(app.tooltipPadding, function() ui.text('Currently offline or ping unavailable.') end) end
+    if isHovered then ui.tooltip(app.tooltipPadding, function() ui.text('Currently offline or ping unavailable') end) end
 
     local animFrame = math.floor(os.clock() * 2) % 3
     local textureStartUV = (2 - animFrame) / 5
@@ -1233,13 +1437,20 @@ local function drawTime()
   ui.dwriteTextAligned(timeText, fontSize, ui.Alignment.End, ui.Alignment.Center, textArea, false, colors.final.elements)
   ui.popDWriteFont()
 
-  if app.hovered then
-    local tooltipText = player.isOnline and 'Current Time: ' .. timeText .. '\nClick to send to chat.' or 'Current Time: ' .. timeText
-    lastItemHoveredTooltip(tooltipText, player.isOnline and true or false)
+  if app.hovered and ui.itemHovered() then
+    if not ui.isMouseDragging(ui.MouseButton.Left, 0) and player.isOnline then ui.setMouseCursor(ui.MouseCursor.Hand) end
+
+    ui.tooltip(app.tooltipPadding, function()
+      ui.text('Current Time: ' .. timeText)
+      if player.isOnline then
+        ui.separator()
+        ui.textColored('Click to send to chat', colors.footerText)
+      end
+    end)
 
     if ui.itemClicked(ui.MouseButton.Left) and player.isOnline then
       timeText = settings.badTime and timeText .. ' ' .. player.timePeriod or timeText
-      sendChatMessage("It's currently " .. timeText .. ' my local time.')
+      sendChatMessage("It's currently " .. timeText .. ' my local time')
     end
   end
 end
@@ -1303,24 +1514,33 @@ local function drawHeader()
   local imgPos = scaleVec2(129, 47, true)
   local imgRounding = scaleNum(20)
 
-  if not communities then return error('Communities table does not exist, probably caused by a broken app install.') end
+  if not communities then return error('Communities table does not exist, probably caused by a broken app install') end
 
   local community = communities[player.serverCommunity]
-  community.ready = community.ready or ui.isImageReady(community.image)
+  if not community.ready and ui.isImageReady(community.image) then
+    community.ready = true
+    getAverageCommunityImageColor(community.image)
+  end
 
   if community.ready then
-    ui.drawImageRounded(communities[player.serverCommunity].image, imgPos, imgPos + imgSize, imgRounding, ui.CornerFlags.All)
+    ui.drawImageRounded(community.image, imgPos, imgPos + imgSize, imgRounding, ui.CornerFlags.All)
   else
     ui.drawImageRounded(communities['default'].image, imgPos, imgPos + imgSize, imgRounding, ui.CornerFlags.All)
   end
 
   if app.hovered then
     if ui.rectHovered(imgPos, imgPos + imgSize) then
-      ui.tooltip(app.tooltipPadding, function() ui.text(communities[player.serverCommunity].text .. '\nClick to open in Browser.') end)
       if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
+
+      ui.tooltip(app.tooltipPadding, function()
+        ui.text(community.text)
+        ui.separator()
+        ui.textColored('Click to open in Browser', colors.footerText)
+      end)
+
       if ui.mouseReleased(ui.MouseButton.Left) then
         playAudio(audio.keyboard.enter)
-        os.openURL(communities[player.serverCommunity].url, false)
+        os.openURL(community.url, false)
       end
     end
   end
@@ -1353,9 +1573,16 @@ local function drawSongInfo()
 
     if app.hovered and songInfo.final ~= '' then
       if ui.rectHovered(pos, pos + textSize, true) then
-        local tooltipText = player.isOnline and 'Current Song: ' .. songInfo.artist .. ' - ' .. songInfo.title .. '\nClick to send to chat.' or 'Current Song: ' .. songInfo.artist .. ' - ' .. songInfo.title
         if not ui.isMouseDragging(ui.MouseButton.Left, 0) and player.isOnline then ui.setMouseCursor(ui.MouseCursor.Hand) end
-        ui.tooltip(app.tooltipPadding, function() ui.text(tooltipText) end)
+
+        ui.tooltip(app.tooltipPadding, function()
+          ui.text('Current Song: ' .. songInfo.artist .. ' - ' .. songInfo.title)
+          if player.isOnline then
+            ui.separator()
+            ui.textColored('Click to send to chat', colors.footerText)
+          end
+        end)
+
         if ui.mouseClicked(ui.MouseButton.Left) and player.isOnline then sendChatMessage("I'm currently listening to: " .. songInfo.final) end
       end
     end
@@ -1805,7 +2032,7 @@ local function drawInputCustom()
 
     local inputTextSize = ui.measureDWriteText(displayText, inputFontSize, inputWrap):max(vec2(0, scaleNum(17.291)))
     ui.setCursor(scaleVec2(10, 5))
-    ui.pushClipRect(ui.getCursor(), ui.getCursor() + inputBoxSize - scaleVec2(0, 9) + vec2(0, true))
+    ui.pushClipRect(ui.getCursor(), ui.getCursor() + inputBoxSize - scaleVec2(0, 9, true))
     ui.dwriteTextAligned(displayText, inputFontSize, ui.Alignment.Start, ui.Alignment.End, inputTextSize, true, colors.final.input)
     ui.popDWriteFont()
     ui.popClipRect()
@@ -1841,6 +2068,64 @@ local function drawInputCustom()
 
     chat.input.offset = math.min(math.floor(inputTextSize.y - scaleNum(17)), scaleNum(390))
   end)
+end
+
+---Draws latest message notifications.
+local function drawNotifications()
+  local queue = notification.queue
+  if not getActiveNotification() then return end
+
+  local maxDistance = scaleNum(notification.maxDistance)
+  local bannerSize = scaleVec2(257, 75)
+  local imgSize = scaleVec2(15, 15)
+  local titleFontSize = scaleNum(10)
+  local contentFontSize = scaleNum(12)
+  local contentFontColor = colors.final.elements
+  local bodyMaxWidth = scaleNum(230)
+
+  local bannerPos = scaleVec2(16, 46) + vec2(0, movement.smooth)
+
+  for i = 1, #queue do
+    local notif = queue[i]
+    if notif.state ~= 'queued' then
+      ui.setCursor(bannerPos)
+      ui.childWindow('NotificationDropDown' .. i, bannerSize, false, flags.input, function()
+        ui.offsetCursorY(notif.smooth - maxDistance)
+        ui.drawRectFilled(ui.getCursor(), ui.getCursor() + bannerSize, colors.final.notifBg, scaleNum(13), ui.CornerFlags.All)
+        ui.glowEllipseFilled(ui.getCursor() + (bannerSize / 2), scaleVec2(100, 25), colors.final.notifBgBlur)
+        ui.offsetCursor(scaleVec2(10, 10))
+        ui.drawImageRounded(app.images.defaultMessage, ui.getCursor(), ui.getCursor() + imgSize, scaleNum(3), ui.CornerFlags.All)
+
+        ui.offsetCursor(scaleVec2(20, 1))
+        ui.pushDWriteFont(app.font.regular)
+        ui.dwriteDrawText('MESSAGES', titleFontSize, ui.getCursor(), colors.final.notifTitle)
+        ui.dwriteDrawText('now', titleFontSize, ui.getCursor() + scaleVec2(195, 0), colors.final.notifTitle)
+        ui.popDWriteFont()
+
+        ui.offsetCursor(scaleVec2(-20, 22))
+        ui.pushDWriteFont(app.font.bold)
+        ui.dwriteDrawText(notif.title, contentFontSize, ui.getCursor(), contentFontColor)
+        ui.popDWriteFont()
+
+        ui.offsetCursor(scaleVec2(0, 17))
+        ui.pushDWriteFont(app.font.regular)
+        local bodyText = notif.body
+        if ui.measureDWriteText(bodyText, contentFontSize).x > bodyMaxWidth then
+          while #bodyText > 0 and ui.measureDWriteText(bodyText .. '...', contentFontSize).x > bodyMaxWidth do
+            bodyText = bodyText:sub(1, -2)
+          end
+          bodyText = bodyText .. '...'
+        end
+        ui.dwriteDrawText(bodyText, contentFontSize, ui.getCursor(), contentFontColor)
+        ui.popDWriteFont()
+
+        if notif.state == 'active' and ui.rectHovered(bannerPos, bannerPos + bannerSize) and ui.mouseClicked(ui.MouseButton.Left) then
+          notif.phase = 'out'
+          moveAppUp()
+        end
+      end)
+    end
+  end
 end
 
 --#endregion
@@ -1890,19 +2175,28 @@ if player.isOnline then
         end
       end
 
-      if not settings.focusMode or isFriend or not isPlayer then moveAppUp() end
-
       if senderCarIndex ~= -1 then
         local prevLatestMsg = chat.messages[chat.latestNonServerMessage]
         if prevLatestMsg then prevLatestMsg.cache = nil end
         chat.latestNonServerMessage = #chat.messages
       end
 
+      local suppressNotif = settings.notifBannerHideWhenAppUp and movement.distance == 0
+
+      local fullMovement = true
+      if settings.notifBannerEnabled and settings.notifBannerMessages and senderCarIndex ~= 0 and not suppressNotif then
+        fullMovement = false
+        local hideNotif = (settings.focusMode and not isFriend) or ac.DriverTags(userName).muted
+        if not hideNotif then showNotification(isPlayer and userName or 'Server', message, not isPlayer) end
+      end
+
+      if not settings.focusMode or isFriend or not isPlayer then moveAppUp(fullMovement) end
+
       if isPlayer then
         if senderCarIndex == 0 then
           playAudio(audio.message.send)
         else
-          if isFriend or settings.messagesNonFriends then playAudio(audio.message.receive) end
+          if isFriend or not settings.messagesFriendsOnly then playAudio(audio.message.receive) end
           if (isFriend and settings.notificationsFriendMessages) or (isMentioned and settings.notificationsMentions) then setTimeout(function() playAudio(audio.notification.regular) end, audio.notification.timeout) end
         end
       else
@@ -1932,10 +2226,20 @@ if player.isOnline then
       deleteOldestMessages()
       table.insert(chat.messages, { -1, 'Server', userName .. action .. ' the Server', os.time() })
 
-      if settings.messagesServer and (settings.messagesNonFriends or isFriend) then playAudio(audio.message.receive) end
+      if settings.messagesServer and (not settings.messagesFriendsOnly or isFriend) then playAudio(audio.message.receive) end
       if settings.notificationsFriendConnections and isFriend then setTimeout(function() playAudio(audio.notification.regular) end, audio.notification.timeout) end
 
-      moveAppUp()
+      local suppressNotif = settings.notifBannerHideWhenAppUp and movement.distance == 0
+
+      local fullMovement = true
+      if settings.notifBannerEnabled and settings.notifBannerConnections and not suppressNotif then
+        fullMovement = false
+        local body = userName
+        if settings.notifBannerCarName and car then body = body .. ' (' .. car:name() .. ')' end
+        showNotification('Just ' .. action:sub(2) .. ' the server', body, true)
+      end
+
+      moveAppUp(fullMovement)
     end
 
     if userName ~= 'A Player' and car then
@@ -1976,245 +2280,276 @@ end
 --#endregion
 
 --#region APP SETTINGS WINDOW
-
 function script.windowMainSettings()
+  local hideFooter = false
   ui.tabBar('TabBar', function()
-    ui.tabItem('Update', function() Updater.drawUI() end)
+    ui.tabItem('Update', function()
+      Updater.drawUI()
+      hideFooter = true
+    end)
 
     ui.tabItem('App', function()
-      ui.indent()
+      ui.tabBar('AppTabs', function()
+        ui.tabItem('General', function()
+          ui.indent(settingsIndentOffset())
+          settingsSlider('appScale', 0.5, 2, 'App Scale: %.01f%', nil, function(newVal)
+            moveAppUp(true)
+            local roundedNewScale = math.round(newVal, 1)
+            settings.appScale = roundedNewScale
+            app.scale = roundedNewScale
+            app.images.phoneAtlasSize = ui.imageSize(app.images.phoneAtlasPath):div(vec2(2, 2)):scale(app.scale)
+            chat.msgCacheGen = chat.msgCacheGen + 1
+          end)
+          ui.unindent(settingsIndentOffset())
 
-      settingsSlider('appScale', 0.5, 2, 'App Scale: %.01f%', nil, function(newVal)
-        moveAppUp()
-        local roundedNewScale = math.round(newVal, 1)
-        settings.appScale = roundedNewScale
-        app.scale = roundedNewScale
-        app.images.phoneAtlasSize = ui.imageSize(app.images.phoneAtlasPath):div(vec2(2, 2)):scale(app.scale)
-        chat.msgCacheGen = chat.msgCacheGen + 1
-      end)
+          settingsCheckbox('Force App to Bottom', 'forceBottom', 'If enabled, app will be forced to the bottom of the screen')
 
-      ui.unindent()
+          settingsCheckbox('Chat Inactivity Minimizes Phone', 'appMove', 'If enabled, the app will move down to free screen space', function(newVal)
+            if newVal then
+              movement.up = false
+              movement.timer = settings.appMoveTimer
+            end
+          end)
 
-      settingsCheckbox('Dark Mode', 'darkMode', 'If enabled, app will use dark mode.', function(newVal)
-        if newVal then settings.darkModeAuto = false end
-        updateColors()
-      end)
+          if settings.appMove then
+            ui.indent(settingsIndentOffset())
+            settingsSlider('appMoveTimer', 1, 120, 'Inactivity: %.0f seconds', 'Time before app moves down', function(newVal) movement.timer = newVal end)
 
-      if not settings.darkMode then
-        settingsCheckbox('Automatic Light/Dark Mode', 'darkModeAuto', 'If enabled, app will automatically switch between dark/light mode.', function(newVal) updateColors() end)
-
-        if settings.darkModeAuto then
-          ui.indent()
-          if player.cspVersion >= 3459 then
-            ui.text('Current Sun Angle: ' .. math.round(ac.getSunAngle(), 1) .. '°')
-
-            settingsSlider('darkModeAutoDarkAngle', 0, 180, 'Evening Sun Angle: %.0f°', 'Sun angle at which the app will switch to dark mode.\nLower values mean earlier in the day.')
-            settingsSlider('darkModeAutoLightAngle', 0, 180, 'Morning Sun Angle: %.0f°', 'Sun angle at which the app will switch to light mode.\nLower values mean later in the day.')
-          else
-            local sim = ac.getSim()
-            ui.text(string.format('Current Time: %02d:%02d', sim.timeHours, sim.timeMinutes))
-
-            local darkVal = math.floor(settings.darkModeAutoDarkTime * 2 + 0.5)
-            local darkTimeStr = string.format('Dark Mode After: %02d:%02d', math.floor(darkVal / 2), (darkVal % 2) * 30)
-            settings.darkModeAutoDarkTime = ui.slider('##darkModeAutoDarkTime', darkVal, 0, 47, darkTimeStr, true) / 2
-            lastItemHoveredTooltip('The time at which the app will switch to dark mode.')
-
-            local lightVal = math.floor(settings.darkModeAutoLightTime * 2 + 0.5)
-            local lightTimeStr = string.format('Light Mode After: %02d:%02d', math.floor(lightVal / 2), (lightVal % 2) * 30)
-            settings.darkModeAutoLightTime = ui.slider('##darkModeAutoLightTime', lightVal, 0, 47, lightTimeStr, true) / 2
-            lastItemHoveredTooltip('The time at which the app will switch to light mode.')
+            settingsSlider('appMoveSpeed', 1, 50, 'Speed: %.0f', 'How fast the app should move up/down')
+            ui.unindent(settingsIndentOffset())
           end
-          ui.unindent()
-        end
-      end
 
-      settingsCheckbox('Force App to Bottom', 'forceBottom', 'If enabled, app will be forced to the bottom of the screen.')
+          settingsCheckbox('Use 12h Clock', 'badTime', 'If enabled, uses 12 hour time format\nMessage timestamps will include AM/PM', function() chat.msgCacheGen = chat.msgCacheGen + 1 end)
+        end)
 
-      settingsCheckbox('Use 12h Clock', 'badTime', 'If enabled, uses 12 hour time format.\nMessage timestamps will include AM/PM.', function() chat.msgCacheGen = chat.msgCacheGen + 1 end)
+        ui.tabItem('Theme', function()
+          settingsCheckbox('Dark Mode', 'darkMode', 'If enabled, app will use dark mode', function(newVal)
+            if newVal then settings.darkModeAuto = false end
+            updateColors()
+          end)
 
-      settingsCheckbox('Show Music Information', 'songInfo', 'If enabled, shows current song information if detected.\nCheck your CSP Music settings if there are issues.', function(newVal)
-        if not newVal then
-          songInfo.final = ''
-          songInfo.artist = ''
-          songInfo.title = ''
-          songInfo.isPaused = false
-          setDynamicIslandSize(false)
-        end
+          if not settings.darkMode then
+            settingsCheckbox('Automatic Light/Dark Mode', 'darkModeAuto', 'If enabled, app will automatically switch between dark/light mode', function(newVal) updateColors() end)
+
+            if settings.darkModeAuto then
+              ui.indent(settingsIndentOffset())
+              if player.cspVersion >= 3459 then
+                ui.text('Current Sun Angle: ' .. math.round(ac.getSunAngle(), 1) .. '°')
+                settingsSlider('darkModeAutoDarkAngle', 0, 180, 'Evening Sun Angle: %.0f°', 'Sun angle at which the app will switch to dark mode\nLower values mean earlier in the day')
+                settingsSlider('darkModeAutoLightAngle', 0, 180, 'Morning Sun Angle: %.0f°', 'Sun angle at which the app will switch to light mode\nLower values mean later in the day')
+              else
+                local sim = ac.getSim()
+                ui.text(string.format('Current Time: %02d:%02d', sim.timeHours, sim.timeMinutes))
+
+                local darkVal = math.floor(settings.darkModeAutoDarkTime * 2 + 0.5)
+                local darkTimeStr = string.format('Dark Mode After: %02d:%02d', math.floor(darkVal / 2), (darkVal % 2) * 30)
+                settings.darkModeAutoDarkTime = ui.slider('##darkModeAutoDarkTime', darkVal, 0, 47, darkTimeStr, true) / 2
+                lastItemHoveredTooltip('The time at which the app will switch to dark mode')
+
+                local lightVal = math.floor(settings.darkModeAutoLightTime * 2 + 0.5)
+                local lightTimeStr = string.format('Light Mode After: %02d:%02d', math.floor(lightVal / 2), (lightVal % 2) * 30)
+                settings.darkModeAutoLightTime = ui.slider('##darkModeAutoLightTime', lightVal, 0, 47, lightTimeStr, true) / 2
+                lastItemHoveredTooltip('The time at which the app will switch to light mode')
+              end
+              ui.unindent(settingsIndentOffset())
+            end
+          end
+
+          settingsCheckbox('Custom Message Colors', 'customColor', 'If enabled, allows you to recolor certain elements', function() updateColors() end)
+          if settings.customColor then
+            ui.offsetCursorY(-5 * ac.getUI().uiScale)
+            local colorPickerWidth = 130 * ac.getUI().uiScale
+            ui.dummy(vec2(colorPickerWidth * 2, 0))
+            ui.columns(2, false)
+            ui.text('Own Messages')
+            ui.setNextItemWidth(colorPickerWidth)
+            local messageColorSelfChange = ui.colorPicker('Display Color Picker', settings.messageColorSelf, flags.colorpicker)
+            if ui.modernButton('Reset to default' .. '\u{200B}', 0, ui.ButtonFlags.None, nil, modernButtonOffset(), nil) then
+              settings.messageColorSelf = colors.iMessageBlue:clone()
+              updateColors()
+            end
+
+            ui.nextColumn()
+
+            ui.text('Friend Messages')
+            ui.setNextItemWidth(colorPickerWidth)
+            local messageColorFriendChange = ui.colorPicker('Text Color Picker', settings.messageColorFriend, flags.colorpicker)
+            if ui.modernButton('Reset to default' .. '\u{200C}', 0, ui.ButtonFlags.None, nil, modernButtonOffset(), nil) then
+              settings.messageColorFriend = colors.iMessageGreen:clone()
+              updateColors()
+            end
+
+            if messageColorFriendChange or messageColorSelfChange then
+              settings.messageColorSelf = settings.messageColorSelf:clone()
+              settings.messageColorFriend = settings.messageColorFriend:clone()
+              updateColors()
+            end
+            ui.columns(0)
+          end
+        end)
+
+        ui.tabItem('Music', function()
+          settingsCheckbox('Show Music Information', 'songInfo', 'If enabled, shows current song information if detected\nCheck your CSP Music settings if there are issues', function(newVal)
+            if not newVal then
+              songInfo.final = ''
+              songInfo.artist = ''
+              songInfo.title = ''
+              songInfo.isPaused = false
+              setDynamicIslandSize(false)
+            end
+          end)
+
+          if settings.songInfo then
+            ui.indent(settingsIndentOffset())
+            settingsCheckbox('Always Scroll Text', 'songInfoscrollAlways', 'If enabled, will scroll text even if it could be displayed in full without scrolling', function() updateSongInfo(true) end)
+
+            settingsCheckbox('Hide Selfie Camera', 'hideCamera', 'If enabled, will hide the selfie camera below the song information')
+
+            settingsSlider('songInfoSpacing', 0, 300, 'Spacing: %.0f', 'The amount of spacing between the end and start of the song', nil, true)
+
+            settingsSlider('songInfoScrollSpeed', 1, 300, 'Scroll Speed: %.0f', 'Speed that the text is scrolled at')
+            local scrollDirStr = settings.songInfoScrollDirection == 0 and 'Left' or 'Right'
+            settings.songInfoScrollDirection = ui.slider('##songInfoScrollDirection', settings.songInfoScrollDirection, 0, 1, 'Scroll Direction: ' .. scrollDirStr, true)
+            ui.unindent(settingsIndentOffset())
+          end
+        end)
       end)
-
-      if settings.songInfo then
-        ui.indent()
-        settingsCheckbox('Always Scroll Text', 'songInfoscrollAlways', 'If enabled, will scroll text even if it could be displayed statically.', function() updateSongInfo(true) end)
-
-        settingsCheckbox('Hide Selfie Camera', 'hideCamera', 'If enabled, will hide the selfie camera below the song information.')
-
-        settingsSlider('songInfoSpacing', 0, 300, 'Spacing: %.0f', 'The amount of spacing between the end and start of the song.', nil, true)
-        settingsSlider('songInfoScrollSpeed', 1, 300, 'Scroll Speed: %.0f', 'Speed that the text is scrolled at.')
-
-        local scrollDirStr = settings.songInfoScrollDirection == 0 and 'Left' or 'Right'
-        settings.songInfoScrollDirection = ui.slider('##songInfoScrollDirection', settings.songInfoScrollDirection, 0, 1, 'Scroll Direction: ' .. scrollDirStr, true)
-        ui.unindent()
-      end
     end)
 
     ui.tabItem('Chat', function()
-      ui.indent()
+      ui.tabBar('ChatTabs', function()
+        ui.tabItem('Visuals', function()
+          ui.indent(settingsIndentOffset())
+          settingsSlider('chatFontSize', 6, 36, 'Chat Fontsize: %.0f', nil, function() chat.msgCacheGen = chat.msgCacheGen + 1 end)
 
-      settingsSlider('chatFontSize', 6, 36, 'Chat Fontsize: %.0f', nil, function() chat.msgCacheGen = chat.msgCacheGen + 1 end)
-      settingsSlider('chatScrollDistance', 1, 100, 'Chat Scroll Distance: %.0f', 'Distance to scroll the chat per mousewheel scroll.')
+          settingsSlider('chatScrollDistance', 1, 100, 'Chat Scroll Distance: %.0f', 'Distance to scroll the chat per mouse wheel scroll')
+          ui.unindent(settingsIndentOffset())
 
-      ui.unindent()
+          settingsCheckbox('Show Timestamps', 'chatShowTimestamps', 'If enabled, shows message timestamps')
 
-      settingsCheckbox('Chat Inactivity Minimizes Phone', 'appMove', 'If enabled, the app will move down to free screen space.', function(newVal)
-        if newVal then
-          movement.up = false
-          movement.timer = settings.appMoveTimer
-        end
+          settingsCheckbox('Use Colored Usernames', 'chatUsernameColor', 'If enabled, uses colored usernames if possible\nServers can overwrite CM tag colors')
+
+          settingsCheckbox('Highlight Latest Message', 'chatLatestBold', 'If enabled, text of the latest message will always be bold', function()
+            local latestMsg = chat.messages[chat.latestNonServerMessage]
+            if latestMsg then latestMsg.cache = nil end
+          end)
+        end)
+
+        ui.tabItem('Filters', function()
+          settingsCheckbox('Chat History Settings', 'chatPurge', 'If enabled, allows you to change the chat message history settings\nDefault:\n500 messages minimum\nAfter 500 messages, the oldest will be removed if they are older than 15 minutes')
+          if settings.chatPurge then
+            ui.indent(settingsIndentOffset())
+            settingsSlider('chatKeepSize', 10, 500, 'Always keep %.0f Messages', 'History will always keep at least this many messages regardless of old old they are')
+
+            settingsSlider('chatOlderThan', 1, 60, 'Remove if older than %.0f min', 'Messages older than this will be removed once the history reaches ' .. settings.chatKeepSize .. ' messages')
+            ui.unindent(settingsIndentOffset())
+          end
+
+          settingsCheckbox('Show Join/Leave Messages', 'connectionEvents', 'If enabled, shows server message when a player joins/leaves the server')
+          if settings.connectionEvents then
+            ui.indent(settingsIndentOffset())
+            settingsCheckbox('Friends Only', 'connectionEventsFriendsOnly', 'If enabled, only shows join/leave messages of friends')
+
+            settingsCheckbox('Hide Traffic', 'connectionEventsHideTraffic', 'If enabled, hides join/leave messages of hidden AssettoServer traffic cars')
+            ui.unindent(settingsIndentOffset())
+          end
+
+          settingsCheckbox('Hide Kick Ban Messages', 'chatHideKickBan', 'If enabled, hides kick and ban messages from other players')
+
+          settingsCheckbox('Hide Annoying Messages', 'chatHideAnnoying', 'If enabled, hides annoying messages from apps such as Pit Lane Penalty and Real Penalty')
+          if settings.chatHideAnnoying then
+            ui.indent(settingsIndentOffset())
+            settingsCheckbox('AssettoServer Race Challenge Results', 'chatHideRaceMsg', 'If enabled, also hides "X just beat Y in a Race" server messages')
+            ui.unindent(settingsIndentOffset())
+          end
+        end)
+
+        ui.tabItem('Notifications', function()
+          settingsCheckbox('Enable Notifications', 'notifBannerEnabled', 'If enabled, shows a drop-down notification for new messages\nRespects your Filters tab rules:\nIf you have disables connection event messages, no notifcation will be shown even if enabled here')
+          if settings.notifBannerEnabled then
+            ui.indent(settingsIndentOffset())
+            settingsSlider('notifBannerDuration', 1, 60, 'Show Notification for: %.0f seconds', 'How long the notification banner should be displayed', function(newValue) notification.duration = newValue end)
+
+            settingsCheckbox('Use for New Messages', 'notifBannerMessages', 'If enabled, shows a notification for new chat messages')
+
+            settingsCheckbox('Use for Connection Events', 'notifBannerConnections', 'If enabled, shows a notification when a player joins/leaves the server')
+            if settings.notifBannerConnections then
+              ui.indent(settingsIndentOffset())
+              settingsCheckbox('Show Player Selected Car', 'notifBannerCarName', "If enabled, includes the player's car in connection event notifications")
+              ui.unindent(settingsIndentOffset())
+            end
+
+            settingsCheckbox('Hide When App Already Up', 'notifBannerHideWhenAppUp', 'If enabled, no notification banner is shown if the app is already maximized')
+
+            settingsCheckbox('Maximize App on Notification', 'notifBannerFullRaise', 'If enabled, the app maximizes for notifications instead of only peeking up to reveal the banner')
+
+            settingsCheckbox('Prioritize Server Messages', 'notifBannerServerPriority', 'If enabled, queued user chat notifications get skipped so server messages play back to back')
+
+            ui.unindent(settingsIndentOffset())
+          end
+        end)
       end)
-
-      if settings.appMove then
-        ui.indent()
-
-        settingsSlider('appMoveTimer', 1, 120, 'Inactivity: %.0f seconds', 'Time before app moves down.', function(newVal) movement.timer = newVal end)
-
-        settingsSlider('appMoveSpeed', 1, 20, 'Speed: %.0f', 'How fast the app should move up/down.')
-
-        ui.unindent()
-      end
-
-      settingsCheckbox('Chat History Settings', 'chatPurge', 'If enabled, allows you to change the chat message history settings.')
-
-      if settings.chatPurge then
-        ui.indent()
-
-        settingsSlider('chatKeepSize', 10, 500, 'Always keep %.0f Messages')
-        settingsSlider('chatOlderThan', 1, 60, 'Remove if older than %.0f min')
-
-        ui.unindent()
-      end
-
-      settingsCheckbox('Use Colored Usernames', 'chatUsernameColor', 'If enabled, uses colored usernames if possible.\nServers can overwrite CM tag colors.')
-
-      settingsCheckbox('Show Timestamps', 'chatShowTimestamps', 'If enabled, shows message timestamps.')
-
-      settingsCheckbox('Show Join/Leave Messages', 'connectionEvents', 'If enabled, shows server message when a player joins/leaves the server.')
-      if settings.connectionEvents then
-        ui.indent()
-
-        settingsCheckbox('Hide Traffic', 'connectionEventsHideTraffic', 'If enabled, hides join/leave messages of hidden AssettoServer traffic cars.')
-        settingsCheckbox('Friends Only', 'connectionEventsFriendsOnly', 'If enabled, only shows join/leave messages of friends.')
-
-        ui.unindent()
-      end
-
-      settingsCheckbox('Highlight Latest Message', 'chatLatestBold', 'If enabled, text of the latest message will always be bold.', function()
-        local latestMsg = chat.messages[chat.latestNonServerMessage]
-        if latestMsg then latestMsg.cache = nil end
-      end)
-
-      settingsCheckbox('Hide Kick Ban Messages', 'chatHideKickBan', 'If enabled, hides kick and ban messages from other players.')
-
-      settingsCheckbox('Hide Annoying Messages', 'chatHideAnnoying', 'If enabled, hides annoying messages from apps such as Pit Lane Penalty and Real Penalty.')
-
-      if settings.chatHideAnnoying then
-        ui.indent()
-
-        settingsCheckbox('Include AssettoServer Race Challenge Messages', 'chatHideRaceMsg', 'If enabled, also hides "X just beat Y in a Race." server messages.')
-
-        ui.unindent()
-      end
     end)
 
     ui.tabItem('Audio', function()
-      settingsCheckbox('Enable Audio', 'enableAudio', 'Toggles all app audio.')
+      settingsCheckbox('Enable Audio', 'enableAudio', 'Toggles all app audio')
 
-      ui.indent()
       if settings.enableAudio then
-        settingsCheckbox('Enable Keystroke Audio', 'enableKeyboard', 'Toggles keystroke sounds when typing.')
+        ui.tabBar('AudioTabs', function()
+          ui.tabItem('Typing', function()
+            settingsCheckbox('Enable Keystroke Audio', 'enableKeyboard', 'If enabled, the app will play keystroke sounds when typing')
+            if settings.enableKeyboard then
+              ui.indent(settingsIndentOffset())
+              settingsSlider('volumeKeyboard', 0.1, 10, 'Keystroke Volume: %.1f')
+              if ui.modernButton('Play Test Keystroke', 0, ui.ButtonFlags.None, nil, modernButtonOffset(), nil) then playTestAudio(audio.keyboard) end
+              ui.unindent(settingsIndentOffset())
+            end
+          end)
 
-        if settings.enableKeyboard then
-          ui.indent()
+          ui.tabItem('Messages', function()
+            settingsCheckbox('Enable Message Audio', 'enableMessage', 'If enabled, the app will play message recieved sounds')
+            if settings.enableMessage then
+              ui.indent(settingsIndentOffset())
+              settingsSlider('volumeMessage', 0.1, 10, 'Message Volume: %.1f')
+              if ui.modernButton('Play Test Message', 0, ui.ButtonFlags.None, nil, modernButtonOffset(), nil) then playTestAudio(audio.message) end
 
-          settingsSlider('volumeKeyboard', 0.1, 10, 'Keystroke Volume: %.1f')
+              settingsCheckbox('Friend Only', 'messagesFriendsOnly', 'If enabled, the app will only play the message received sound for player messages from friends')
 
-          if ui.modernButton('Play Test Keystroke', 0, ui.ButtonFlags.None, nil, modernButtonOffset(), nil) then playTestAudio(audio.keyboard) end
+              settingsCheckbox('Server Messages', 'messagesServer', 'If enabled, the app will play the message received sound for messages from the server')
+              ui.unindent(settingsIndentOffset())
+            end
+          end)
 
-          ui.unindent()
-        end
+          ui.tabItem('Notifications', function()
+            settingsCheckbox('Enable Notification Audio', 'enableNotification', 'If enabled, the app will play notification sounds')
+            if settings.enableNotification then
+              ui.indent(settingsIndentOffset())
+              settingsSlider('volumeNotification', 0.1, 10, 'Notification Volume: %.1f')
+              if ui.modernButton('Play Test Notification', 0, ui.ButtonFlags.None, nil, modernButtonOffset(), nil) then playTestAudio(audio.notification) end
 
-        settingsCheckbox('Enable Message Audio', 'enableMessage', 'Toggles message sounds.')
+              settingsCheckbox('@' .. player.driverName .. ' mentions', 'notificationsMentions', 'If enabled, the app will play the notification sound when you are mentioned in chat')
 
-        if settings.enableMessage then
-          ui.indent()
-
-          settingsSlider('volumeMessage', 0.1, 10, 'Message Volume: %.1f')
-
-          if ui.modernButton('Play Test Message', 0, ui.ButtonFlags.None, nil, modernButtonOffset(), nil) then playTestAudio(audio.message) end
-
-          settingsCheckbox('Non-Friend Messages', 'messagesNonFriends', 'Plays message received sound for messages from non-friends.')
-          settingsCheckbox('Server Messages', 'messagesServer', 'Plays message received sound for messages from the server.')
-
-          ui.unindent()
-        end
-
-        settingsCheckbox('Enable Notification Audio', 'enableNotification', 'Toggles notification sounds.')
-
-        if settings.enableNotification then
-          ui.indent()
-
-          settingsSlider('volumeNotification', 0.1, 10, 'Notification Volume: %.1f')
-
-          if ui.modernButton('Play Test Notification', 0, ui.ButtonFlags.None, nil, modernButtonOffset(), nil) then playTestAudio(audio.notification) end
-
-          settingsCheckbox('@' .. player.driverName .. ' mentions', 'notificationsMentions', 'Plays notification when you are mentioned in chat.')
-          settingsCheckbox('Friend Messages', 'notificationsFriendMessages', 'Plays notification when friend sends a chat message.')
-          if settings.connectionEvents then settingsCheckbox('Friend Join/Leave', 'notificationsFriendConnections', 'Plays notification when friend joins/leaves the server.') end
-
-          ui.unindent()
-        end
-      end
-    end)
-
-    ui.tabItem('Coloring', function()
-      settingsCheckbox('Enable Custom Coloring', 'customColor', 'If enabled, allows you to recolor certain elements.', function() updateColors() end)
-
-      if settings.customColor then
-        local colorPickerWidth = 132 * ac.getUI().uiScale
-        ui.columns(2, false)
-        ui.text('Message Color Own')
-        ui.setNextItemWidth(colorPickerWidth)
-        local messageColorSelfChange = ui.colorPicker('Display Color Picker', settings.messageColorSelf, flags.colorpicker)
-        if ui.modernButton('Reset to default' .. '\u{200B}', 0, ui.ButtonFlags.None, nil, modernButtonOffset(), nil) then
-          settings.messageColorSelf = colors.iMessageBlue:clone()
-          updateColors()
-        end
-
-        ui.nextColumn()
-
-        ui.text('Message Color Friends')
-        ui.setNextItemWidth(colorPickerWidth)
-        local messageColorFriendChange = ui.colorPicker('Text Color Picker', settings.messageColorFriend, flags.colorpicker)
-        if ui.modernButton('Reset to default' .. '\u{200C}', 0, ui.ButtonFlags.None, nil, modernButtonOffset(), nil) then
-          settings.messageColorFriend = colors.iMessageGreen:clone()
-          updateColors()
-        end
-
-        if messageColorFriendChange or messageColorSelfChange then
-          settings.messageColorSelf = settings.messageColorSelf:clone()
-          settings.messageColorFriend = settings.messageColorFriend:clone()
-          updateColors()
-        end
+              settingsCheckbox('Friend Messages', 'notificationsFriendMessages', 'If enabled, the app will play the notification sound when a friend sends a chat message')
+              if settings.connectionEvents then settingsCheckbox('Friend Join/Leave', 'notificationsFriendConnections', 'If enabled, the app will play the notification sound when a friend joins/leaves the server') end
+              ui.unindent(settingsIndentOffset())
+            end
+          end)
+        end)
       end
     end)
 
     if carKeyFile then
       ui.tabItem('Focus Mode', function()
         ui.textColored('IF YOU ENABLE THIS I WILL TAKE NO RESPONSIBILITY\nWHEN YOU IGNORE ADMIN MESSAGES AND GET BANNED', rgbm.colors.red)
-
-        settingsCheckbox('Enable Focus Mode', 'focusMode', 'If enabled, only displays messages from yourself, friends and the server.')
+        settingsCheckbox('Enable Focus Mode', 'focusMode', 'If enabled, only displays messages from yourself, friends and the server')
       end)
     end
   end)
+
+  if not hideFooter then
+    ui.separator()
+    ui.textColored('CTRL + LEFT CLICK on sliders to type in exact values', colors.footerText)
+  end
 end
 
 --#endregion
@@ -2236,6 +2571,7 @@ function script.windowMain(dt)
   end
 
   updateAppMovement(dt)
+  updateNotifications(dt)
   automaticModeSwitch()
   updateSongInfo()
 
@@ -2252,6 +2588,7 @@ function script.windowMain(dt)
     drawDynamicIsland()
     drawSongInfo()
     drawMessages()
+    drawNotifications()
     drawEmojiPicker()
     drawInputCustom()
     drawiPhone()
