@@ -10,8 +10,6 @@ local settings = ac.storage {
 
   darkMode = false,
   darkModeAuto = false,
-  darkModeAutoDarkAngle = 84,
-  darkModeAutoLightAngle = 84,
   darkModeAutoDarkTime = 19,
   darkModeAutoLightTime = 9,
 
@@ -982,7 +980,7 @@ local function playTestAudio(tbl)
   return playAudio(t[audioIndexes[key]])
 end
 
----Switches the phone mode automatically based on the current time or sun angle.
+---Switches the phone mode automatically based on the current time.
 local function automaticModeSwitch()
   if not settings.darkModeAuto then
     if player.phoneMode then
@@ -993,26 +991,12 @@ local function automaticModeSwitch()
   end
 
   local sim = ac.getSim()
-  --ac.getSunAngle() is broken online before 0.2.10 (3459)
-  if player.cspVersion >= 3459 then
-    local sunAngle = ac.getSunAngle()
-    local timeHours = sim.timeHours
+  local currentTime = sim.timeHours + sim.timeMinutes / 60
+  local shouldBeDark = not (currentTime > settings.darkModeAutoLightTime and currentTime < settings.darkModeAutoDarkTime)
 
-    local shouldBeDark = false
-    if (timeHours > 12 and sunAngle > settings.darkModeAutoDarkAngle) or (timeHours < 12 and sunAngle > settings.darkModeAutoLightAngle) then shouldBeDark = true end
-
-    if player.phoneMode ~= shouldBeDark then
-      player.phoneMode = shouldBeDark
-      updateColors()
-    end
-  else
-    local currentTime = sim.timeHours + sim.timeMinutes / 60
-    local shouldBeDark = not (currentTime > settings.darkModeAutoLightTime and currentTime < settings.darkModeAutoDarkTime)
-
-    if player.phoneMode ~= shouldBeDark then
-      player.phoneMode = shouldBeDark
-      updateColors()
-    end
+  if player.phoneMode ~= shouldBeDark then
+    player.phoneMode = shouldBeDark
+    updateColors()
   end
 end
 
@@ -2333,24 +2317,18 @@ function script.windowMainSettings()
 
             if settings.darkModeAuto then
               ui.indent(settingsIndentOffset())
-              if player.cspVersion >= 3459 then
-                ui.text('Current Sun Angle: ' .. math.round(ac.getSunAngle(), 1) .. '°')
-                settingsSlider('darkModeAutoDarkAngle', 0, 180, 'Evening Sun Angle: %.0f°', 'Sun angle at which the app will switch to dark mode\nLower values mean earlier in the day')
-                settingsSlider('darkModeAutoLightAngle', 0, 180, 'Morning Sun Angle: %.0f°', 'Sun angle at which the app will switch to light mode\nLower values mean later in the day')
-              else
-                local sim = ac.getSim()
-                ui.text(string.format('Current Time: %02d:%02d', sim.timeHours, sim.timeMinutes))
+              local sim = ac.getSim()
+              ui.text(string.format('Current Time: %02d:%02d', sim.timeHours, sim.timeMinutes))
 
-                local darkVal = math.floor(settings.darkModeAutoDarkTime * 2 + 0.5)
-                local darkTimeStr = string.format('Dark Mode After: %02d:%02d', math.floor(darkVal / 2), (darkVal % 2) * 30)
-                settings.darkModeAutoDarkTime = ui.slider('##darkModeAutoDarkTime', darkVal, 0, 47, darkTimeStr, true) / 2
-                lastItemHoveredTooltip('The time at which the app will switch to dark mode')
+              local darkVal = math.floor(settings.darkModeAutoDarkTime * 2 + 0.5)
+              local darkTimeStr = string.format('Dark Mode After: %02d:%02d', math.floor(darkVal / 2), (darkVal % 2) * 30)
+              settings.darkModeAutoDarkTime = ui.slider('##darkModeAutoDarkTime', darkVal, 0, 47, darkTimeStr, true) / 2
+              lastItemHoveredTooltip('The time at which the app will switch to dark mode')
 
-                local lightVal = math.floor(settings.darkModeAutoLightTime * 2 + 0.5)
-                local lightTimeStr = string.format('Light Mode After: %02d:%02d', math.floor(lightVal / 2), (lightVal % 2) * 30)
-                settings.darkModeAutoLightTime = ui.slider('##darkModeAutoLightTime', lightVal, 0, 47, lightTimeStr, true) / 2
-                lastItemHoveredTooltip('The time at which the app will switch to light mode')
-              end
+              local lightVal = math.floor(settings.darkModeAutoLightTime * 2 + 0.5)
+              local lightTimeStr = string.format('Light Mode After: %02d:%02d', math.floor(lightVal / 2), (lightVal % 2) * 30)
+              settings.darkModeAutoLightTime = ui.slider('##darkModeAutoLightTime', lightVal, 0, 47, lightTimeStr, true) / 2
+              lastItemHoveredTooltip('The time at which the app will switch to light mode')
               ui.unindent(settingsIndentOffset())
             end
           end
