@@ -87,10 +87,10 @@ local colors = {
   glowColor = rgbm(1, 1, 1, 0.65),
   displayColorLight = rgbm.colors.white,
   displayColorDark = rgbm.colors.black,
-  headerColorLight = rgbm(0, 0, 0, 0.033),
-  headerColorDark = rgbm(1, 1, 1, 0.075),
-  headerLineColorLight = rgbm(0, 0, 0, 0.15),
-  headerLineColorDark = rgbm(1, 1, 1, 0.075),
+  headerColorLight = rgbm(0.96, 0.96, 0.96, 1),
+  headerColorDark = rgbm(0.075, 0.075, 0.075, 1),
+  headerLineColorLight = rgbm(0.85, 0.85, 0.85, 1),
+  headerLineColorDark = rgbm(0.2, 0.2, 0.2, 1),
   iMessageBlue = rgbm(0, 0.49, 1, 1),
   iMessageLightGray = rgbm(0.85, 0.85, 0.85, 1),
   iMessageDarkGray = rgbm(0.15, 0.15, 0.15, 1),
@@ -98,8 +98,6 @@ local colors = {
   iMessageSelected = rgbm(0, 0.49, 1, 0.33),
   emojiPickerButtonLight = rgbm(0, 0, 0, 0.33),
   emojiPickerButtonDark = rgbm(1, 1, 1, 0.33),
-  emojiPickerButtonBGLight = rgbm(0, 0, 0, 0.1),
-  emojiPickerButtonBGDark = rgbm(1, 1, 1, 0.15),
   notifBgColorLight = rgbm(0.88, 0.88, 0.88, 1),
   notifBgColorDark = rgbm(0.1, 0.1, 0.1, 1),
   notifBgBlurColorLight = rgbm(1, 1, 1, 1),
@@ -119,7 +117,8 @@ local colors = {
     messageFriendText = rgbm(),
     input = rgbm(),
     emojiPicker = rgbm(),
-    emojiPickerBG = rgbm(),
+    emojiPickerOutline = rgbm(),
+    emojiPickerActive = rgbm(),
     notifBg = rgbm(),
     notifBgBlur = rgbm(),
     notifTitle = rgbm(),
@@ -140,7 +139,7 @@ local app = {
     phoneAtlasSize = vec2(),
     phoneCamera = '.\\src\\img\\cam.png',
     pingAtlasPath = '.\\src\\img\\connection.png',
-    emojiPicker = '.\\src\\img\\picker.png',
+    emojiIcons = '.\\src\\img\\emojipicker.png',
     defaultCover = '.\\src\\img\\player.png',
     defaultMessage = '.\\src\\img\\messages.png',
     ready = false,
@@ -237,7 +236,9 @@ local chat = {
   popup = {
     hovered = nil,
   },
-  emojis = {},
+  emojiGroups = {},
+  emojiActiveGroup = 1,
+  emojiActiveGroupDrawn = 0,
   usernameColors = {},
   latestNonServerMessage = nil,
   msgCacheGen = 0,
@@ -540,12 +541,12 @@ local function sendAppMessage(message, deleteAfter)
   if deleteAfter then setTimeout(function() table.remove(chat.messages, msgIndex) end, deleteAfter) end
 end
 
----Loads emojis from the data_emoji.txt file, fully supporting emoji grapheme clusters.
+---Loads emojis from src/emj/emojis.txt, fully supporting emoji grapheme clusters, and groups them by category.
 ---Disclosure: this piece of shit was written by Claude, it is black magic to me.
 local function loadEmojis()
-  local path = ac.getFolder(ac.FolderID.ExtCfgSys) .. '\\data_emoji.txt'
+  local path = ac.getFolder(ac.FolderID.ScriptOrigin) .. '\\src\\emj\\emojis.txt'
   local f = io.open(path, 'r')
-  if not f then return {} end
+  if not f then return end
   local content = f:read('*a')
   f:close()
 
@@ -680,9 +681,14 @@ local function loadEmojis()
   end
 
   -- --- Main file processing -------------------------------------------------
-  local emojis = {}
+  local groups = {}
+  local currentGroup = nil
   for line in content:gmatch('[^\r\n]+') do
-    if line:byte(1) ~= 35 and line:find('%S') then
+    local groupName = line:match('^#%s*group:%s*(.+)$')
+    if groupName then
+      currentGroup = { name = groupName, emojis = {} }
+      groups[#groups + 1] = currentGroup
+    elseif currentGroup and line:find('%S') then
       local pos = 1
       while pos <= #line do
         local b = line:byte(pos)
@@ -690,14 +696,15 @@ local function loadEmojis()
           pos = pos + 1
         else
           local cluster, newPos = getNextCluster(line, pos)
-          if cluster ~= '' then emojis[#emojis + 1] = cluster end
+          if cluster ~= '' then currentGroup.emojis[#currentGroup.emojis + 1] = cluster end
           pos = newPos
         end
       end
     end
   end
 
-  chat.emojis = emojis
+  chat.emojiGroups = groups
+  chat.emojiActiveGroup = math.min(chat.emojiActiveGroup, math.max(#groups, 1))
 end
 
 ---Populates the nonTrafficPlayers table with the names of players that are not hidding labels. AssettoServer traffic cars if HideAiCars is enabled for example.
@@ -716,6 +723,10 @@ local function getActiveNotification()
   end
 end
 
+---@return number @the current max chat input length in characters
+---Chat input max length to keep chatbox from growing too tall.
+local function getInputMaxLen() return math.floor(490 * (13 / settings.chatFontSize) ^ 2) end
+
 --#endregion
 
 --#region GENERAL LOGIC FUNCTIONS
@@ -728,8 +739,11 @@ local function updateColors()
   colors.final.headerLine:set(pickThemeColor(colors.headerLineColorLight, colors.headerLineColorDark))
   colors.final.input:set(pickThemeColor(colors.transparent.black50, colors.transparent.white50))
   colors.final.message:set(pickThemeColor(colors.iMessageLightGray, colors.iMessageDarkGray))
+
   colors.final.emojiPicker:set(pickThemeColor(colors.emojiPickerButtonLight, colors.emojiPickerButtonDark))
-  colors.final.emojiPickerBG:set(pickThemeColor(colors.emojiPickerButtonBGLight, colors.emojiPickerButtonBGDark))
+  colors.final.emojiPickerOutline:set(pickThemeColor(colors.transparent.black10, colors.transparent.white10))
+  colors.final.emojiPickerActive:set(rgbm(0, 0.49, 1, 1))
+
   colors.final.notifBg:set(pickThemeColor(colors.notifBgColorLight, colors.notifBgColorDark))
   colors.final.notifBgBlur:set(pickThemeColor(colors.communityAverage:clone():mul(colors.notifBgBlurColorLight), colors.communityAverage:clone():mul(colors.notifBgBlurColorDark)))
   colors.final.notifTitle:set(pickThemeColor(colors.notifTitleColorLight, colors.notifTitleColorDark))
@@ -1183,7 +1197,7 @@ local function handleKeyboardInput()
   local keyboardInput = ui.captureKeyboard(false, true)
   local msgLen = utf8len(chat.input.text) > 0
   local typed = keyboardInput:queue()
-  local inputMaxLen = math.floor(490 * (13 / settings.chatFontSize) ^ 2)
+  local inputMaxLen = getInputMaxLen()
 
   if ui.keyPressed(ui.Key.Backspace) or ui.keyPressed(ui.Key.Delete) then
     playAudio(audio.keyboard.delete)
@@ -1464,11 +1478,21 @@ end
 
 ---Draws the header of the chat window.
 local function drawHeader()
+  if not communities then return error('Communities table does not exist, probably caused by a broken app install') end
+
+  local community = communities[player.serverCommunity]
+  if not community.ready and ui.isImageReady(community.image) then
+    community.ready = true
+    getAverageCommunityImageColor(community.image)
+  end
+
+  if chat.emojiPicker then return end
+
   local headerHeight = 100
   local cornerRadius = 30
 
   ui.drawRectFilled(scaleVec2(11, 9, true), scaleVec2(app.size.x - 11, headerHeight, true), colors.final.header, scaleNum(cornerRadius), ui.CornerFlags.Top)
-  ui.drawSimpleLine(scaleVec2(11, headerHeight, true), scaleVec2(app.size.x - 11, headerHeight, true), colors.final.headerLine)
+  ui.drawSimpleLine(scaleVec2(11, headerHeight, true), scaleVec2(app.size.x - 11, headerHeight, true), colors.final.headerLine, scaleNum(1))
 
   local winHalf = scaleNum(app.size.x / 2)
   local text = 'Server Chat'
@@ -1497,14 +1521,6 @@ local function drawHeader()
   local imgSize = scaleVec2(36, 36)
   local imgPos = scaleVec2(129, 47, true)
   local imgRounding = scaleNum(20)
-
-  if not communities then return error('Communities table does not exist, probably caused by a broken app install') end
-
-  local community = communities[player.serverCommunity]
-  if not community.ready and ui.isImageReady(community.image) then
-    community.ready = true
-    getAverageCommunityImageColor(community.image)
-  end
 
   if community.ready then
     ui.drawImageRounded(community.image, imgPos, imgPos + imgSize, imgRounding, ui.CornerFlags.All)
@@ -1856,8 +1872,11 @@ end
 local function drawEmojiPicker()
   local buttonPos = scaleVec2(28, app.size.y - 17, true)
   local buttonSize = scaleVec2(12, 12)
-  local buttonBgRad = scaleNum(12)
   local emojiSizePicker = scaleNum(20)
+  local groupIconDrawSize = scaleVec2(23, 23)
+  local iconHoverRounding = scaleNum(5)
+  local groupCount = #chat.emojiGroups
+  local iconStep = 1 / math.max(groupCount, 1)
 
   ui.pushDWriteFont(app.font.regular)
 
@@ -1865,28 +1884,31 @@ local function drawEmojiPicker()
     chat.emojiCharSize = ui.measureDWriteText('😀', emojiSizePicker)
     chat.emojiCharSizeScale = app.scale
   end
+
   local emojiCharSize = chat.emojiCharSize
+  if not emojiCharSize then return end
 
   ui.setCursor(buttonPos)
   local cursorPos = ui.getCursor()
-  ui.drawImage(app.images.emojiPicker, cursorPos - buttonSize, cursorPos + buttonSize, colors.final.emojiPicker)
+  local buttonHovered = player.isOnline and app.hovered and ui.rectHovered(cursorPos - buttonSize, cursorPos + buttonSize)
+  if player.isOnline and app.hovered then chat.emojiPickerHovered = buttonHovered end
+
+  local spacing = scaleVec2(2, 2)
+  if buttonHovered then ui.drawRectFilled(cursorPos - (buttonSize + spacing), cursorPos + (buttonSize + spacing), colors.iMessageSelected, iconHoverRounding - scaleNum(1)) end
+
+  local emojiPickerIconColor = chat.emojiPicker and colors.final.emojiPickerActive or colors.final.emojiPicker
+  ui.drawImage(app.images.emojiIcons, cursorPos - buttonSize, cursorPos + buttonSize, emojiPickerIconColor, vec2(0, 0), vec2(iconStep, 1))
 
   if not player.isOnline then
     ui.popDWriteFont()
     return
   end
 
-  if app.hovered then
-    chat.emojiPickerHovered = ui.rectHovered(cursorPos - buttonSize, cursorPos + buttonSize)
-
-    if chat.emojiPickerHovered and ui.mouseReleased(ui.MouseButton.Left) then
+  if buttonHovered then
+    if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
+    if ui.mouseReleased(ui.MouseButton.Left) then
       chat.emojiPicker = not chat.emojiPicker
       playAudio(audio.keyboard.enter)
-    end
-
-    if chat.emojiPickerHovered then
-      if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
-      ui.drawEllipseFilled(buttonPos, buttonBgRad, colors.final.emojiPickerBG, 100)
     end
   end
 
@@ -1895,50 +1917,100 @@ local function drawEmojiPicker()
     return
   end
 
-  local windowSize = scaleVec2(185, 235)
-  local winHeight = scaleNum(app.size.y)
-  local windowPosX = scaleNum(18)
-  local windowPosY = winHeight - scaleNum(272) - chat.input.offset + movement.smooth
+  local groupRowHeight = scaleNum(34)
+  local windowSize = scaleVec2(266, 454 - (chat.input.offset / app.scale))
+  local windowPos = scaleVec2(12, 47, true)
+  local gridSize = vec2(windowSize.x, windowSize.y - groupRowHeight)
 
-  ui.setCursor(vec2(windowPosX, windowPosY))
+  ui.setCursor(windowPos)
   ui.childWindow('EmojiPickerBG', windowSize, false, flags.emojiWindow, function()
-    ui.drawRectFilled(vec2(0, 0), windowSize, colors.final.message, scaleNum(10))
+    ui.drawRectFilled(vec2(0, 0), windowSize, colors.final.display)
 
-    local emojiStartPos = scaleVec2(5, 5)
-    local emojiOffset = scaleVec2(0, 2)
-    local emojiSpacing = emojiOffset.y
-    local emojisPerRow = 6
-    local emojiCount = #chat.emojis
-    local bottomPadding = scaleNum(8)
+    local activeGroup = chat.emojiGroups[chat.emojiActiveGroup]
+    if activeGroup then
+      local emojiOffset = scaleVec2(0, 3)
+      local emojiSpacing = emojiOffset.y
+      local emojis = activeGroup.emojis
+      local emojiCount = #emojis
+      local emojisPerRow = math.max(1, math.floor((gridSize.x + emojiSpacing) / (emojiCharSize.x + emojiSpacing)))
+      local usedWidth = emojisPerRow * emojiCharSize.x + (emojisPerRow - 1) * emojiSpacing
+      local emojiStartPos = vec2((gridSize.x - usedWidth) / 2, 0)
+      local rowCount = math.ceil(emojiCount / emojisPerRow)
+      local contentHeight = emojiStartPos.y + rowCount * (emojiCharSize.y + emojiSpacing)
 
-    ui.setCursor(emojiStartPos)
-    ui.beginGroup(windowSize.x)
+      ui.setNextWindowContentSize(vec2(0, contentHeight))
+      ui.childWindow('EmojiPickerGrid', gridSize, false, flags.emojiWindow, function()
+        local gridHovered = ui.windowHovered()
+        if gridHovered then chat.emojiPickerHovered = true end
 
-    for i = 1, emojiCount do
-      local itemCursor = ui.getCursor()
-      if ui.rectHovered(itemCursor, itemCursor + emojiCharSize) then
-        chat.emojiPickerHovered = true
-        if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
-        ui.drawRectFilled(itemCursor + (emojiOffset / 2), itemCursor + emojiCharSize + (emojiOffset / 2), colors.iMessageSelected, scaleNum(5))
-      end
+        if chat.emojiActiveGroupDrawn ~= chat.emojiActiveGroup then
+          ui.setScrollY(0, false, false)
+          chat.emojiActiveGroupDrawn = chat.emojiActiveGroup
+        end
 
-      ui.beginOutline()
-      ui.dwriteText(chat.emojis[i], emojiSizePicker)
-      ui.endOutline(colors.transparent.black10, scaleNum(2))
+        ui.setCursor(emojiStartPos)
+        ui.beginGroup(gridSize.x)
 
-      if ui.itemClicked(ui.MouseButton.Left, true) then
-        playAudio(audio.keyboard.keystroke)
-        if not chat.input.active then chat.input.active = true end
-        if chat.input.text == chat.input.placeholder then chat.input.text = '' end
-        chat.input.text = chat.input.text .. chat.emojis[i]
-      end
+        for i = 1, emojiCount do
+          local itemCursor = ui.getCursor()
+          if ui.rectHovered(itemCursor, itemCursor + emojiCharSize) then
+            chat.emojiPickerHovered = true
+            if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
+            ui.drawRectFilled(itemCursor + (emojiOffset / 2), itemCursor + emojiCharSize + (emojiOffset / 2), colors.iMessageSelected, scaleNum(5))
+          end
 
-      ui.sameLine(0, emojiSpacing)
-      if i % emojisPerRow == 0 and i ~= emojiCount then ui.newLine(emojiSpacing) end
+          ui.beginOutline()
+          ui.dwriteText(emojis[i], emojiSizePicker)
+          ui.endOutline(colors.final.emojiPickerOutline, scaleNum(1))
+
+          if ui.itemClicked(ui.MouseButton.Left, true) then
+            playAudio(audio.keyboard.keystroke)
+            if utf8len(chat.input.text .. emojis[i]) >= getInputMaxLen() then goto continue end
+            if not chat.input.active then chat.input.active = true end
+            if chat.input.text == chat.input.placeholder then chat.input.text = '' end
+            chat.input.text = chat.input.text .. emojis[i]
+          end
+
+          ::continue::
+
+          ui.sameLine(0, emojiSpacing)
+          if i % emojisPerRow == 0 and i ~= emojiCount then ui.newLine(emojiSpacing) end
+        end
+        ui.endGroup()
+
+        if gridHovered and ui.mouseWheel() ~= 0 then
+          local mouseWheel = (ui.mouseWheel() * -1) * scaleNum(settings.chatScrollDistance)
+          ui.setScrollY(mouseWheel, true, true)
+        end
+      end)
     end
 
-    ui.newLine(bottomPadding)
-    ui.endGroup()
+    ui.drawSimpleLine(vec2(0, gridSize.y), vec2(windowSize.x, gridSize.y), colors.final.headerLine, scaleNum(1))
+
+    local groupButtonWidth = windowSize.x / math.max(groupCount, 1)
+    for i = 1, groupCount do
+      local buttonStart = vec2((i - 1) * groupButtonWidth, gridSize.y)
+      local buttonEnd = buttonStart + vec2(groupButtonWidth, groupRowHeight)
+      local buttonCenter = (buttonStart + buttonEnd) / 2
+      local isGroupHovered = ui.rectHovered(buttonStart, buttonEnd)
+
+      if isGroupHovered then
+        ui.drawRectFilled(buttonCenter - (groupButtonWidth / 2.2), buttonCenter + (groupButtonWidth / 2.2), colors.iMessageSelected, iconHoverRounding)
+        ui.tooltip(app.tooltipPadding, function() ui.text(chat.emojiGroups[i].name) end)
+      end
+
+      local iconColor = i == chat.emojiActiveGroup and colors.final.emojiPickerActive or colors.final.emojiPicker
+      ui.drawImage(app.images.emojiIcons, buttonCenter - (groupIconDrawSize / 2), buttonCenter + (groupIconDrawSize / 2), iconColor, vec2((i - 1) * iconStep, 0), vec2(i * iconStep, 1))
+
+      if isGroupHovered then
+        chat.emojiPickerHovered = true
+        if not ui.isMouseDragging(ui.MouseButton.Left, 0) or i == chat.emojiActiveGroup then ui.setMouseCursor(ui.MouseCursor.Hand) end
+        if i ~= chat.emojiActiveGroup and ui.mouseReleased(ui.MouseButton.Left) then
+          chat.emojiActiveGroup = i
+          playAudio(audio.keyboard.enter)
+        end
+      end
+    end
   end)
 
   ui.popDWriteFont()

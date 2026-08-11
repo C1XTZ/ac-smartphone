@@ -22,8 +22,8 @@ If you're looking for a more "oldschool" feel, try my [Mobilephone](https://gith
     ```
     ![](https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/.github/img/communityexample.png)
 - **In-Game Chat** – Hover over usernames to see information (right-click to open user options)
-- **iOS Message Notifications** - Makes the app move enough to reveal the notification, giving back even more screen space. 
-- **Emoji Picker** – Same emojis as the standard chat app
+- **iOS Message Notifications** - Makes the app move enough to reveal the notification, saving even more screen space.
+- **Emoji Picker** – Every working emoji, divided into 9 groups available to satisfy your GenZ needs 🥀☠️🔥
 - **iOS 18 Sounds** – Keystrokes, messages, and notification sounds
 - **Message Filtering** – Hides spam from other apps
   - Example: `PLP: running version 1.21, 2-60-3-True-3.3-0.9-3-2-8-5-0|C1XTZ`
