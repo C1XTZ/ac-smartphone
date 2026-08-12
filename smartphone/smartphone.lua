@@ -545,134 +545,243 @@ end
 ---Disclosure: this piece of shit was written by Claude, it is black magic to me.
 local function loadEmojis()
   local path = ac.getFolder(ac.FolderID.ScriptOrigin) .. '\\src\\emj\\emojis.txt'
-  local f = io.open(path, 'r')
+  local f = io.open(path, 'rb')
   if not f then return end
+
   local content = f:read('*a')
   f:close()
 
-  -- UTF-8 helpers -----------------------------------------------------------
-  local VS16 = '\239\184\143' -- U+FE0F Variation Selector-16
-  local ZWJ = '\226\128\141' -- U+200D Zero Width Joiner
+  -- UTF-8 constants
+  local VS16 = '\239\184\143' -- U+FE0F
+  local ZWJ = '\226\128\141' -- U+200D
 
-  local function codepoint_bytes(first_byte)
-    if first_byte >= 0xF0 then
-      return 4
-    elseif first_byte >= 0xE0 then
-      return 3
-    elseif first_byte >= 0xC0 then
-      return 2
-    else
-      return 1
+  local function is_continuation_byte(b) return b and b >= 0x80 and b <= 0xBF end
+
+  local function decode_utf8(line, pos)
+    local b1 = line:byte(pos)
+    if not b1 then return nil, nil end
+
+    -- ASCII
+    if b1 < 0x80 then return b1, 1 end
+
+    -- 2-byte sequence
+    if b1 >= 0xC2 and b1 <= 0xDF then
+      local b2 = line:byte(pos + 1)
+
+      if not is_continuation_byte(b2) then return nil, nil end
+
+      local cp = (b1 - 0xC0) * 0x40 + (b2 - 0x80)
+
+      return cp, 2
     end
+
+    -- 3-byte sequence
+    if b1 >= 0xE0 and b1 <= 0xEF then
+      local b2 = line:byte(pos + 1)
+      local b3 = line:byte(pos + 2)
+
+      if not is_continuation_byte(b2) or not is_continuation_byte(b3) then return nil, nil end
+
+      -- Reject overlong encodings and UTF-16 surrogate range.
+      if b1 == 0xE0 and b2 < 0xA0 then return nil, nil end
+
+      if b1 == 0xED and b2 >= 0xA0 then return nil, nil end
+
+      local cp = (b1 - 0xE0) * 0x1000 + (b2 - 0x80) * 0x40 + (b3 - 0x80)
+
+      return cp, 3
+    end
+
+    -- 4-byte sequence
+    if b1 >= 0xF0 and b1 <= 0xF4 then
+      local b2 = line:byte(pos + 1)
+      local b3 = line:byte(pos + 2)
+      local b4 = line:byte(pos + 3)
+
+      if not is_continuation_byte(b2) or not is_continuation_byte(b3) or not is_continuation_byte(b4) then return nil, nil end
+
+      -- Reject overlong encodings and > U+10FFFF.
+      if b1 == 0xF0 and b2 < 0x90 then return nil, nil end
+
+      if b1 == 0xF4 and b2 > 0x8F then return nil, nil end
+
+      local cp = (b1 - 0xF0) * 0x40000 + (b2 - 0x80) * 0x1000 + (b3 - 0x80) * 0x40 + (b4 - 0x80)
+
+      return cp, 4
+    end
+
+    return nil, nil
   end
 
-  -- Check if a 4‑byte codepoint is a skin‑tone modifier (U+1F3FB‑U+1F3FF)
-  local function is_skin_tone(b1, b2, b3, b4) return b1 == 0xF0 and b2 == 0x9F and b3 == 0x8F and b4 >= 0xBB and b4 <= 0xBF end
+  local function codepoint_to_string(line, pos, len) return line:sub(pos, pos + len - 1) end
 
-  -- Check if a 4‑byte codepoint is a Regional Indicator (U+1F1E6‑U+1F1FF)
-  local function is_regional_indicator(b1, b2, b3, b4) return b1 == 0xF0 and b2 == 0x9F and b3 == 0x87 and b4 >= 0xA6 and b4 <= 0xBF end
+  local function is_skin_tone(cp) return cp >= 0x1F3FB and cp <= 0x1F3FF end
 
-  -- Check if a 3‑byte codepoint is U+20E3 (combining enclosing keycap)
-  local function is_keycap(b1, b2, b3) return b1 == 0xE2 and b2 == 0x83 and b3 == 0xA3 end
+  local function is_regional_indicator(cp) return cp >= 0x1F1E6 and cp <= 0x1F1FF end
 
-  -- Check if a 4‑byte codepoint is a tag character (U+E0020‑U+E007F)
-  local function is_tag(b1, b2, b3, b4)
-    if b1 ~= 0xF3 or b2 ~= 0x80 then return false end
-    if b3 == 0x80 then return b4 >= 0xA0 and b4 <= 0xBF end
-    if b3 == 0x81 then return b4 >= 0x80 and b4 <= 0xBF end
-    return false
+  local function is_tag(cp) return cp >= 0xE0020 and cp <= 0xE007F end
+
+  local function consume_vs16(line, pos)
+    local cp, len = decode_utf8(line, pos)
+
+    if cp == 0xFE0F then return pos + len, line:sub(pos, pos + len - 1) end
+
+    return pos, ''
   end
 
-  -- Extract the next extended grapheme cluster starting at `pos`.
-  -- Returns the cluster string and the new position.
+  local function consume_skin_tone(line, pos)
+    local cp, len = decode_utf8(line, pos)
+
+    if cp and is_skin_tone(cp) then return pos + len, line:sub(pos, pos + len - 1) end
+
+    return pos, ''
+  end
+
+  local function consume_keycap(line, pos)
+    local cp, len = decode_utf8(line, pos)
+
+    if cp == 0x20E3 then return pos + len, line:sub(pos, pos + len - 1) end
+
+    return pos, ''
+  end
+
+  local function is_tag_end(cp) return cp == 0xE007F end
+
+  -- Consume subdivision flag tag sequence:
+  -- 🏴 + TAG SPEC + CANCEL TAG
+  local function consume_tag_sequence(line, pos, cluster)
+    local start = pos
+    local tagCount = 0
+
+    while pos <= #line do
+      local cp, len = decode_utf8(line, pos)
+
+      if not cp or not is_tag(cp) then break end
+
+      cluster = cluster .. codepoint_to_string(line, pos, len)
+      pos = pos + len
+      tagCount = tagCount + 1
+
+      if is_tag_end(cp) then return cluster, pos end
+    end
+
+    -- A tag character sequence without CANCEL TAG isn't a valid emoji tag sequence. Return bytes consumed so the caller can skip the whole partial run instead of just one byte.
+    if tagCount > 0 then return nil, pos - start end
+
+    return cluster, pos
+  end
+
   local function getNextCluster(line, pos)
     local start = pos
-    local b = line:byte(pos)
-    if not b or b <= 32 then return '', pos end
 
-    local cplen = codepoint_bytes(b)
-    local cluster = line:sub(pos, pos + cplen - 1)
-    pos = pos + cplen
+    local baseCp, baseLen = decode_utf8(line, pos)
+    if not baseCp then return nil, pos - start, 'invalid UTF-8' end
 
-    -- --- Special handling for multi‑codepoint bases ------------------------
-    -- 1) Pair of Regional Indicators → flag
-    if cplen == 4 then
-      local b1, b2, b3, b4 = string.byte(cluster, 1, 4)
-      if is_regional_indicator(b1, b2, b3, b4) and pos + 3 <= #line then
-        local nb1, nb2, nb3, nb4 = line:byte(pos, pos + 3)
-        if is_regional_indicator(nb1, nb2, nb3, nb4) then
-          cluster = cluster .. line:sub(pos, pos + 3)
-          pos = pos + 4
-          return cluster, pos -- no further modifiers on flags
+    local cluster = codepoint_to_string(line, pos, baseLen)
+    pos = pos + baseLen
+
+    -- Regional Indicator pair
+    if is_regional_indicator(baseCp) then
+      local cp2, len2 = decode_utf8(line, pos)
+
+      if not cp2 or not is_regional_indicator(cp2) then return nil, pos - start, 'singleton regional indicator' end
+
+      cluster = cluster .. codepoint_to_string(line, pos, len2)
+      pos = pos + len2
+
+      return cluster, pos
+    end
+
+    -- Black flag + tag sequence
+    if baseCp == 0x1F3F4 then
+      local taggedCluster, taggedPos = consume_tag_sequence(line, pos, cluster)
+
+      if taggedCluster == nil then
+        -- taggedPos is bytes consumed by the partial tag run;
+        -- add on what was consumed before it (the base flag itself).
+        return nil, (pos - start) + taggedPos, 'malformed tag sequence'
+      end
+
+      if taggedPos ~= pos then return taggedCluster, taggedPos end
+    end
+
+    -- VS16
+    do
+      local newPos, suffix = consume_vs16(line, pos)
+
+      if suffix ~= '' then
+        cluster = cluster .. suffix
+        pos = newPos
+      end
+    end
+
+    -- Skin tone
+    do
+      local newPos, suffix = consume_skin_tone(line, pos)
+
+      if suffix ~= '' then
+        cluster = cluster .. suffix
+        pos = newPos
+      end
+    end
+
+    -- Keycap
+    do
+      local newPos, suffix = consume_keycap(line, pos)
+
+      if suffix ~= '' then
+        cluster = cluster .. suffix
+        pos = newPos
+      end
+    end
+
+    -- ZWJ sequences
+    while true do
+      local cp, len = decode_utf8(line, pos)
+
+      if cp ~= 0x200D then break end
+
+      cluster = cluster .. codepoint_to_string(line, pos, len)
+      pos = pos + len
+
+      -- ZWJ must be followed by another code point.
+      local nextCp, nextLen = decode_utf8(line, pos)
+
+      if not nextCp then return nil, pos - start, 'ZWJ at end of cluster' end
+
+      -- A ZWJ element cannot itself start with another ZWJ.
+      if nextCp == 0x200D then return nil, pos - start, 'consecutive ZWJ' end
+
+      cluster = cluster .. codepoint_to_string(line, pos, nextLen)
+      pos = pos + nextLen
+
+      -- VS16 after ZWJ element.
+      do
+        local newPos, suffix = consume_vs16(line, pos)
+
+        if suffix ~= '' then
+          cluster = cluster .. suffix
+          pos = newPos
         end
       end
 
-      -- 2) Black flag U+1F3F4 followed by tag sequence → subdivision flag
-      if b1 == 0xF0 and b2 == 0x9F and b3 == 0x8F and b4 == 0xB4 then
-        while pos <= #line do
-          local tb = line:byte(pos)
-          local tlen = codepoint_bytes(tb)
-          if tlen ~= 4 then break end
-          local tb1, tb2, tb3, tb4 = line:byte(pos, pos + 3)
-          if not is_tag(tb1, tb2, tb3, tb4) then break end
-          cluster = cluster .. line:sub(pos, pos + 3)
-          pos = pos + 4
-          -- Cancel tag U+E007F ends the sequence
-          if tb1 == 0xF3 and tb2 == 0x80 and tb3 == 0x81 and tb4 == 0xBF then break end
+      -- Skin tone after ZWJ element.
+      do
+        local newPos, suffix = consume_skin_tone(line, pos)
+
+        if suffix ~= '' then
+          cluster = cluster .. suffix
+          pos = newPos
         end
-        return cluster, pos
-      end
-    end
-
-    -- --- Common modifiers that can follow any base --------------------------
-    -- Optional Variation Selector‑16
-    if pos + 2 <= #line and line:sub(pos, pos + 2) == VS16 then
-      cluster = cluster .. VS16
-      pos = pos + 3
-    end
-
-    -- Optional skin‑tone modifier (right after base+VS16)
-    if pos + 3 <= #line then
-      local sb1, sb2, sb3, sb4 = line:byte(pos, pos + 3)
-      if is_skin_tone(sb1, sb2, sb3, sb4) then
-        cluster = cluster .. line:sub(pos, pos + 3)
-        pos = pos + 4
-      end
-    end
-
-    -- Optional keycap combining character (after VS16, before ZWJ)
-    if pos + 2 <= #line then
-      local kb1, kb2, kb3 = line:byte(pos, pos + 2)
-      if is_keycap(kb1, kb2, kb3) then
-        cluster = cluster .. line:sub(pos, pos + 2)
-        pos = pos + 3
-      end
-    end
-
-    -- --- Zero or more ZWJ sequences -----------------------------------------
-    while pos + 2 <= #line and line:sub(pos, pos + 2) == ZWJ do
-      cluster = cluster .. ZWJ
-      pos = pos + 3
-
-      -- The character after ZWJ
-      if pos > #line then break end
-      local nb = line:byte(pos)
-      local nlen = codepoint_bytes(nb)
-      cluster = cluster .. line:sub(pos, pos + nlen - 1)
-      pos = pos + nlen
-
-      -- Optional VS16 after that character
-      if pos + 2 <= #line and line:sub(pos, pos + 2) == VS16 then
-        cluster = cluster .. VS16
-        pos = pos + 3
       end
 
-      -- Optional skin tone after this ZWJ element
-      if pos + 3 <= #line then
-        local sb1, sb2, sb3, sb4 = line:byte(pos, pos + 3)
-        if is_skin_tone(sb1, sb2, sb3, sb4) then
-          cluster = cluster .. line:sub(pos, pos + 3)
-          pos = pos + 4
+      -- Keycap after a ZWJ element.
+      do
+        local newPos, suffix = consume_keycap(line, pos)
+
+        if suffix ~= '' then
+          cluster = cluster .. suffix
+          pos = newPos
         end
       end
     end
@@ -680,24 +789,41 @@ local function loadEmojis()
     return cluster, pos
   end
 
-  -- --- Main file processing -------------------------------------------------
+  -- Parse file
   local groups = {}
   local currentGroup = nil
+
   for line in content:gmatch('[^\r\n]+') do
-    local groupName = line:match('^#%s*group:%s*(.+)$')
+    local groupName = line:match('^#%s*group:%s*(.-)%s*$')
+
     if groupName then
-      currentGroup = { name = groupName, emojis = {} }
+      currentGroup = {
+        name = groupName,
+        emojis = {},
+      }
+
       groups[#groups + 1] = currentGroup
     elseif currentGroup and line:find('%S') then
       local pos = 1
+
       while pos <= #line do
         local b = line:byte(pos)
+
         if b <= 32 then
           pos = pos + 1
         else
-          local cluster, newPos = getNextCluster(line, pos)
-          if cluster ~= '' then currentGroup.emojis[#currentGroup.emojis + 1] = cluster end
-          pos = newPos
+          local cluster, newPos, err = getNextCluster(line, pos)
+
+          if not cluster then
+            -- Don't silently accept malformed data.
+            ac.log(string.format('[emoji] malformed sequence in group "%s" at byte %d: %s', currentGroup.name, pos, err or 'unknown error'))
+
+            -- Recover by skipping exactly what was consumed by the malformed run (at least 1 byte) so a broken entry can't trap the parser or spam the log per byte.
+            pos = pos + math.max(1, newPos or 0)
+          else
+            currentGroup.emojis[#currentGroup.emojis + 1] = cluster
+            pos = newPos
+          end
         end
       end
     end
@@ -762,7 +888,7 @@ local function getAverageCommunityImageColor(imagePath)
 
   local imgSize = ui.imageSize(imagePath)
   if imgSize.x == 0 or imgSize.y == 0 then
-    print('Image not loaded or invalid')
+    ac.log('Image not loaded or invalid')
     return
   end
 
@@ -770,7 +896,7 @@ local function getAverageCommunityImageColor(imagePath)
   canvas:update(function() ui.drawImage(imagePath, vec2(0, 0), imgSize) end)
   canvas:accessData(function(err, data)
     if err then
-      print('Failed to access data: ' .. err)
+      ac.log('Failed to access data: ' .. err)
       return
     end
 
@@ -1959,6 +2085,7 @@ local function drawEmojiPicker()
         end
 
         ui.setCursor(emojiStartPos)
+        ui.beginOutline()
         ui.beginGroup(gridSize.x)
 
         for i = 1, emojiCount do
@@ -1969,9 +2096,7 @@ local function drawEmojiPicker()
             ui.drawRectFilled(itemCursor + (emojiOffset / 2), itemCursor + emojiCharSize + (emojiOffset / 2), colors.iMessageSelected, scaleNum(5))
           end
 
-          ui.beginOutline()
           ui.dwriteText(emojis[i], emojiSizePicker)
-          ui.endOutline(colors.final.emojiPickerOutline, scaleNum(1))
 
           if ui.itemClicked(ui.MouseButton.Left, true) then
             playAudio(audio.keyboard.keystroke)
@@ -1987,6 +2112,7 @@ local function drawEmojiPicker()
           if i % emojisPerRow == 0 and i ~= emojiCount then ui.newLine(emojiSpacing) end
         end
         ui.endGroup()
+        ui.endOutline(colors.final.emojiPickerOutline, scaleNum(1))
 
         if gridHovered and ui.mouseWheel() ~= 0 then
           local mouseWheel = (ui.mouseWheel() * -1) * scaleNum(settings.chatScrollDistance)
