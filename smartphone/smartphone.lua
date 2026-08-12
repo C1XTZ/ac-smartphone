@@ -800,15 +800,25 @@ local function getAverageCommunityImageColor(imagePath)
 end
 
 local appWindow = ac.accessAppWindow('IMGUI_LUA_Smartphone_main')
-local appBottom
----Forces the app to be at the bottom of the screen.
-local function forceAppToBottom()
+
+---Forces the app to be inside the visible ui space, optionally moves it to the bottom of the screen.
+local function forceAppIntoScreen()
   if not appWindow or not appWindow:valid() then return end
 
-  local screenSpace = ac.getSim().windowHeight
-  if not appBottom or appBottom ~= screenSpace - appWindow:size().y then appBottom = screenSpace - appWindow:size().y end
+  local pos = appWindow:position()
+  local size = appWindow:size() + vec2(25, 0)
+  local screen = ac.getUI().windowSize
 
-  if appWindow:position().y ~= appBottom and not ui.isMouseDragging(ui.MouseButton.Left, 0) then appWindow:move(vec2(appWindow:position().x, appBottom)) end
+  local targetX = math.max(0, math.min(pos.x, screen.x - size.x))
+  local targetY
+
+  if settings.forceBottom then
+    targetY = screen.y - size.y
+  else
+    targetY = math.max(0, math.min(pos.y, screen.y - size.y))
+  end
+
+  if (pos.x ~= targetX or pos.y ~= targetY) and not ui.isMouseDragging(ui.MouseButton.Left, 0) then appWindow:move(vec2(targetX, targetY)) end
 end
 
 ---Updates movement state
@@ -2628,7 +2638,7 @@ function script.windowMain(dt)
   app.hovered = ui.windowHovered(bit.bor(ui.HoveredFlags.AllowWhenBlockedByPopup, ui.HoveredFlags.ChildWindows, ui.HoveredFlags.AllowWhenBlockedByActiveItem))
   if app.hovered or chat.input.active then moveAppUp() end
 
-  if settings.forceBottom then forceAppToBottom() end
+  forceAppIntoScreen()
 
   ui.childWindow('Phone', vec2(app.images.phoneAtlasSize.x / 2, app.images.phoneAtlasSize.y), false, flags.window, function()
     drawDisplay()
