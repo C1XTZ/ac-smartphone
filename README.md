@@ -22,9 +22,9 @@ If you're looking for a more "oldschool" feel, try my [Mobilephone](https://gith
     ```
     ![](https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/.github/img/communityexample.png)
 - **In-Game Chat** – Hover over usernames to see information (right-click to open user options)
-- **iOS Message Notifications** - Makes the app move enough to reveal the notification, saving even more screen space.
+- **iOS Message Notifications** - Makes the app move enough to reveal the notification, saving even more screen space
 - **Emoji Picker** – Every working emoji, divided into 9 groups available to satisfy your GenZ needs 🥀☠️🔥
-- **iOS 18 Sounds** – Keystrokes, messages, and notification sounds
+- **iOS Sounds** – Keystrokes, messages, and notification sounds
 - **Message Filtering** – Hides spam from other apps
   - Example: `PLP: running version 1.21, 2-60-3-True-3.3-0.9-3-2-8-5-0|C1XTZ`
 - **Customizable Settings** – Extensive options to personalize your experience by opening the settings via the cogwheel
@@ -40,9 +40,14 @@ You can also reach me here:
 - Twitter [@C1XTZ](https://twitter.com/C1XTZ)
 - BlueSky [@c1xtz.bsky.social](https://bsky.app/profile/c1xtz.bsky.social)
 
+## Disclaimer
+
+This project is not affiliated with, endorsed by, sponsored by, or otherwise associated with Apple Inc. "Apple", "iPhone", "iOS", and "iMessage" are trademarks of Apple Inc. This app is a fan-made recreation for use within Assetto Corsa, and any visual or audio similarities to iOS are purely stylistic homage.
+
 # License
 
-Unless otherwise noted in **[Exceptions](#exceptions)**, **all original source code** in this repository such as `.lua` scripts, build scripts, and any other code files, is licensed under the **GNU GPL v3.0 License**.
+Unless otherwise noted in **[Exceptions](#exceptions)**, **all original source code** in this repository, such as `.lua` scripts, build scripts, and any other code files, is licensed under the **GNU GPL v3.0 License**.  
+Files and assets identified as exceptions are **not covered by the GNU GPL v3.0 license** and are instead governed by the license terms specified for those files.
 
 ### What you can do:
 
@@ -67,6 +72,15 @@ Full license details are available in the [`smartphone/CODELICENSE.txt`](./smart
 
 ## Exceptions
 
+### **iOS-Inspired Assets**
+
+All files inside the directories [`smartphone/src/img/`](./smartphone/src/img/), [`smartphone/src/aud/`](./smartphone/src/aud/)
+
+- **License:** Custom license (not GPLv3)
+  - These are original assets inspired by Apple's iOS visual/audio design.
+  - You may use, modify, and redistribute them under the terms below — you just can't claim you made them, or imply Apple made/endorsed them.
+- See [`smartphone/src/img/ASSETSLICENSE.txt`](./smartphone/src/img/ASSETSLICENSE.txt) and/or [`smartphone/src/aud/ASSETSLICENSE.txt`](./smartphone/src/aud/ASSETSLICENSE.txt) for full license details.
+
 ### **Community Logos**
 
 <details>
@@ -79,6 +93,7 @@ Full license details are available in the [`smartphone/CODELICENSE.txt`](./smart
 - **License:** All rights reserved by Shutoko Revival Project
   - You may distribute the image **unchanged**, provided it **remains bundled with this app**.
 - **Standalone redistribution, modification, or commercial use** requires explicit permission from [Shutoko Revival Project](https://shutokorevivalproject.com).
+- See [`smartphone/src/communities/img/COMMUNITYLOGOLICENSE.txt`](./smartphone/src/communities/img/COMMUNITYLOGOLICENSE.txt) for full license details.
 
 #### **ONESTEP Logo**
 
@@ -87,6 +102,7 @@ Full license details are available in the [`smartphone/CODELICENSE.txt`](./smart
 - **License:** All rights reserved by ONESTEP Assetto Corsa Mods
   - You may distribute the image **unchanged**, provided it **remains bundled with this app**.
 - **Standalone redistribution, modification, or commercial use** requires explicit permission from [ONESTEP Assetto Corsa Mods](https://discord.gg/onestepassettocorsa).
+- See [`smartphone/src/communities/img/COMMUNITYLOGOLICENSE.txt`](./smartphone/src/communities/img/COMMUNITYLOGOLICENSE.txt) for full license details.
 
 </details>
 

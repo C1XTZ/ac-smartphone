@@ -1,0 +1,165 @@
+Apple iOS-Inspired Assets License, Version 1.0
+
+This Apple iOS-Inspired Assets License (the "License") governs the
+image, graphic, icon, animation, and audio files contained within the
+smartphone/src/img and smartphone/src/aud directories of this repository
+(individually and collectively, the "Assets"). The Assets are original
+works authored for this project and are, in whole or in part, inspired by
+aspects of the visual design and/or audio style of Apple Inc.'s iOS
+operating system. The Assets are NOT licensed under the GNU General
+Public License, Version 3.0 ("GPLv3"), which otherwise governs the
+applicable source code of this repository, and this License is separate
+from, and independent of, the GPLv3.
+
+-----------------------------------------------------------
+PREAMBLE
+-----------------------------------------------------------
+
+The purpose of this License is to permit the free use, modification, and
+redistribution of the Assets while (a) preventing any person from
+claiming authorship of the Assets who did not create them, (b) preventing
+any representation, express or implied, that Apple Inc. created,
+sponsored, endorsed, approved of, or is otherwise affiliated with the
+Assets or this project, and (c) preserving the copyright and attribution
+notices associated with the Assets. Nothing in this License is intended
+to convey, and nothing in this License shall be construed as conveying,
+any license, right, title, or interest in or to any trademark, trade
+dress, copyrighted work, patent, or other intellectual property owned or
+controlled by Apple Inc.
+
+-----------------------------------------------------------
+DEFINITIONS
+-----------------------------------------------------------
+
+"Assets" means the file or files to which this License is attached, or
+which are otherwise identified in the accompanying repository
+documentation as governed by this License, together with any accompanying
+source files used to produce such files.
+
+"Original Version" means the Assets as first distributed under this
+License.
+
+"Modified Version" means any derivative of the Assets made by adding to,
+deleting from, or substituting for, in whole or in part, any component of
+the Original Version, including without limitation changes in file
+format, resolution, encoding, or color.
+
+"Apple" means Apple Inc. and its subsidiaries, affiliates, and licensors.
+
+"You" or "Your" means any individual or legal entity exercising rights
+under this License.
+
+-----------------------------------------------------------
+PERMISSION AND CONDITIONS
+-----------------------------------------------------------
+
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of the Assets, to use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the Assets, whether in Original Version
+or Modified Version, and to permit persons to whom the Assets are
+furnished to do so, subject to the following conditions:
+
+1) You may not represent, state, or imply that You are the original
+   author or creator of the Assets where You are not.
+
+2) You may not remove, obscure, or alter any copyright notice, this
+   License, or any attribution notice accompanying the Assets, except
+   that a Modified Version may include an additional notice identifying
+   the modifications made and their author.
+
+3) You may not state or imply that Apple created, authored, sponsored,
+   endorsed, approved of, or is in any way affiliated with, the Assets or
+   any project incorporating the Assets.
+
+4) You may not distribute a Modified Version under a name or in a manner
+   that misrepresents it as the Original Version, nor may You distribute
+   the Original Version in a manner that misrepresents it as a Modified
+   Version.
+
+5) You may not represent, state, or imply that the Assets are official
+   Apple assets, or that the Assets were created, provided, licensed, or
+   otherwise made available by Apple.
+
+6) This License must accompany the Assets, or a copy of or reference to
+   this License must be reasonably accessible to any recipient of the
+   Assets, in Original Version or Modified Version, and in whole or in
+   part, whenever the Assets are distributed.
+
+Nothing in this License requires You to make available the source of any
+Modified Version, nor does this License impose any "copyleft," reciprocal
+licensing, or attribution-of-derivative-works obligation beyond those
+stated above.
+
+-----------------------------------------------------------
+APPLE TRADEMARKS AND INTELLECTUAL PROPERTY
+-----------------------------------------------------------
+
+"Apple," "iOS," and all related trademarks, service marks, trade names,
+trade dress, and logos are the property of Apple Inc. This License does
+not grant, and shall not be construed as granting, any right or license
+to use any trademark, service mark, trade name, trade dress, or logo of
+Apple. The Assets are merely inspired by certain visual and/or auditory
+characteristics of iOS and do not incorporate, reproduce, or
+distribute any copyrighted work, trademark, or other proprietary material
+owned by Apple. Any resemblance to Apple's proprietary designs is
+incidental to the independent creative expression embodied in the
+Assets.
+
+-----------------------------------------------------------
+OWNERSHIP
+-----------------------------------------------------------
+
+All right, title, and interest in and to the Assets, including all
+copyrights therein, remain with their respective copyright holder(s).
+Nothing in this License shall be construed as an assignment or transfer
+of ownership of the Assets, nor as permission for any person to hold
+themselves out as the owner of the Assets or of any Modified Version
+thereof.
+
+-----------------------------------------------------------
+DISCLAIMER OF WARRANTY
+-----------------------------------------------------------
+
+THE ASSETS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NONINFRINGEMENT OF
+COPYRIGHT, TRADEMARK, PATENT, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER(S) BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT
+OF, OR IN CONNECTION WITH THE ASSETS OR THE USE OR OTHER DEALINGS IN THE
+ASSETS.
+
+-----------------------------------------------------------
+TERMINATION
+-----------------------------------------------------------
+
+This License and the rights granted hereunder will terminate
+automatically, without notice, upon any breach by You of the conditions
+set forth in the "Permission and Conditions" section above. Individuals
+or entities who have received Modified Versions or copies from You under
+this License will not have their licenses terminated, provided such
+individuals or entities remain in full compliance with this License.
+
+-----------------------------------------------------------
+SCOPE AND RELATIONSHIP TO OTHER LICENSES
+-----------------------------------------------------------
+
+This License applies solely to the Assets as identified above and in the
+accompanying repository documentation. It does not apply to, and shall
+not be construed to apply to, any other file, source code, or material in
+the repository, which remains governed by the GPLv3 or such other license
+as may be specified for that material. For the avoidance of doubt, the
+Assets are expressly excluded from, and are not licensed under, the
+GPLv3.
+
+-----------------------------------------------------------
+MISCELLANEOUS
+-----------------------------------------------------------
+
+If any provision of this License is held to be unenforceable, such
+provision shall be reformed only to the extent necessary to make it
+enforceable, and the remaining provisions of this License shall remain in
+full force and effect. This License constitutes the entire agreement
+between the parties with respect to the Assets licensed hereunder and may
+not be modified without the mutual written agreement of the copyright
+holder(s) and You.

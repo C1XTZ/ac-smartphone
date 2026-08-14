@@ -1,0 +1,153 @@
+Community Logo License, Version 1.0
+
+This Community Logo License (the "License") governs the community logo
+and branding image files contained within this repository and identified
+as such in the accompanying repository documentation (individually and
+collectively, the "Marks"). Each Mark remains the exclusive property of
+its respective rights holder, as identified in the accompanying
+repository documentation (each, a "Rights Holder"). The Marks are NOT
+licensed under the GNU General Public License, Version 3.0 ("GPLv3"),
+which otherwise governs the applicable source code of this repository,
+and this License is separate from, and independent of, the GPLv3. ALL
+RIGHTS IN AND TO THE MARKS ARE RESERVED BY THE RESPECTIVE RIGHTS HOLDER
+EXCEPT AS EXPRESSLY GRANTED BELOW.
+
+-----------------------------------------------------------
+PREAMBLE
+-----------------------------------------------------------
+
+Each Rights Holder has granted a narrow, limited permission for its Mark
+to be included and distributed together with this project, solely so
+that the project may display community branding. This permission is not
+an open-source license, does not transfer any ownership or intellectual
+property right, and does not permit the general public to use the Marks
+outside the specific context described herein. This License exists to
+record the scope of that permission.
+
+-----------------------------------------------------------
+DEFINITIONS
+-----------------------------------------------------------
+
+"Marks" means the logo, icon, wordmark, or other branding image file(s)
+contributed by a Rights Holder for inclusion in this project, together
+with any accompanying source files.
+
+"Project" means this repository, including any Fork thereof.
+
+"Fork" means a copy or derivative of this repository's source code
+distributed in accordance with the GPLv3, including any project that
+incorporates, is based upon, or is compiled from such source code.
+
+"Bundled" means distributed as an integral, unmodified part of the
+Project or a Fork, and not separately, individually, or apart from the
+Project or Fork as a whole.
+
+"You" or "Your" means any individual or legal entity exercising rights
+under this License.
+
+-----------------------------------------------------------
+PERMISSION AND CONDITIONS
+-----------------------------------------------------------
+
+Subject to the conditions below, each Rights Holder grants You a
+worldwide, royalty-free, non-exclusive, revocable permission to
+reproduce and distribute its Mark, in unmodified form only, solely as
+Bundled with the Project or a Fork.
+
+1) You may not modify, alter, recolor, resize in a manner that distorts,
+   crop, or otherwise create a derivative of any Mark.
+
+2) You may not distribute any Mark on a standalone basis, or separately
+   from the Project or a Fork, for any purpose.
+
+3) You may not use any Mark for any commercial purpose, including
+   without limitation selling, sublicensing, or using a Mark to
+   advertise or promote any product or service other than the Project
+   itself.
+
+4) You may not use any Mark in a manner that states or implies
+   endorsement, sponsorship, or approval by the Rights Holder of You, a
+   Fork, or any modification of the Project, beyond the Rights Holder's
+   permission for its Mark to be Bundled as described herein.
+
+5) You must retain, in the Project or Fork's accompanying documentation,
+   the attribution and licensing notice identifying the Rights Holder
+   and referencing this License.
+
+6) A Rights Holder may, at its sole discretion and at any time, revoke
+   the permission granted herein with respect to its own Mark by
+   providing notice to the Project maintainer or, where no maintainer is
+   reachable, by public notice. Upon revocation, You must cease
+   distributing that Mark as promptly as reasonably practicable.
+
+Nothing in this License grants permission to use any Mark outside the
+context of the Project or a Fork, and no permission is granted by
+implication, estoppel, or otherwise as to any use not expressly
+identified above.
+
+-----------------------------------------------------------
+TRADEMARKS AND INTELLECTUAL PROPERTY
+-----------------------------------------------------------
+
+The Marks may constitute trademarks, service marks, trade dress, or
+copyrighted works of their respective Rights Holders. This License grants
+only the limited permission described above and does not grant, and
+shall not be construed as granting, any other right or license, express
+or implied, by estoppel or otherwise, to any trademark, service mark,
+trade name, trade dress, copyrighted work, or other intellectual property
+of any Rights Holder.
+
+-----------------------------------------------------------
+OWNERSHIP
+-----------------------------------------------------------
+
+All right, title, and interest in and to each Mark, including all
+copyrights, trademarks, and other intellectual property rights therein,
+remain exclusively with the applicable Rights Holder. Nothing in this
+License shall be construed as an assignment or transfer of ownership of
+any Mark, nor as permission for any person to hold themselves out as the
+owner of any Mark.
+
+-----------------------------------------------------------
+DISCLAIMER OF WARRANTY
+-----------------------------------------------------------
+
+THE MARKS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NONINFRINGEMENT. IN NO EVENT
+SHALL ANY RIGHTS HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING
+FROM, OUT OF, OR IN CONNECTION WITH THE MARKS OR THE USE OR OTHER
+DEALINGS IN THE MARKS.
+
+-----------------------------------------------------------
+TERMINATION
+-----------------------------------------------------------
+
+This License and the permission granted hereunder will terminate
+automatically, without notice, upon any breach by You of the conditions
+set forth in the "Permission and Conditions" section above, or upon
+revocation by the applicable Rights Holder with respect to its own Mark
+as described in Condition 6 above.
+
+-----------------------------------------------------------
+SCOPE AND RELATIONSHIP TO OTHER LICENSES
+-----------------------------------------------------------
+
+This License applies solely to the Marks as identified in the
+accompanying repository documentation. It does not apply to, and shall
+not be construed to apply to, any other file, source code, or material
+in the repository, which remains governed by the GPLv3 or such other
+license as may be specified for that material. For the avoidance of
+doubt, the Marks are expressly excluded from, and are not licensed
+under, the GPLv3.
+
+-----------------------------------------------------------
+MISCELLANEOUS
+-----------------------------------------------------------
+
+Requests to use a Mark outside the scope of this License must be
+directed to the applicable Rights Holder. If any provision of this
+License is held to be unenforceable, such provision shall be reformed
+only to the extent necessary to make it enforceable, and the remaining
+provisions of this License shall remain in full force and effect.
