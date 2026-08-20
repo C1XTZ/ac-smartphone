@@ -26,7 +26,10 @@ local settings = ac.storage {
   songInfoSpacing = 30,
   songInfoScrollSpeed = 30,
   songInfoScrollDirection = 0,
-  songInfoscrollAlways = false,
+  songInfoScrollAlways = false,
+  songInfoGradient = true,
+  songInfoGradientIntesity = 0.75,
+  songInfoGradientLength = 15,
   hideCamera = false,
 
   chatKeepSize = 100,
@@ -191,10 +194,12 @@ local songInfo = {
   final = '',
   hasCover = false,
   isPaused = false,
-  dynamicIslandSize = vec2(40, 20),
+  dynamicIslandSizeActive = vec2(40, 20),
+  dynamicIslandBaseWidths = vec2(40, 80),
   cachedTextSize = nil,
   cachedTextSizeText = nil,
   cachedTextSizeScale = nil,
+  scrollTime = 0,
   titleSplitPatterns = {
     '^(.-)%s*%- %s*(.+)$',
     '^(.-)%-([^%-]+)$',
@@ -1151,8 +1156,8 @@ end
 ---@param enable boolean @sets the width of the island
 ---Sets the width of the dynamic island.
 local function setDynamicIslandSize(enable)
-  local width = enable and 80 or 40
-  songInfo.dynamicIslandSize:set(width, 20)
+  local width = enable and songInfo.dynamicIslandBaseWidths.y or songInfo.dynamicIslandBaseWidths.x
+  songInfo.dynamicIslandSizeActive:set(width, songInfo.dynamicIslandSizeActive.y)
 end
 
 ---@param forced? boolean @Whether to force updating the song information even if the artist and title have not changed.
@@ -1167,7 +1172,7 @@ local function updateSongInfo(forced)
   if (current.artist == '' and current.title == '') or not current.isPlaying then
     songInfo.final = ''
 
-    if songInfo.dynamicIslandSize.x == 80 then setDynamicIslandSize(false) end
+    if songInfo.dynamicIslandSizeActive.x == songInfo.dynamicIslandBaseWidths.y then setDynamicIslandSize(false) end
     songInfo.isPaused = true
   else
     if (current.artist:lower() == 'unknown artist' or current.artist == '') and current.title ~= '' then
@@ -1180,7 +1185,9 @@ local function updateSongInfo(forced)
     songInfo.final = (songInfo.artist ~= '' and songInfo.artist:lower() ~= 'unknown artist') and (songInfo.artist .. ' - ' .. songInfo.title) or songInfo.title
     songInfo.hasCover = current.hasCover
 
-    if songInfo.dynamicIslandSize.x == 40 then setDynamicIslandSize(true) end
+    if songInfo.final ~= songInfo.cachedTextSizeText then songInfo.scrollTime = 0 end
+
+    if songInfo.dynamicIslandSizeActive.x == songInfo.dynamicIslandBaseWidths.x then setDynamicIslandSize(true) end
     songInfo.isPaused = not current.isPlaying
   end
 end
@@ -1209,16 +1216,16 @@ local function drawSongInfoText(text, pos, size, fontSize)
     return
   end
 
-  if textSize.x <= size.x - scaleNum(4) and not settings.songInfoscrollAlways then static = true end
+  if textSize.x <= size.x - scaleNum(12) and not settings.songInfoScrollAlways then static = true end
 
   if static then
-    ui.setCursor(pos)
-    ui.dwriteTextAligned(text, fontSize, ui.Alignment.Center, ui.Alignment.Center, size, false, rgbm.colors.white)
+    ui.setCursor(ceilVec2(pos.x, pos.y + (size.y - textSize.y) / 2))
+    ui.dwriteTextAligned(text, fontSize, ui.Alignment.Center, ui.Alignment.Start, vec2(size.x, textSize.y), false, rgbm.colors.white)
   else
-    local stepW = textSize.x + settings.songInfoSpacing
+    local stepW = math.ceil(textSize.x + settings.songInfoSpacing)
     local scrollDirection = settings.songInfoScrollDirection == 0 and -1 or 1
-    local scrollTime = os.clock() * settings.songInfoScrollSpeed
-    local scrollX = scrollDirection * (scrollTime % stepW)
+    local scrollX = scrollDirection * (songInfo.scrollTime % stepW)
+    songInfo.scrollTime = songInfo.scrollTime % stepW
 
     ui.pushClipRect(pos, pos + size)
     for i = -1, math.ceil(size.x / stepW) do
@@ -1585,11 +1592,10 @@ end
 
 ---Draws the dynamic island.
 local function drawDynamicIsland()
-  local islandHalfWidth = songInfo.dynamicIslandSize.x
-  local islandHeight = songInfo.dynamicIslandSize.y
+  local islandHeight = songInfo.dynamicIslandSizeActive.y
   local borderRadius = scaleNum(10)
-  local left = scaleVec2(app.size.x / 2 - islandHalfWidth, islandHeight, true)
-  local right = scaleVec2(app.size.x / 2 + islandHalfWidth, islandHeight * 2, true)
+  local left = scaleVec2(app.size.x / 2 - songInfo.dynamicIslandSizeActive.x, songInfo.dynamicIslandSizeActive.y, true)
+  local right = scaleVec2(app.size.x / 2 + songInfo.dynamicIslandSizeActive.x, songInfo.dynamicIslandSizeActive.y * 2, true)
 
   ui.drawRectFilled(left, right, rgbm.colors.black, borderRadius)
 
@@ -1690,16 +1696,24 @@ local function drawSongInfo()
 
       if songInfo.hasCover then
         --I'm using --[[@as ui.MediaPlayer]] here because ac.MusicData is not in the valid imageSources for some reason even though lua.lib says to pass ac.MusicData in like this.
-        ui.drawImageRounded(ac.currentlyPlaying()--[[@as ui.MediaPlayer]], imgPos, imgPos + coverSize, rounding, ui.CornerFlags.All)
+        ui.drawImageRounded(ac.currentlyPlaying() --[[@as ui.MediaPlayer]], imgPos, imgPos + coverSize, rounding, ui.CornerFlags.All)
       else
         ui.drawImageRounded(app.images.defaultCover, imgPos, imgPos + coverSize, rounding, ui.CornerFlags.All)
       end
     end
 
     local fontSize = scaleNum(12)
-    local pos = scaleVec2(89, 22, true)
-    local textSize = scaleVec2(135, 15)
+    local pos = settings.songInfoGradient and scaleVec2(86, 22, true) or scaleVec2(89, 22, true)
+    local textSize = settings.songInfoGradient and scaleVec2(135, 15) or scaleVec2(132, 15)
+
     drawSongInfoText(songInfo.final, pos, textSize, fontSize)
+
+    if settings.songInfoGradient and songInfo.dynamicIslandSizeActive.x == songInfo.dynamicIslandBaseWidths.y then
+      local gradientWidth = scaleNum(settings.songInfoGradientLength)
+      local grdColor = rgbm(0, 0, 0, settings.songInfoGradientIntesity)
+      ui.drawRectFilledMultiColor(pos, vec2(pos.x + gradientWidth, pos.y + textSize.y), grdColor, rgbm.colors.transparent, rgbm.colors.transparent, grdColor)
+      ui.drawRectFilledMultiColor(vec2(pos.x + textSize.x - gradientWidth, pos.y), pos + textSize, rgbm.colors.transparent, grdColor, grdColor, rgbm.colors.transparent)
+    end
 
     if app.hovered and songInfo.final ~= '' then
       if ui.rectHovered(pos, pos + textSize, true) then
@@ -2581,15 +2595,30 @@ function script.windowMainSettings()
 
           if settings.songInfo then
             ui.indent(app.settingsIndentOffset)
-            settingsCheckbox('Always Scroll Text', 'songInfoscrollAlways', 'If enabled, will scroll text even if it could be displayed in full without scrolling', function() updateSongInfo(true) end)
+            settingsCheckbox('Always Scroll Text', 'songInfoScrollAlways', 'If enabled, will scroll text even if it could be displayed in full without scrolling', function() updateSongInfo(true) end)
 
-            settingsCheckbox('Hide Selfie Camera', 'hideCamera', 'If enabled, will hide the selfie camera below the song information')
+            settingsCheckbox('Enable Edge Gradients', 'songInfoGradient', 'If enabled, left and right edges of the text will be blended in with a gradient')
+
+            settingsCheckbox('Always Scroll Text', 'songInfoScrollAlways', 'If enabled, will scroll text even if it could be displayed in full without scrolling', function() updateSongInfo(true) end)
 
             settingsSlider('songInfoSpacing', 0, 300, 'Spacing: %.0f', 'The amount of spacing between the end and start of the song', nil, true)
 
             settingsSlider('songInfoScrollSpeed', 1, 300, 'Scroll Speed: %.0f', 'Speed that the text is scrolled at')
+
             local scrollDirStr = settings.songInfoScrollDirection == 0 and 'Left' or 'Right'
             settings.songInfoScrollDirection = ui.slider('##songInfoScrollDirection', settings.songInfoScrollDirection, 0, 1, 'Scroll Direction: ' .. scrollDirStr, true)
+
+            settingsCheckbox('Enable Edge Gradients', 'songInfoGradient', 'If enabled, left and right edges of the text will be blended in with a gradient')
+            if settings.songInfoGradient then
+              ui.indent(app.settingsIndentOffset)
+              --todo: songInfoGradientLength max should be textsize / 2 out of drawSongInfo() if possible (should be easier to do after the caching pass)
+              settingsSlider('songInfoGradientLength', 0, 68, 'Gradient Lenght: %.0f', 'Speed that the text is scrolled at')
+              settingsSlider('songInfoGradientIntesity', 0.01, 1, 'Gradient Intensity: %.2f', 'Speed that the text is scrolled at')
+              ui.unindent(app.settingsIndentOffset)
+            end
+
+            settingsCheckbox('Hide Selfie Camera', 'hideCamera', 'If enabled, will hide the selfie camera below the song information')
+
             ui.unindent(app.settingsIndentOffset)
           end
         end)
@@ -2749,6 +2778,8 @@ function script.windowMain(dt)
     app.size = app.size == vec2(0, 0) and vec2(phoneFull.x / 4, phoneFull.y / 2) or app.size
     app.images.phoneAtlasSize = app.images.phoneAtlasSize == vec2(0, 0) and phoneFull:div(vec2(2, 2)):scale(app.scale) or app.images.phoneAtlasSize
   end
+
+  if settings.songInfo then songInfo.scrollTime = songInfo.scrollTime + math.min(dt, 1 / 30) * settings.songInfoScrollSpeed end
 
   updateAppMovement(dt)
   updateNotifications(dt)
