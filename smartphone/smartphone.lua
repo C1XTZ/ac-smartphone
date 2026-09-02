@@ -668,7 +668,7 @@ local function loadEmojis()
 
   local function isSkinTone(cp) return cp >= 0x1F3FB and cp <= 0x1F3FF end
 
-  local function isReginalIndicator(cp) return cp >= 0x1F1E6 and cp <= 0x1F1FF end
+  local function isRegionalIndicator(cp) return cp >= 0x1F1E6 and cp <= 0x1F1FF end
 
   local function isTag(cp) return cp >= 0xE0020 and cp <= 0xE007F end
 
@@ -731,10 +731,10 @@ local function loadEmojis()
     pos = pos + baseLen
 
     --Claude: Regional Indicator pair
-    if isReginalIndicator(baseCp) then
+    if isRegionalIndicator(baseCp) then
       local cp2, len2 = decodeUTF8(line, pos)
 
-      if not cp2 or not isReginalIndicator(cp2) then return nil, pos - start, 'singleton regional indicator' end
+      if not cp2 or not isRegionalIndicator(cp2) then return nil, pos - start, 'singleton regional indicator' end
 
       cluster = cluster .. codepointToString(line, pos, len2)
       pos = pos + len2
@@ -883,7 +883,7 @@ local function loadEmojis()
   emoji.activeGroup = math.min(emoji.activeGroup, math.max(#groups, 1))
 end
 
----Populates the nonTrafficPlayers table with the names of players that are not hidding labels. AssettoServer traffic cars if HideAiCars is enabled for example.
+---Populates the nonTrafficPlayers table with the names of players that are not hiding labels. AssettoServer traffic cars if HideAiCars is enabled for example.
 local function updateNonTrafficPlayers()
   for i, car in ac.iterateCars() do
     local driverName = ac.getDriverName(i - 1)
@@ -1476,9 +1476,9 @@ local function chatPlayerPopup(userIndex, userName)
 
   ---I know that ui.setDriverPopup() exists, but the "Tag in Chat" button there inserts the name into the csp chat app.
   ---Since thats probably one of the more used buttons, I decided to make a custom popup instead, which means that none of the Admin tools (Setting Ballast/Restrictor, Giving Penalties and Kick/Banning) are available.
-  ---Setting Ballast/Restictor/Penalties using Lua requires physics access which apps do not have online. Kick & Banning is not possible at all (Only initiating a Vote).
+  ---Setting Ballast/Restrictor/Penalties using Lua requires physics access which apps do not have online. Kick & Banning is not possible at all (Only initiating a Vote).
   ---I could make buttons that type out commands but Kunos acServer and AssettoServer have different command syntax.
-  ---Checking which server integration is used would be a pain in the ass and the app isnt really meant to be used for admining anyways so I wont bother.
+  ---Checking which server integration is used would be a pain in the ass and the app isnt really meant to be used for adminning anyways so I wont bother.
   if ui.beginPopup('chatPlayerPopup' .. userName, nil, 0) then
     moveAppUp()
 
@@ -2901,7 +2901,7 @@ function script.windowMainSettings()
             settingsCheckbox('Enable Edge Gradients', 'songInfoGradient', 'If enabled, left and right edges of the text will be blended in with a gradient')
             if settings.songInfoGradient then
               ui.indent(app.settingsIndentOffset)
-              settingsSlider('songInfoGradientLength', 0, 100, 'Gradient Lenght: %.0f', 'Speed that the text is scrolled at')
+              settingsSlider('songInfoGradientLength', 0, 100, 'Gradient Length: %.0f', 'Speed that the text is scrolled at')
               settingsSlider('songInfoGradientIntensity', 0.01, 1, 'Gradient Intensity: %.2f', 'Speed that the text is scrolled at')
               ui.unindent(app.settingsIndentOffset)
             end
@@ -2938,7 +2938,7 @@ function script.windowMainSettings()
           settingsCheckbox('Chat History Settings', 'chatHistorySettings', 'If enabled, allows you to change the chat message history settings\nDefault:\n500 messages minimum\nAfter 500 messages, the oldest will be removed if they are older than 15 minutes')
           if settings.chatHistorySettings then
             ui.indent(app.settingsIndentOffset)
-            settingsSlider('chatKeepSize', 10, 1000, 'Always keep %.0f Messages', 'History will always keep at least this many messages regardless of old old they are')
+            settingsSlider('chatKeepSize', 10, 1000, 'Always keep %.0f Messages', 'History will always keep at least this many messages regardless of how old they are')
 
             settingsSlider('chatOlderThan', 1, 60, 'Remove if older than %.0f min', 'Messages older than this will be removed once the history reaches ' .. settings.chatKeepSize .. ' messages')
             ui.unindent(app.settingsIndentOffset)
@@ -2964,7 +2964,7 @@ function script.windowMainSettings()
         end)
 
         ui.tabItem('Notifications', function()
-          settingsCheckbox('Enable Notifications', 'notifBannerEnabled', 'If enabled, shows a drop-down notification for new messages\nRespects your Filters tab rules:\nIf you have disables connection event messages, no notifcation will be shown even if enabled here')
+          settingsCheckbox('Enable Notifications', 'notifBannerEnabled', 'If enabled, shows a drop-down notification for new messages\nRespects your Filters tab rules:\nIf you have disables connection event messages, no notification will be shown even if enabled here')
           if settings.notifBannerEnabled then
             ui.indent(app.settingsIndentOffset)
             settingsSlider('notifBannerDuration', 1, 60, 'Show Notification for: %.0f seconds', 'How long the notification banner should be displayed', function(newValue) notification.duration = newValue end)
@@ -3006,7 +3006,7 @@ function script.windowMainSettings()
           end)
 
           ui.tabItem('Messages', function()
-            settingsCheckbox('Enable Message Audio', 'enableMessage', 'If enabled, the app will play message recieved sounds')
+            settingsCheckbox('Enable Message Audio', 'enableMessage', 'If enabled, the app will play message received sounds')
             if settings.enableMessage then
               ui.indent(app.settingsIndentOffset)
               settingsSlider('volumeMessage', 0.1, 10, 'Message Volume: %.1f')
