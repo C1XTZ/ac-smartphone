@@ -1945,11 +1945,7 @@ local function positionMessageEntry(entry, message, rawIndex, messageY, lastUser
 
     messageY = math.ceil(messageY + messagePadding.y + messagePadding.y / 2)
   else
-    if lastUserIndex == nil then
-      messageY = math.ceil(messageY - messageTextSize.y / 2)
-    elseif lastUserIndex ~= userIndex then
-      messageY = math.ceil(messageY - messagePadding.y)
-    end
+    if lastUserIndex ~= nil and lastUserIndex ~= userIndex then messageY = math.ceil(messageY - messagePadding.y) end
     entry.textY = messageY
     messageY = math.ceil(messageY + messageTextSize.y + messagePadding.y / 2)
   end
@@ -1985,6 +1981,7 @@ end
 local function buildMessageLayout()
   if chat.layout.cacheGen == chat.msgCacheGen then return chat.layout.messages, chat.layout.messageCount, chat.layout.totalHeight end
 
+  local messagePadding = scaleNum(330)
   local layoutMessages = chat.layout.messages
   local rawCount = #chat.messages
 
@@ -2032,7 +2029,7 @@ local function buildMessageLayout()
           local firstKeptMessage = layoutMessages[1]
           local oldFirstEndY = firstKeptMessage.endY
           local rawIndex = firstKeptMessage.rawIndex - pendingRemoveCount
-          positionMessageEntry(firstKeptMessage, chat.messages[rawIndex], rawIndex, scaleNum(370), nil, nil)
+          positionMessageEntry(firstKeptMessage, chat.messages[rawIndex], rawIndex, messagePadding, nil, nil)
           local heightShift = firstKeptMessage.endY - oldFirstEndY
 
           messageY, lastUserIndex, lastUserName = firstKeptMessage.endY, firstKeptMessage.userIndex, firstKeptMessage.userName
@@ -2086,7 +2083,7 @@ local function buildMessageLayout()
 
         if recalcFrom <= messageCount then
           if recalcFrom == 1 then
-            messageY, lastUserIndex, lastUserName = scaleNum(370), nil, nil
+            messageY, lastUserIndex, lastUserName = messagePadding, nil, nil
           else
             local before = layoutMessages[recalcFrom - 1]
             messageY, lastUserIndex, lastUserName = before.endY, before.userIndex, before.userName
@@ -2126,7 +2123,7 @@ local function buildMessageLayout()
   end
 
   local entryCount = 0
-  local messageY = scaleNum(370)
+  local messageY = messagePadding
   local lastDrawnUserIndex = nil
   local lastDrawnUserName = nil
 
