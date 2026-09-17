@@ -31,6 +31,7 @@ local settings = ac.storage {
   songInfoGradientIntensity = 1,
   songInfoGradientLength = 5,
   songInfoHidesCamera = true,
+  songInfoAutoSpacing = false,
 
   chatKeepSize = 500,
   chatOlderThan = 15,
@@ -1285,7 +1286,8 @@ local function drawSongInfoText(text, pos, size, fontSize)
     ui.setCursor(ceilVec2(pos.x, pos.y + (size.y - textSize.y) / 2))
     ui.dwriteTextAligned(text, fontSize, ui.Alignment.Center, ui.Alignment.Start, vec2(size.x, textSize.y), false, rgbm.colors.white)
   else
-    local scrollStepWidth = math.ceil(textSize.x + settings.songInfoSpacing)
+    local scrollSpacing = settings.songInfoAutoSpacing and size.x / 1.5 or settings.songInfoSpacing
+    local scrollStepWidth = math.ceil(textSize.x + scrollSpacing)
     local scrollDirection = settings.songInfoScrollDirection == 0 and -1 or 1
     local scrollX = scrollDirection * (songInfo.scrollTime % scrollStepWidth)
     songInfo.scrollTime = songInfo.scrollTime % scrollStepWidth
@@ -2291,7 +2293,6 @@ local function drawMessages()
 
       chat.scroll.wasAtBottom = (ui.getScrollMaxY() - ui.getScrollY()) < scaleNum(50)
     end
-
     if chat.popup.hovered then chatPlayerPopup(chat.popup.hovered.userIndex, chat.popup.hovered.userName) end
 
     if (app.hovered and not emoji.picker) and ui.mouseWheel() ~= 0 then
@@ -2903,7 +2904,9 @@ function script.windowMainSettings()
 
             settingsCheckbox('Always Scroll Text', 'songInfoScrollAlways', 'If enabled, will scroll text even if it could be displayed in full without scrolling', function() updateSongInfo(true) end)
 
-            settingsSlider('songInfoSpacing', 0, 300, 'Spacing: %.0f', 'The amount of spacing between the end and start of the song', nil, true)
+            settingsCheckbox('Auto Spacing', 'songInfoAutoSpacing', 'Automatically spaces the song text based on app size')
+
+            if not settings.songInfoAutoSpacing then settingsSlider('songInfoSpacing', 0, 300, 'Spacing: %.0f', 'The amount of spacing between the end and start of the song', nil, true) end
 
             settingsSlider('songInfoScrollSpeed', 1, 300, 'Scroll Speed: %.0f', 'Speed that the text is scrolled at')
 
@@ -3081,7 +3084,7 @@ function script.windowMain(dt)
     app.images.phoneAtlasSize = app.images.phoneAtlasSize == vec2(0, 0) and phoneFull:div(vec2(2, 2)):scale(app.scale) or app.images.phoneAtlasSize
   end
 
-  if settings.songInfo then songInfo.scrollTime = songInfo.scrollTime + math.min(dt, 1 / 30) * settings.songInfoScrollSpeed end
+  if settings.songInfo then songInfo.scrollTime = songInfo.scrollTime + math.min(dt, 1 / 30) * (settings.songInfoScrollSpeed * app.scale) end
 
   updateAppMovement(dt)
   updateNotifications(dt)
@@ -3095,7 +3098,6 @@ function script.windowMain(dt)
 
   ui.childWindow('Phone', vec2(app.images.phoneAtlasSize.x / 2, app.images.phoneAtlasSize.y), false, flags.window, function()
     drawDisplay()
-    drawHeader()
     drawTime()
     drawPing()
     drawDynamicIsland()
