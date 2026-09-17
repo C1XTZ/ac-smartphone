@@ -85,15 +85,16 @@ local colors = {
     white10 = rgbm(1, 1, 1, 0.1),
     black50 = rgbm(0, 0, 0, 0.5),
     white50 = rgbm(1, 1, 1, 0.5),
+    displayLight = rgbm(1, 1, 1, 0),
+    displayDark = rgbm(0, 0, 0, 0),
   },
   footerText = rgbm(0.5, 0.5, 0.5, 1),
   glowColor = rgbm(1, 1, 1, 0.65),
   displayColorLight = rgbm.colors.white,
   displayColorDark = rgbm.colors.black,
-  headerColorLight = rgbm(0.96, 0.96, 0.96, 1),
-  headerColorDark = rgbm(0.075, 0.075, 0.075, 1),
-  headerLineColorLight = rgbm(0.85, 0.85, 0.85, 1),
-  headerLineColorDark = rgbm(0.2, 0.2, 0.2, 1),
+  outlineColorLight = rgbm(0.77, 0.77, 0.77, 1),
+  outlineColorMedium = rgbm(0.27, 0.27, 0.27, 1),
+  outlineColorDark = rgbm(0.2, 0.2, 0.2, 1),
   iMessageBlue = rgbm(0, 0.49, 1, 1),
   iMessageLightGray = rgbm(0.85, 0.85, 0.85, 1),
   iMessageDarkGray = rgbm(0.15, 0.15, 0.15, 1),
@@ -110,9 +111,11 @@ local colors = {
   communityAverage = rgbm(),
   final = {
     display = rgbm(),
-    header = rgbm(),
-    headerLine = rgbm(),
+    displayTransp = rgbm(),
+    outline = rgbm(),
     elements = rgbm(),
+    headerPill = rgbm(),
+    headerOutline = rgbm(),
     message = rgbm(),
     messageOwn = rgbm(),
     messageOwnText = rgbm(),
@@ -156,6 +159,7 @@ local app = {
   },
   font = {
     regular = ui.DWriteFont('Inter Variable Text', '.\\src\\ttf'):weight(ui.DWriteFont.Weight.Medium),
+    semiBold = ui.DWriteFont('Inter Variable Text', '.\\src\\ttf'):weight(ui.DWriteFont.Weight.SemiBold),
     bold = ui.DWriteFont('Inter Variable Text', '.\\src\\ttf'):weight(ui.DWriteFont.Weight.Bold),
   },
 }
@@ -910,11 +914,13 @@ local function getInputMaxLength() return math.floor(490 * (13 / settings.chatFo
 ---Updates the colors based on the current mode.
 local function updateColors()
   colors.final.display:set(pickThemeColor(colors.displayColorLight, colors.displayColorDark))
-  colors.final.header:set(pickThemeColor(colors.headerColorLight, colors.headerColorDark))
+  colors.final.displayTransp:set(pickThemeColor(colors.transparent.displayLight, colors.transparent.displayDark))
   colors.final.elements:set(pickThemeColor(colors.displayColorDark, colors.displayColorLight))
-  colors.final.headerLine:set(pickThemeColor(colors.headerLineColorLight, colors.headerLineColorDark))
+  colors.final.outline:set(pickThemeColor(colors.outlineColorLight, colors.outlineColorDark))
   colors.final.input:set(pickThemeColor(colors.transparent.black50, colors.transparent.white50))
   colors.final.message:set(pickThemeColor(colors.iMessageLightGray, colors.iMessageDarkGray))
+  colors.final.headerPill:set(pickThemeColor(colors.displayColorLight, colors.iMessageDarkGray))
+  colors.final.headerOutline:set(pickThemeColor(colors.outlineColorLight, colors.outlineColorMedium))
 
   colors.final.emojiPicker:set(pickThemeColor(colors.emojiPickerButtonLight, colors.emojiPickerButtonDark))
   colors.final.emojiPickerOutline:set(pickThemeColor(colors.transparent.black10, colors.transparent.white10))
@@ -1701,62 +1707,59 @@ local function drawHeader()
 
   if emoji.picker then return end
 
-  local headerHeight = 100
-  local cornerRadius = 30
+  ui.setCursor(vec2(0, movement.smooth))
+  ui.childWindow('Header', scaleVec2(app.size.x, 110), false, flags.input, function()
+    local winHalf = scaleNum(app.size.x / 2)
+    local fontSize = scaleNum(12)
 
-  ui.drawRectFilled(scaleVec2(11, 9, true), scaleVec2(app.size.x - 11, headerHeight, true), colors.final.header, scaleNum(cornerRadius), ui.CornerFlags.Top)
-  ui.drawSimpleLine(scaleVec2(11, headerHeight, true), scaleVec2(app.size.x - 11, headerHeight, true), colors.final.headerLine, scaleNum(1))
+    ui.pushDWriteFont(app.font.semiBold)
 
-  local winHalf = scaleNum(app.size.x / 2)
-  local text = 'Server Chat'
-  local fontSize = scaleNum(12)
+    local contactName = community.contact
+    local contactTextSize = ui.measureDWriteText(contactName, fontSize)
+    local contactTextCenter = math.ceil(winHalf - contactTextSize.x / 2)
+    local contactTextPosY = scaleNum(83)
 
-  ui.pushDWriteFont(app.font.regular)
+    local pillPaddingX = scaleNum(8)
+    local pillPaddingY = scaleNum(4)
+    local pillPosTL = vec2(contactTextCenter - pillPaddingX, contactTextPosY - pillPaddingY)
+    local pillPosBR = vec2(contactTextCenter + contactTextSize.x + pillPaddingX, contactTextPosY + contactTextSize.y + pillPaddingY)
+    local pillRounding = (pillPosBR.y - pillPosTL.y) / 2
+    local pillOutline = math.round(app.scale * 1, 2)
 
-  if app.headerText.size == nil or app.headerText.scale ~= app.scale then
-    app.headerText.size = ui.measureDWriteText(text, fontSize)
-    app.headerText.scale = app.scale
-  end
+    ui.beginOutline()
+    ui.drawRectFilled(pillPosTL, pillPosBR, colors.final.headerPill, pillRounding)
+    ui.endOutline(colors.final.headerOutline, pillOutline)
 
-  local textSize = app.headerText.size
-  if not textSize then
+    ui.setCursor(vec2(contactTextCenter, contactTextPosY))
+    ui.dwriteTextAligned(contactName, fontSize, ui.Alignment.Start, ui.Alignment.Center, contactTextSize, false, colors.final.elements)
+
     ui.popDWriteFont()
-    return
-  end
 
-  local textLeft = math.ceil(winHalf - textSize.x / 2)
-  local textTop = scaleNum(84, true)
+    local imgSize = scaleVec2(36, 36)
+    local imgPos = vec2((ui.availableSpaceX() / 2) - (imgSize.x / 2), scaleNum(47))
+    local imgRounding = scaleNum(20)
 
-  ui.setCursor(vec2(textLeft, textTop))
-  ui.dwriteTextAligned(text, fontSize, ui.Alignment.Start, ui.Alignment.Center, textSize, false, colors.final.elements)
-  ui.popDWriteFont()
-
-  local imgSize = scaleVec2(36, 36)
-  local imgPos = scaleVec2(129, 47, true)
-  local imgRounding = scaleNum(20)
-
-  if community.ready then
+    ui.beginOutline()
     ui.drawImageRounded(community.image, imgPos, imgPos + imgSize, imgRounding, ui.CornerFlags.All)
-  else
-    ui.drawImageRounded(communities['default'].image, imgPos, imgPos + imgSize, imgRounding, ui.CornerFlags.All)
-  end
+    ui.endOutline(colors.final.headerPill, pillOutline)
 
-  if app.hovered then
-    if ui.rectHovered(imgPos, imgPos + imgSize) then
-      if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
+    if app.hovered then
+      if ui.rectHovered(imgPos, imgPos + imgSize) then
+        if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
 
-      ui.tooltip(app.tooltipPadding, function()
-        ui.text(community.text)
-        ui.separator()
-        ui.textColored('Click to open in Browser', colors.footerText)
-      end)
+        ui.tooltip(app.tooltipPadding, function()
+          ui.text(community.text)
+          ui.separator()
+          ui.textColored('Click to open in Browser', colors.footerText)
+        end)
 
-      if ui.mouseReleased(ui.MouseButton.Left) then
-        playAudio(audio.keyboard.enter)
-        os.openURL(community.url, false)
+        if ui.mouseReleased(ui.MouseButton.Left) then
+          playAudio(audio.keyboard.enter)
+          os.openURL(community.url, false)
+        end
       end
     end
-  end
+  end)
 end
 
 ---Draws the song information.
@@ -2166,9 +2169,10 @@ local function drawMessages()
   local clipBottom = scaleVec2(app.size.x, 500, true)
   ui.pushClipRect(clipTop, clipBottom)
 
-  ui.setCursor(scaleVec2(10, 100, true))
-  local childSize = scaleVec2(270, 400 - chat.input.offset / app.scale)
+  local messagesPos = scaleVec2(10, 40, true)
+  local childSize = scaleVec2(270, 465 - chat.input.offset / app.scale)
   local entries, entryCount, totalHeight = buildMessageLayout()
+  ui.setCursor(messagesPos)
   ui.setNextWindowContentSize(vec2(0, totalHeight))
   ui.childWindow('Messages', childSize, false, flags.window, function()
     local winWidth = ui.windowWidth()
@@ -2295,6 +2299,14 @@ local function drawMessages()
       ui.setScrollY(mouseWheel, true, true)
     end
   end)
+
+  ui.setCursor(messagesPos)
+  ui.childWindow('MessagesFade', childSize, false, flags.window, function()
+    local solidHeight = scaleNum(20)
+    local fadeHeight = scaleNum(65) + solidHeight
+    ui.drawRectFilled(vec2(0, 0), vec2(ui.windowWidth(), solidHeight), colors.final.display)
+    ui.drawRectFilledMultiColor(vec2(0, solidHeight), vec2(ui.windowWidth(), fadeHeight), colors.final.display, colors.final.display, colors.final.displayTransp, colors.final.displayTransp)
+  end)
   ui.popClipRect()
 end
 
@@ -2415,7 +2427,7 @@ local function drawEmojiPicker()
       end)
     end
 
-    ui.drawSimpleLine(vec2(0, gridSize.y), vec2(windowSize.x, gridSize.y), colors.final.headerLine, scaleNum(1))
+    ui.drawSimpleLine(vec2(0, gridSize.y), vec2(windowSize.x, gridSize.y), colors.final.outline, scaleNum(1))
 
     local groupButtonWidth = windowSize.x / math.max(groupCount, 1)
     for i = 1, groupCount do
@@ -2461,7 +2473,7 @@ local function drawCustomChatInput()
   ui.childWindow('ChatInput', inputSize, false, flags.input, function()
     ui.beginOutline()
     ui.drawRectFilled(scaleVec2(2, 2), inputBoxSize, colors.final.display, scaleNum(10))
-    ui.endOutline(pickThemeColor(colors.transparent.black10, colors.transparent.white10), math.max(1, math.round(1 * app.scale, 1)))
+    ui.endOutline(colors.final.outline, math.max(1, math.round(1 * app.scale, 1)))
 
     local displayText = ''
 
@@ -3089,6 +3101,7 @@ function script.windowMain(dt)
     drawDynamicIsland()
     drawSongInfo()
     drawMessages()
+    drawHeader()
     drawNotifications()
     drawEmojiPicker()
     drawCustomChatInput()
