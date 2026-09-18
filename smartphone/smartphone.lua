@@ -24,7 +24,7 @@ local settings = ac.storage {
 
   songInfo = false,
   songInfoSpacing = 30,
-  songInfoScrollSpeed = 30,
+  songInfoScrollSpeed = 20,
   songInfoScrollDirection = 0,
   songInfoScrollAlways = false,
   songInfoGradient = true,
@@ -1274,11 +1274,9 @@ end
 ---@param pos vec2 @The position coordinates where the text should be drawn.
 ---@param size vec2 @The dimensions of the text drawing area.
 ---@param fontSize number @The font size to use for rendering the text.
----Draws text that can either be static and centered, or scrolling horizontally.
+---Draws text that can either be static, continuously scrolling, or alternating between both ends.
 local function drawSongInfoText(text, pos, size, fontSize)
   if not text or text == '' then return end
-
-  local static = false
 
   ui.pushDWriteFont(app.font.bold)
 
@@ -1294,11 +1292,48 @@ local function drawSongInfoText(text, pos, size, fontSize)
     return
   end
 
+  local static = false
   if textSize.x <= size.x - scaleNum(12) and not settings.songInfoScrollAlways then static = true end
 
   if static then
     ui.setCursor(ceilVec2(pos.x, pos.y + (size.y - textSize.y) / 2))
     ui.dwriteTextAligned(text, fontSize, ui.Alignment.Center, ui.Alignment.Start, vec2(size.x, textSize.y), false, rgbm.colors.white)
+  elseif settings.songInfoScrollDirection == 1 then
+    local startOffset
+    local endOffset
+    local sidePadding = scaleNum(10)
+
+    if textSize.x > size.x then
+      local overflow = textSize.x - size.x
+      startOffset = sidePadding
+      endOffset = -(overflow + sidePadding)
+    else
+      local availableMovement = size.x - textSize.x
+      startOffset = -sidePadding
+      endOffset = availableMovement + sidePadding
+    end
+
+    local travelDistance = math.abs(endOffset - startOffset)
+    local cycleLength = travelDistance * 2
+    local cyclePosition = cycleLength > 0 and songInfo.scrollTime % cycleLength or 0
+
+    local cycleMovement
+    if cyclePosition <= travelDistance then
+      cycleMovement = cyclePosition
+    else
+      cycleMovement = cycleLength - cyclePosition
+    end
+
+    local scrollX
+    if endOffset < startOffset then
+      scrollX = startOffset - cycleMovement
+    else
+      scrollX = startOffset + cycleMovement
+    end
+
+    ui.pushClipRect(pos, pos + size)
+    ui.dwriteDrawText(text, fontSize, ceilVec2(pos.x + scrollX, pos.y + (size.y - textSize.y) / 2), rgbm.colors.white)
+    ui.popClipRect()
   else
     local scrollSpacing = settings.songInfoAutoSpacing and size.x / 1.5 or settings.songInfoSpacing
     local scrollStepWidth = math.ceil(textSize.x + scrollSpacing)
@@ -2975,8 +3010,9 @@ function script.windowMainSettings()
 
             settingsSlider('songInfoScrollSpeed', 1, 300, 'Scroll Speed: %.0f', 'Speed that the text is scrolled at')
 
-            local scrollDirStr = settings.songInfoScrollDirection == 0 and 'Left' or 'Right'
-            settings.songInfoScrollDirection = ui.slider('##songInfoScrollDirection', settings.songInfoScrollDirection, 0, 1, 'Scroll Direction: ' .. scrollDirStr, true)
+            local scrollDirNames = { [0] = 'Left', [1] = 'Retro', [2] = 'Right' }
+            local scrollDirStr = scrollDirNames[settings.songInfoScrollDirection]
+            settings.songInfoScrollDirection = ui.slider('##songInfoScrollDirection', settings.songInfoScrollDirection, 0, 2, 'Scroll Direction: ' .. scrollDirStr, true)
 
             settingsCheckbox('Enable Edge Gradients', 'songInfoGradient', 'If enabled, left and right edges of the text will be blended in with a gradient')
             if settings.songInfoGradient then
