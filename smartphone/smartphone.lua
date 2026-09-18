@@ -29,7 +29,7 @@ local settings = ac.storage {
   songInfoScrollAlways = false,
   songInfoGradient = true,
   songInfoGradientIntensity = 1,
-  songInfoGradientLength = 5,
+  songInfoGradientWidth = 5,
   songInfoHidesCamera = true,
   songInfoAutoSpacing = false,
 
@@ -115,8 +115,8 @@ local colors = {
     displayTransp = rgbm(),
     outline = rgbm(),
     elements = rgbm(),
-    headerPill = rgbm(),
-    headerOutline = rgbm(),
+    contactPill = rgbm(),
+    contactOutline = rgbm(),
     message = rgbm(),
     messageOwn = rgbm(),
     messageOwnText = rgbm(),
@@ -136,8 +136,9 @@ local app = {
   scale = 1,
   size = vec2(0, 0),
   hovered = false,
+  canvas = { update = { message = true, emoji = true }, messageFade = nil, messageFadeSize = vec2(0, 0), emojiFade = nil, emojiFadeSize = vec2(0, 0) },
   tooltipPadding = vec2(5, 5),
-  headerText = {
+  contactText = {
     size = nil,
     scale = nil,
   },
@@ -164,6 +165,11 @@ local app = {
     bold = ui.DWriteFont('Inter Variable Text', '.\\src\\ttf'):weight(ui.DWriteFont.Weight.Bold),
   },
 }
+
+local function updateFadeCanvas()
+  app.canvas.update.message = true
+  app.canvas.update.emoji = true
+end
 
 local player = {
   driverName = ac.getDriverName(0),
@@ -211,7 +217,7 @@ local songInfo = {
   title = '',
   final = '',
   hasCover = false,
-  isPaused = false,
+  isNotPlaying = false,
   dynamicIslandSizeActive = vec2(40, 20),
   dynamicIslandBaseWidths = vec2(40, 80),
   cached = {
@@ -908,6 +914,12 @@ end
 ---Chat input max length to keep chatbox from growing too tall.
 local function getInputMaxLength() return math.floor(490 * (13 / settings.chatFontSize) ^ 2) end
 
+--- Escapes Lua pattern metacharacters in a string.
+---@param s string Input string to escape.
+---@return string escaped The escaped string.
+---@return integer count Number of characters escaped.
+local function escapePattern(s) return s:gsub('([%(%)%.%%%+%-%*%?%[%]%^%$])', '%%%1') end
+
 --#endregion
 
 --#region GENERAL LOGIC FUNCTIONS
@@ -920,8 +932,8 @@ local function updateColors()
   colors.final.outline:set(pickThemeColor(colors.outlineColorLight, colors.outlineColorDark))
   colors.final.input:set(pickThemeColor(colors.transparent.black50, colors.transparent.white50))
   colors.final.message:set(pickThemeColor(colors.iMessageLightGray, colors.iMessageDarkGray))
-  colors.final.headerPill:set(pickThemeColor(colors.displayColorLight, colors.iMessageDarkGray))
-  colors.final.headerOutline:set(pickThemeColor(colors.outlineColorLight, colors.outlineColorMedium))
+  colors.final.contactPill:set(pickThemeColor(colors.displayColorLight, colors.iMessageDarkGray))
+  colors.final.contactOutline:set(pickThemeColor(colors.outlineColorLight, colors.outlineColorMedium))
 
   colors.final.emojiPicker:set(pickThemeColor(colors.emojiPickerButtonLight, colors.emojiPickerButtonDark))
   colors.final.emojiPickerOutline:set(pickThemeColor(colors.transparent.black10, colors.transparent.white10))
@@ -936,6 +948,8 @@ local function updateColors()
 
   colors.final.messageOwnText:set(getBrightness(colors.final.messageOwn) <= 0.225 and rgbm.colors.white or rgbm.colors.black)
   colors.final.messageFriendText:set(getBrightness(colors.final.messageFriend) <= 0.225 and rgbm.colors.white or rgbm.colors.black)
+
+  updateFadeCanvas()
 end
 
 ---@param imagePath string
@@ -1231,13 +1245,13 @@ local function updateSongInfo(forced)
 
   local current = ac.currentlyPlaying()
 
-  if not forced and current.artist == songInfo.artist and current.title == songInfo.title and current.isPlaying == not songInfo.isPaused then return end
+  if not forced and current.artist == songInfo.artist and current.title == songInfo.title and current.isPlaying == not songInfo.isNotPlaying then return end
 
   if (current.artist == '' and current.title == '') or not current.isPlaying then
     songInfo.final = ''
 
     if songInfo.dynamicIslandSizeActive.x == songInfo.dynamicIslandBaseWidths.y then setDynamicIslandSize(false) end
-    songInfo.isPaused = true
+    songInfo.isNotPlaying = true
   else
     if (current.artist:lower() == 'unknown artist' or current.artist == '') and current.title ~= '' then
       songInfo.artist, songInfo.title = splitTitle(current.title)
@@ -1252,7 +1266,7 @@ local function updateSongInfo(forced)
     if songInfo.final ~= songInfo.cached.text then songInfo.scrollTime = 0 end
 
     if songInfo.dynamicIslandSizeActive.x == songInfo.dynamicIslandBaseWidths.x then setDynamicIslandSize(true) end
-    songInfo.isPaused = not current.isPlaying
+    songInfo.isNotPlaying = not current.isPlaying
   end
 end
 
@@ -1333,11 +1347,11 @@ local function sendChatMessage(message)
   end
 end
 
----@param isPlayer boolean @whether the message is from a player (chat) or the server
----@param message string @the raw message text
----@return boolean @whether this message should be hidden from the chat log
----@return boolean @whether this message should trigger a critical alert sound
----Checks whether a message should be hidden and/or trigger a critical alert sound.
+---@param isPlayer boolean @Whether the message is from a player or the server.
+---@param message string @The raw message text.
+---@return string|boolean? hideReason @One of: 'annoying', 'kickban', 'race', or false.
+---@return boolean shouldAlert @Whether this message should trigger a critical alert sound.
+---Determines whether a message matches one of the configured filters.
 local function matchMessage(isPlayer, message)
   local lowerMessage = message:lower()
   local lowerPlayerName = player.driverName:lower()
@@ -1345,25 +1359,25 @@ local function matchMessage(isPlayer, message)
 
   if isPlayer then
     for _, pattern in ipairs(chat.hideStrings.player) do
-      if message:match(pattern) then return true, false end
-    end
-  else
-    for _, reason in ipairs(chat.hideStrings.server) do
-      if lowerMessage:find(reason) then
-        if lowerMessage:find(lowerPlayerName) then
-          shouldAlert = true
-        elseif lowerMessage:find('^you') or lowerMessage:find('^it is currently night') then
-          shouldAlert = true
-        else
-          return true, shouldAlert
-        end
-      end
+      if message:match(pattern) then return 'annoying', false end
     end
 
-    if settings.chatHideRaceMsg and lowerMessage:find('in a race%%%.$') then
-      if not lowerMessage:find('you') and not lowerMessage:find(lowerPlayerName) then return true, shouldAlert end
+    return nil, false
+  end
+
+  for _, reason in ipairs(chat.hideStrings.server) do
+    if lowerMessage:find(reason) then
+      if lowerMessage:find(lowerPlayerName) then
+        shouldAlert = true
+      elseif lowerMessage:find('^you') or lowerMessage:find('^it is currently night') then
+        shouldAlert = true
+      else
+        return 'kickban', shouldAlert
+      end
     end
   end
+
+  if lowerMessage:find('in a race%.$') and not lowerMessage:find('you') and not lowerMessage:find(lowerPlayerName) then return 'race', shouldAlert end
 
   return false, shouldAlert
 end
@@ -1465,7 +1479,7 @@ local function handleKeyboardInput()
     chat.input.text = ''
   end
 
-  if utf8len(chat.input.text) >= inputMaxLength then return end
+  if utf8len(chat.input.text .. typed) > inputMaxLength then return end
 
   chat.input.text = chat.input.text .. typed
 end
@@ -1575,7 +1589,7 @@ end
 local function drawPing()
   local ping = ac.getCar(0).ping
   local pingSize = scaleVec2(20, 20)
-  local pingPos = scaleVec2(238, 20, true)
+  local pingPos = scaleVec2(238, 20)
   local isHovered = app.hovered and ui.rectHovered(pingPos, pingPos + pingSize, true)
 
   if ping > -1 then
@@ -1651,7 +1665,7 @@ local function drawTime()
 
   local rightEdge = scaleNum(62)
   local areaLeft = rightEdge - textArea.x
-  local areaTop = scaleNum(22, true)
+  local areaTop = scaleNum(22)
 
   ui.setCursor(vec2(areaLeft, areaTop))
   ui.dwriteTextAligned(timeText, fontSize, ui.Alignment.End, ui.Alignment.Center, textArea, false, colors.final.elements)
@@ -1679,14 +1693,14 @@ end
 local function drawDynamicIsland()
   local islandHeight = songInfo.dynamicIslandSizeActive.y
   local borderRadius = scaleNum(10)
-  local left = scaleVec2(app.size.x / 2 - songInfo.dynamicIslandSizeActive.x, songInfo.dynamicIslandSizeActive.y, true)
-  local right = scaleVec2(app.size.x / 2 + songInfo.dynamicIslandSizeActive.x, songInfo.dynamicIslandSizeActive.y * 2, true)
+  local left = scaleVec2(app.size.x / 2 - songInfo.dynamicIslandSizeActive.x, songInfo.dynamicIslandSizeActive.y)
+  local right = scaleVec2(app.size.x / 2 + songInfo.dynamicIslandSizeActive.x, songInfo.dynamicIslandSizeActive.y * 2)
 
   ui.drawRectFilled(left, right, rgbm.colors.black, borderRadius)
 
-  if not settings.songInfoHidesCamera or not settings.songInfo or songInfo.isPaused then
-    local islandTop = scaleNum(islandHeight, true)
-    local islandBottom = scaleNum(islandHeight * 2, true)
+  if not settings.songInfoHidesCamera or not settings.songInfo or songInfo.isNotPlaying then
+    local islandTop = scaleNum(islandHeight)
+    local islandBottom = scaleNum(islandHeight * 2)
     local camTotalHeight = scaleNum(islandHeight - 2)
     local camSize = camTotalHeight / 2
     local camTop = islandTop + math.floor((islandBottom - islandTop - camTotalHeight) / 2)
@@ -1697,80 +1711,13 @@ local function drawDynamicIsland()
   end
 end
 
----Draws the header of the chat window.
-local function drawHeader()
-  if not communities then return error('Communities table does not exist, probably caused by a broken app install') end
-
-  local community = communities[player.serverCommunity]
-  if not community.ready and ui.isImageReady(community.image) then
-    community.ready = true
-    getAverageCommunityImageColor(community.image)
-  end
-
-  if emoji.picker then return end
-
-  ui.setCursor(vec2(0, movement.smooth))
-  ui.childWindow('Header', scaleVec2(app.size.x, 110), false, flags.input, function()
-    local winHalf = scaleNum(app.size.x / 2)
-    local fontSize = scaleNum(12)
-
-    ui.pushDWriteFont(app.font.semiBold)
-
-    local contactName = community.contact
-    local contactTextSize = ui.measureDWriteText(contactName, fontSize)
-    local contactTextCenter = math.ceil(winHalf - contactTextSize.x / 2)
-    local contactTextPosY = scaleNum(83)
-
-    local pillPaddingX = scaleNum(8)
-    local pillPaddingY = scaleNum(4)
-    local pillPosTL = vec2(contactTextCenter - pillPaddingX, contactTextPosY - pillPaddingY)
-    local pillPosBR = vec2(contactTextCenter + contactTextSize.x + pillPaddingX, contactTextPosY + contactTextSize.y + pillPaddingY)
-    local pillRounding = (pillPosBR.y - pillPosTL.y) / 2
-    local pillOutline = math.round(app.scale * 1, 2)
-
-    ui.beginOutline()
-    ui.drawRectFilled(pillPosTL, pillPosBR, colors.final.headerPill, pillRounding)
-    ui.endOutline(colors.final.headerOutline, pillOutline)
-
-    ui.setCursor(vec2(contactTextCenter, contactTextPosY))
-    ui.dwriteTextAligned(contactName, fontSize, ui.Alignment.Start, ui.Alignment.Center, contactTextSize, false, colors.final.elements)
-
-    ui.popDWriteFont()
-
-    local imgSize = scaleVec2(36, 36)
-    local imgPos = vec2((ui.availableSpaceX() / 2) - (imgSize.x / 2), scaleNum(47))
-    local imgRounding = scaleNum(20)
-
-    ui.beginOutline()
-    ui.drawImageRounded(community.image, imgPos, imgPos + imgSize, imgRounding, ui.CornerFlags.All)
-    ui.endOutline(colors.final.headerPill, pillOutline)
-
-    if app.hovered then
-      if ui.rectHovered(imgPos, imgPos + imgSize) then
-        if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
-
-        ui.tooltip(app.tooltipPadding, function()
-          ui.text(community.text)
-          ui.separator()
-          ui.textColored('Click to open in Browser', colors.footerText)
-        end)
-
-        if ui.mouseReleased(ui.MouseButton.Left) then
-          playAudio(audio.keyboard.enter)
-          os.openURL(community.url, false)
-        end
-      end
-    end
-  end)
-end
-
 ---Draws the song information.
 local function drawSongInfo()
   if settings.songInfo then
-    if not songInfo.isPaused then
+    if not songInfo.isNotPlaying then
       local coverSize = scaleVec2(16, 16)
-      local islandTop = scaleNum(20, true)
-      local islandBottom = scaleNum(40, true)
+      local islandTop = scaleNum(20)
+      local islandBottom = scaleNum(40)
       local coverTop = islandTop + math.floor((islandBottom - islandTop - coverSize.x) / 2)
       local imgPosX = scaleNum(app.size.x / 2 - 75)
       local imgPos = vec2(imgPosX, coverTop)
@@ -1785,13 +1732,13 @@ local function drawSongInfo()
     end
 
     local fontSize = scaleNum(12)
-    local pos = settings.songInfoGradient and scaleVec2(86, 21, true) or scaleVec2(89, 21, true)
+    local pos = settings.songInfoGradient and scaleVec2(86, 21) or scaleVec2(89, 21)
     local textSize = settings.songInfoGradient and scaleVec2(135, 15) or scaleVec2(132, 15)
 
     drawSongInfoText(songInfo.final, pos, textSize, fontSize)
 
     if settings.songInfoGradient and songInfo.dynamicIslandSizeActive.x == songInfo.dynamicIslandBaseWidths.y then
-      local gradientWidth = scaleNum(settings.songInfoGradientLength)
+      local gradientWidth = scaleNum(settings.songInfoGradientWidth)
       local gradientColor = rgbm(0, 0, 0, settings.songInfoGradientIntensity)
       ui.drawRectFilledMultiColor(pos, vec2(pos.x + gradientWidth, pos.y + textSize.y), gradientColor, rgbm.colors.transparent, rgbm.colors.transparent, gradientColor)
       ui.drawRectFilledMultiColor(vec2(pos.x + textSize.x - gradientWidth, pos.y), pos + textSize, rgbm.colors.transparent, gradientColor, gradientColor, rgbm.colors.transparent)
@@ -1813,6 +1760,76 @@ local function drawSongInfo()
       end
     end
   end
+end
+
+---Draws the Status Bar containing the time, ping and dynamic island.
+local function drawStatusBar()
+  ui.setCursor(vec2(0, movement.smooth))
+  ui.childWindow('StatusBar', scaleVec2(app.size.x, 45), false, flags.window, function()
+    drawTime()
+    drawPing()
+    drawDynamicIsland()
+    drawSongInfo()
+  end)
+end
+
+---Draws the contact in the chat window.
+local function drawContact()
+  if not communities then return error('Communities table does not exist, probably caused by a broken app install') end
+
+  local community = communities[player.serverCommunity]
+
+  ui.setCursor(vec2(0, movement.smooth))
+  ui.childWindow('Contact', scaleVec2(app.size.x, 110), false, flags.window, function()
+    local winHalf = scaleNum(app.size.x / 2)
+    local fontSize = scaleNum(12)
+
+    ui.pushDWriteFont(app.font.semiBold)
+
+    local contactName = community.contact
+    local contactTextSize = ui.measureDWriteText(contactName, fontSize)
+    local contactTextCenter = math.ceil(winHalf - contactTextSize.x / 2)
+    local contactTextPosY = scaleNum(83)
+
+    local pillPaddingX = scaleNum(8)
+    local pillPaddingY = scaleNum(4)
+    local pillPosTL = vec2(contactTextCenter - pillPaddingX, contactTextPosY - pillPaddingY)
+    local pillPosBR = vec2(contactTextCenter + contactTextSize.x + pillPaddingX, contactTextPosY + contactTextSize.y + pillPaddingY)
+    local pillRounding = (pillPosBR.y - pillPosTL.y) / 2
+    local pillOutline = math.round(app.scale * 1, 2)
+
+    ui.beginOutline()
+    ui.drawRectFilled(pillPosTL, pillPosBR, colors.final.contactPill, pillRounding)
+    ui.endOutline(colors.final.contactOutline, pillOutline)
+
+    ui.setCursor(vec2(contactTextCenter, contactTextPosY))
+    ui.dwriteTextAligned(contactName, fontSize, ui.Alignment.Start, ui.Alignment.Center, contactTextSize, false, colors.final.elements)
+
+    ui.popDWriteFont()
+
+    local imgSize = scaleVec2(36, 36)
+    local imgPos = vec2((ui.availableSpaceX() / 2) - (imgSize.x / 2), scaleNum(47))
+    local imgRounding = scaleNum(20)
+
+    ui.drawImageRounded(community.image, imgPos, imgPos + imgSize, imgRounding, ui.CornerFlags.All)
+
+    if app.hovered then
+      if ui.rectHovered(imgPos, imgPos + imgSize) then
+        if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
+
+        ui.tooltip(app.tooltipPadding, function()
+          ui.text(community.text)
+          ui.separator()
+          ui.textColored('Click to open in Browser', colors.footerText)
+        end)
+
+        if ui.mouseReleased(ui.MouseButton.Left) then
+          playAudio(audio.keyboard.enter)
+          os.openURL(community.url, false)
+        end
+      end
+    end
+  end)
 end
 
 ---@param t number @unix timestamp
@@ -1981,7 +1998,7 @@ end
 local function buildMessageLayout()
   if chat.layout.cacheGen == chat.msgCacheGen then return chat.layout.messages, chat.layout.messageCount, chat.layout.totalHeight end
 
-  local messagePadding = scaleNum(330)
+  local firstMessagePadding = scaleNum(366)
   local layoutMessages = chat.layout.messages
   local rawCount = #chat.messages
 
@@ -2029,7 +2046,7 @@ local function buildMessageLayout()
           local firstKeptMessage = layoutMessages[1]
           local oldFirstEndY = firstKeptMessage.endY
           local rawIndex = firstKeptMessage.rawIndex - pendingRemoveCount
-          positionMessageEntry(firstKeptMessage, chat.messages[rawIndex], rawIndex, messagePadding, nil, nil)
+          positionMessageEntry(firstKeptMessage, chat.messages[rawIndex], rawIndex, firstMessagePadding, nil, nil)
           local heightShift = firstKeptMessage.endY - oldFirstEndY
 
           messageY, lastUserIndex, lastUserName = firstKeptMessage.endY, firstKeptMessage.userIndex, firstKeptMessage.userName
@@ -2083,7 +2100,7 @@ local function buildMessageLayout()
 
         if recalcFrom <= messageCount then
           if recalcFrom == 1 then
-            messageY, lastUserIndex, lastUserName = messagePadding, nil, nil
+            messageY, lastUserIndex, lastUserName = firstMessagePadding, nil, nil
           else
             local before = layoutMessages[recalcFrom - 1]
             messageY, lastUserIndex, lastUserName = before.endY, before.userIndex, before.userName
@@ -2123,7 +2140,7 @@ local function buildMessageLayout()
   end
 
   local entryCount = 0
-  local messageY = messagePadding
+  local messageY = firstMessagePadding
   local lastDrawnUserIndex = nil
   local lastDrawnUserName = nil
 
@@ -2165,14 +2182,15 @@ local function drawMessages()
   if not player.isOnline then return end
 
   local clipTop = scaleVec2(0, 0, true)
-  local clipBottom = scaleVec2(app.size.x, 500, true)
+  local clipBottom = scaleVec2(app.size.x, 501, true)
   ui.pushClipRect(clipTop, clipBottom)
 
-  local messagesPos = scaleVec2(10, 40, true)
-  local childSize = scaleVec2(270, 465 - chat.input.offset / app.scale)
+  local messagesPos = scaleVec2(10, 18, true)
+  local childSize = scaleVec2(270, 483 - chat.input.offset / app.scale)
   local entries, entryCount, totalHeight = buildMessageLayout()
   ui.setCursor(messagesPos)
-  ui.setNextWindowContentSize(vec2(0, totalHeight))
+  local lastMessagePadding = entries[entryCount].userIndex == -1 and 0 or scaleNum(8)
+  ui.setNextWindowContentSize(vec2(0, totalHeight - lastMessagePadding))
   ui.childWindow('Messages', childSize, false, flags.window, function()
     local winWidth = ui.windowWidth()
     local winHalfWidth = winWidth / 2
@@ -2300,11 +2318,38 @@ local function drawMessages()
 
   ui.setCursor(messagesPos)
   ui.childWindow('MessagesFade', childSize, false, flags.window, function()
-    local solidHeight = scaleNum(20)
-    local fadeHeight = scaleNum(65) + solidHeight
-    ui.drawRectFilled(vec2(0, 0), vec2(ui.windowWidth(), solidHeight), colors.final.display)
-    ui.drawRectFilledMultiColor(vec2(0, solidHeight), vec2(ui.windowWidth(), fadeHeight), colors.final.display, colors.final.display, colors.final.displayTransp, colors.final.displayTransp)
+    local fadeHeight = scaleNum(75)
+    local fadeSize = vec2(ui.availableSpaceX(), fadeHeight)
+
+    if not app.canvas.messageFade or app.canvas.messageFadeSize.x ~= fadeSize.x or app.canvas.messageFadeSize.y ~= fadeSize.y then
+      if app.canvas.messageFade then app.canvas.messageFade:dispose() end
+
+      app.canvas.messageFade = ui.ExtraCanvas(fadeSize, 1, render.TextureFlags.None)
+      app.canvas.messageFadeSize = fadeSize
+      app.canvas.update.message = true
+    end
+
+    if app.canvas.update.message then
+      app.canvas.messageFade:update(function()
+        app.canvas.messageFade:clear(colors.final.displayTransp)
+        ui.drawRectFilledMultiColor(vec2(0, 0), fadeSize, colors.final.display, colors.final.display, colors.final.displayTransp, colors.final.displayTransp)
+      end)
+
+      app.canvas.update.message = false
+    end
+
+    local barHeight = scaleNum(30)
+    local barInset = scaleNum(5)
+    local rounding = scaleNum(15)
+    local peekDistance = scaleNum(movement.maxDistance - movement.notifDistance)
+    local peek = math.lerpInvSat(movement.distance, 0, peekDistance)
+    local capY = math.floor((peek - 1) * barHeight)
+    local fadeY = capY + barHeight - scaleNum(2)
+
+    ui.drawImageRounded(app.canvas.messageFade, vec2(0, fadeY), vec2(fadeSize.x, fadeY + fadeHeight), rounding * (1 - peek), ui.CornerFlags.Top)
+    ui.drawRectFilled(vec2(barInset, capY), vec2(fadeSize.x - barInset, capY + barHeight), colors.final.display, rounding, ui.CornerFlags.Top)
   end)
+
   ui.popClipRect()
 end
 
@@ -2313,7 +2358,7 @@ local function drawEmojiPicker()
   local buttonPos = scaleVec2(28, app.size.y - 17, true)
   local buttonSize = scaleVec2(12, 12)
   local emojiSizePicker = scaleNum(20)
-  local groupIconDrawSize = scaleVec2(23, 23)
+  local groupIconDrawSize = scaleVec2(22, 22)
   local iconHoverRounding = scaleNum(5)
   local groupCount = #emoji.groups
   local iconStep = 1 / math.max(groupCount, 1)
@@ -2326,7 +2371,10 @@ local function drawEmojiPicker()
   end
 
   local emojiCharSize = emoji.char.size
-  if not emojiCharSize then return end
+  if not emojiCharSize then
+    ui.popDWriteFont()
+    return
+  end
 
   ui.setCursor(buttonPos)
   local cursorPos = ui.getCursor()
@@ -2358,100 +2406,119 @@ local function drawEmojiPicker()
   end
 
   local groupRowHeight = scaleNum(34)
-  local windowSize = scaleVec2(266, 454 - (chat.input.offset / app.scale))
-  local windowPos = scaleVec2(12, 47, true)
+  local windowSize = scaleVec2(266, 461 - (chat.input.offset / app.scale))
+  local windowPos = scaleVec2(12, 40, true)
   local gridSize = vec2(windowSize.x, windowSize.y - groupRowHeight)
 
+  local activeGroup = emoji.groups[emoji.activeGroup]
+  if activeGroup then
+    local emojiOffset = scaleVec2(0, 3)
+    local emojiSpacing = emojiOffset.y
+    local emojis = activeGroup.emojis
+    local emojiCount = #emojis
+    local emojisPerRow = math.max(1, math.floor((gridSize.x + emojiSpacing) / (emojiCharSize.x + emojiSpacing)))
+    local usedWidth = emojisPerRow * emojiCharSize.x + (emojisPerRow - 1) * emojiSpacing
+    local emojiStartPos = vec2((gridSize.x - usedWidth) / 2, 0)
+    local rowCount = math.ceil(emojiCount / emojisPerRow)
+    local contentHeight = emojiStartPos.y + rowCount * (emojiCharSize.y + emojiSpacing)
+
+    ui.setCursor(windowPos)
+    ui.setNextWindowContentSize(vec2(0, contentHeight))
+    ui.childWindow('EmojiPickerGrid', gridSize, false, flags.emojiWindow, function()
+      local gridHovered = ui.windowHovered()
+      if gridHovered then emoji.pickerHovered = true end
+
+      if emoji.activeGroupDrawn ~= emoji.activeGroup then
+        ui.setScrollY(0, false, false)
+        emoji.activeGroupDrawn = emoji.activeGroup
+      end
+
+      ui.setCursor(emojiStartPos)
+      ui.beginOutline()
+      ui.beginGroup(gridSize.x)
+
+      for i = 1, emojiCount do
+        local itemCursor = ui.getCursor()
+        if ui.rectHovered(itemCursor, itemCursor + emojiCharSize) then
+          emoji.pickerHovered = true
+          if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
+          ui.drawRectFilled(itemCursor + (emojiOffset / 2), itemCursor + emojiCharSize + (emojiOffset / 2), colors.iMessageSelected, scaleNum(5))
+        end
+
+        ui.dwriteText(emojis[i], emojiSizePicker)
+
+        if ui.itemClicked(ui.MouseButton.Left, true) then
+          playAudio(audio.keyboard.keystroke)
+          if utf8len(chat.input.text .. emojis[i]) >= getInputMaxLength() then goto continue end
+          if not chat.input.active then chat.input.active = true end
+          if chat.input.text == chat.input.placeholder then chat.input.text = '' end
+          chat.input.text = chat.input.text .. emojis[i]
+        end
+
+        ::continue::
+
+        ui.sameLine(0, emojiSpacing)
+        if i % emojisPerRow == 0 and i ~= emojiCount then ui.newLine(emojiSpacing) end
+      end
+      ui.endGroup()
+      ui.endOutline(colors.final.emojiPickerOutline, scaleNum(1))
+
+      if gridHovered and ui.mouseWheel() ~= 0 then
+        local mouseWheel = (ui.mouseWheel() * -1) * scaleNum(settings.chatScrollDistance)
+        ui.setScrollY(mouseWheel, true, true)
+      end
+    end)
+  end
+
   ui.setCursor(windowPos)
-  ui.childWindow('EmojiPickerBG', windowSize, false, flags.emojiWindow, function()
-    ui.drawRectFilled(vec2(0, 0), windowSize, colors.final.display)
+  ui.childWindow('EmojiPickerFade', gridSize, false, flags.window, function()
+    local fadeHeight = scaleNum(4)
+    local fadeSize = vec2(ui.availableSpaceX(), gridSize.y)
 
-    local activeGroup = emoji.groups[emoji.activeGroup]
-    if activeGroup then
-      local emojiOffset = scaleVec2(0, 3)
-      local emojiSpacing = emojiOffset.y
-      local emojis = activeGroup.emojis
-      local emojiCount = #emojis
-      local emojisPerRow = math.max(1, math.floor((gridSize.x + emojiSpacing) / (emojiCharSize.x + emojiSpacing)))
-      local usedWidth = emojisPerRow * emojiCharSize.x + (emojisPerRow - 1) * emojiSpacing
-      local emojiStartPos = vec2((gridSize.x - usedWidth) / 2, 0)
-      local rowCount = math.ceil(emojiCount / emojisPerRow)
-      local contentHeight = emojiStartPos.y + rowCount * (emojiCharSize.y + emojiSpacing)
+    if not app.canvas.emojiFade or app.canvas.emojiFadeSize.x ~= fadeSize.x or app.canvas.emojiFadeSize.y ~= fadeSize.y then
+      if app.canvas.emojiFade then app.canvas.emojiFade:dispose() end
+      app.canvas.emojiFade = ui.ExtraCanvas(fadeSize, 1, render.TextureFlags.None)
+      app.canvas.emojiFadeSize = fadeSize
+      app.canvas.update.emoji = true
+    end
 
-      ui.setNextWindowContentSize(vec2(0, contentHeight))
-      ui.childWindow('EmojiPickerGrid', gridSize, false, flags.emojiWindow, function()
-        local gridHovered = ui.windowHovered()
-        if gridHovered then emoji.pickerHovered = true end
-
-        if emoji.activeGroupDrawn ~= emoji.activeGroup then
-          ui.setScrollY(0, false, false)
-          emoji.activeGroupDrawn = emoji.activeGroup
-        end
-
-        ui.setCursor(emojiStartPos)
-        ui.beginOutline()
-        ui.beginGroup(gridSize.x)
-
-        for i = 1, emojiCount do
-          local itemCursor = ui.getCursor()
-          if ui.rectHovered(itemCursor, itemCursor + emojiCharSize) then
-            emoji.pickerHovered = true
-            if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
-            ui.drawRectFilled(itemCursor + (emojiOffset / 2), itemCursor + emojiCharSize + (emojiOffset / 2), colors.iMessageSelected, scaleNum(5))
-          end
-
-          ui.dwriteText(emojis[i], emojiSizePicker)
-
-          if ui.itemClicked(ui.MouseButton.Left, true) then
-            playAudio(audio.keyboard.keystroke)
-            if utf8len(chat.input.text .. emojis[i]) >= getInputMaxLength() then goto continue end
-            if not chat.input.active then chat.input.active = true end
-            if chat.input.text == chat.input.placeholder then chat.input.text = '' end
-            chat.input.text = chat.input.text .. emojis[i]
-          end
-
-          ::continue::
-
-          ui.sameLine(0, emojiSpacing)
-          if i % emojisPerRow == 0 and i ~= emojiCount then ui.newLine(emojiSpacing) end
-        end
-        ui.endGroup()
-        ui.endOutline(colors.final.emojiPickerOutline, scaleNum(1))
-
-        if gridHovered and ui.mouseWheel() ~= 0 then
-          local mouseWheel = (ui.mouseWheel() * -1) * scaleNum(settings.chatScrollDistance)
-          ui.setScrollY(mouseWheel, true, true)
-        end
+    if app.canvas.update.emoji then
+      app.canvas.emojiFade:update(function()
+        app.canvas.emojiFade:clear(colors.final.displayTransp)
+        ui.drawRectFilledMultiColor(vec2(0, 0), vec2(fadeSize.x, fadeHeight), colors.final.display, colors.final.display, colors.final.displayTransp, colors.final.displayTransp)
+        ui.drawRectFilledMultiColor(vec2(0, fadeSize.y - fadeHeight), vec2(fadeSize.x, fadeSize.y), colors.final.displayTransp, colors.final.displayTransp, colors.final.display, colors.final.display)
       end)
+      app.canvas.update.emoji = false
     end
 
-    ui.drawSimpleLine(vec2(0, gridSize.y), vec2(windowSize.x, gridSize.y), colors.final.outline, scaleNum(1))
-
-    local groupButtonWidth = windowSize.x / math.max(groupCount, 1)
-    for i = 1, groupCount do
-      local buttonStart = vec2((i - 1) * groupButtonWidth, gridSize.y)
-      local buttonEnd = buttonStart + vec2(groupButtonWidth, groupRowHeight)
-      local buttonCenter = (buttonStart + buttonEnd) / 2
-      local isGroupHovered = ui.rectHovered(buttonStart, buttonEnd)
-
-      if isGroupHovered then
-        ui.drawRectFilled(buttonCenter - (groupButtonWidth / 2.2), buttonCenter + (groupButtonWidth / 2.2), colors.iMessageSelected, iconHoverRounding)
-        ui.tooltip(app.tooltipPadding, function() ui.text(emoji.groups[i].name) end)
-      end
-
-      local iconColor = i == emoji.activeGroup and colors.final.emojiPickerActive or colors.final.emojiPicker
-      ui.drawImage(app.images.emojiIcons, buttonCenter - (groupIconDrawSize / 2), buttonCenter + (groupIconDrawSize / 2), iconColor, vec2((i - 1) * iconStep, 0), vec2(i * iconStep, 1))
-
-      if isGroupHovered then
-        emoji.pickerHovered = true
-        if not ui.isMouseDragging(ui.MouseButton.Left, 0) or i == emoji.activeGroup then ui.setMouseCursor(ui.MouseCursor.Hand) end
-        if i ~= emoji.activeGroup and ui.mouseReleased(ui.MouseButton.Left) then
-          emoji.activeGroup = i
-          playAudio(audio.keyboard.enter)
-        end
-      end
-    end
+    ui.drawImage(app.canvas.emojiFade, vec2(0, 0), fadeSize)
   end)
+
+  local groupBarPos = windowPos + vec2(0, gridSize.y)
+  local groupButtonWidth = windowSize.x / math.max(groupCount, 1)
+  for i = 1, groupCount do
+    local buttonStart = groupBarPos + vec2((i - 1) * groupButtonWidth, 0)
+    local buttonEnd = buttonStart + vec2(groupButtonWidth, groupRowHeight)
+    local buttonCenter = (buttonStart + buttonEnd) / 2
+    local isGroupHovered = ui.rectHovered(buttonStart, buttonEnd)
+
+    if isGroupHovered then
+      ui.drawRectFilled(buttonCenter - (groupButtonWidth / 2.2), buttonCenter + (groupButtonWidth / 2.2), colors.iMessageSelected, iconHoverRounding)
+      ui.tooltip(app.tooltipPadding, function() ui.text(emoji.groups[i].name) end)
+    end
+
+    local iconColor = i == emoji.activeGroup and colors.final.emojiPickerActive or colors.final.emojiPicker
+    ui.drawImage(app.images.emojiIcons, buttonCenter - (groupIconDrawSize / 2), buttonCenter + (groupIconDrawSize / 2), iconColor, vec2((i - 1) * iconStep, 0), vec2(i * iconStep, 1))
+
+    if isGroupHovered then
+      emoji.pickerHovered = true
+      if not ui.isMouseDragging(ui.MouseButton.Left, 0) or i == emoji.activeGroup then ui.setMouseCursor(ui.MouseCursor.Hand) end
+      if i ~= emoji.activeGroup and ui.mouseReleased(ui.MouseButton.Left) then
+        emoji.activeGroup = i
+        playAudio(audio.keyboard.enter)
+      end
+    end
+  end
 
   ui.popDWriteFont()
 end
@@ -2459,7 +2526,7 @@ end
 ---Draws the custom input box for the chat.
 local function drawCustomChatInput()
   local inputSize = scaleVec2(235, 32 + chat.input.offset / app.scale)
-  local inputBoxSize = scaleVec2(230, 27 + chat.input.offset / app.scale)
+  local inputBoxSize = scaleVec2(232, 27 + chat.input.offset / app.scale)
   local inputFontSize = scaleNum(settings.chatFontSize)
   local inputWrap = scaleNum(190)
 
@@ -2585,7 +2652,7 @@ local function drawNotifications()
     local notif = queue[i]
     if notif.state ~= 'queued' then
       ui.setCursor(bannerPos)
-      ui.childWindow('NotificationDropDown' .. i, bannerSize, false, flags.input, function()
+      ui.childWindow('NotificationDropDown' .. i, bannerSize, false, flags.window, function()
         ui.offsetCursorY(notif.smooth - maxDistance)
         ui.drawRectFilled(ui.getCursor(), ui.getCursor() + bannerSize, colors.final.notifBg, scaleNum(13), ui.CornerFlags.All)
         ui.glowEllipseFilled(ui.getCursor() + (bannerSize / 2), scaleVec2(100, 25), colors.final.notifBgBlur)
@@ -2645,13 +2712,14 @@ Updater.init {
 
 if player.isOnline then
   ac.onChatMessage(function(message, senderCarIndex)
-    local escapedMessage = message:gsub('([%(%)%.%%%+%-%*%?%[%]%^%$])', '%%%1')
     local isPlayer = senderCarIndex > -1
     local userName = ac.getDriverName(senderCarIndex) or 'Someone'
     local isFriend = userName ~= 'Someone' and checkIfFriend(userName) or false
-    local isMentioned = message:lower():find('%f[%a_]' .. player.driverName:lower() .. '%f[%A_]')
-    local wouldHide, shouldAlert = matchMessage(isPlayer, escapedMessage)
-    local hideMessage = wouldHide and (isPlayer and settings.chatHideAnnoying or settings.chatHideKickBan)
+    local escapedPlayerName = escapePattern(player.driverName:lower())
+    local isMentioned = message:lower():find('%f[%a_]' .. escapedPlayerName .. '%f[%A_]') ~= nil
+    local hideReason, shouldAlert = matchMessage(isPlayer, message)
+
+    local hideMessage = hideReason == 'annoying' and settings.chatHideAnnoying or hideReason == 'kickban' and settings.chatHideKickBan or hideReason == 'race' and settings.chatHideRaceMsg
 
     if shouldAlert then setTimeout(function() playAudio(audio.notification.critical) end, audio.notification.timeout) end
 
@@ -2795,7 +2863,7 @@ function script.windowMainSettings()
       ui.tabBar('AppTabs', function()
         ui.tabItem('General', function()
           ui.indent(app.settingsIndentOffset)
-          settingsSlider('appScale', 0.5, 2, 'App Scale: %.01f%', nil, function(newVal)
+          settingsSlider('appScale', 0.5, 2, 'App Scale: %.01f', nil, function(newVal)
             moveAppUp(true)
             local roundedNewScale = math.round(newVal, 1)
             settings.appScale = roundedNewScale
@@ -2891,7 +2959,7 @@ function script.windowMainSettings()
               songInfo.final = ''
               songInfo.artist = ''
               songInfo.title = ''
-              songInfo.isPaused = false
+              songInfo.isNotPlaying = false
               setDynamicIslandSize(false)
             end
           end)
@@ -2913,8 +2981,8 @@ function script.windowMainSettings()
             settingsCheckbox('Enable Edge Gradients', 'songInfoGradient', 'If enabled, left and right edges of the text will be blended in with a gradient')
             if settings.songInfoGradient then
               ui.indent(app.settingsIndentOffset)
-              settingsSlider('songInfoGradientLength', 0, 100, 'Gradient Length: %.0f', 'Speed that the text is scrolled at')
-              settingsSlider('songInfoGradientIntensity', 0.01, 1, 'Gradient Intensity: %.2f', 'Speed that the text is scrolled at')
+              settingsSlider('songInfoGradientWidth', 0, 100, 'Gradient Width: %.0f', 'Width of the gradient')
+              settingsSlider('songInfoGradientIntensity', 0.01, 1, 'Gradient Intensity: %.2f', 'Intensity of the gradient')
               ui.unindent(app.settingsIndentOffset)
             end
 
@@ -3071,6 +3139,12 @@ function script.windowMain(dt)
   app.images.ready = app.images.ready or ui.isImageReady(app.images.phoneAtlasPath)
   if not app.images.ready then return end
 
+  local community = communities[player.serverCommunity]
+  if not community.ready then
+    community.ready = ui.isImageReady(community.image)
+    if community.ready then getAverageCommunityImageColor(community.image) end
+  end
+
   local rounded = math.round(settings.appScale, 1)
   settings.appScale = settings.appScale ~= rounded and rounded or settings.appScale
   app.scale = app.scale ~= settings.appScale and settings.appScale or app.scale
@@ -3095,12 +3169,13 @@ function script.windowMain(dt)
 
   ui.childWindow('Phone', vec2(app.images.phoneAtlasSize.x / 2, app.images.phoneAtlasSize.y), false, flags.window, function()
     drawDisplay()
-    drawTime()
-    drawPing()
-    drawDynamicIsland()
-    drawSongInfo()
-    drawMessages()
-    drawHeader()
+
+    if not emoji.picker then
+      drawMessages()
+      drawContact()
+    end
+
+    drawStatusBar()
     drawNotifications()
     drawEmojiPicker()
     drawCustomChatInput()
