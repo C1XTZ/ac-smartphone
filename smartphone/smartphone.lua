@@ -2382,7 +2382,7 @@ local function drawMessages()
     local fadeY = capY + barHeight - scaleNum(2)
 
     ui.drawImageRounded(app.canvas.messageFade, vec2(0, fadeY), vec2(fadeSize.x, fadeY + fadeHeight), rounding * (1 - peek), ui.CornerFlags.Top)
-    ui.drawRectFilled(vec2(barInset, capY), vec2(fadeSize.x - barInset, capY + barHeight), colors.final.display, rounding, ui.CornerFlags.Top)
+    ui.drawRectFilled(vec2(barInset, capY), vec2(fadeSize.x - barInset, capY + barHeight), colors.final.display, rounding * (1 - peek), ui.CornerFlags.Top)
   end)
 
   ui.popClipRect()
@@ -2674,21 +2674,22 @@ local function drawNotifications()
   if not getActiveNotification() then return end
 
   local maxDistance = scaleNum(notification.maxDistance)
-  local bannerSize = scaleVec2(257, 75)
+  local statusBarPadding = scaleVec2(0, 5)
+  local bannerSize = scaleVec2(260, 75)
   local imgSize = scaleVec2(15, 15)
   local titleFontSize = scaleNum(10)
   local contentFontSize = scaleNum(12)
   local contentFontColor = colors.final.elements
   local bodyMaxWidth = scaleNum(230)
 
-  local bannerPos = scaleVec2(16, 46) + vec2(0, movement.smooth)
+  local bannerPos = scaleVec2(15, 40, true)
 
   for i = 1, #queue do
     local notif = queue[i]
     if notif.state ~= 'queued' then
       ui.setCursor(bannerPos)
-      ui.childWindow('NotificationDropDown' .. i, bannerSize, false, flags.window, function()
-        ui.offsetCursorY(notif.smooth - maxDistance)
+      ui.childWindow('NotificationDropDown' .. i, bannerSize + statusBarPadding, false, flags.window, function()
+        ui.offsetCursorY(statusBarPadding.y + notif.smooth - maxDistance)
         ui.drawRectFilled(ui.getCursor(), ui.getCursor() + bannerSize, colors.final.notifBg, scaleNum(13), ui.CornerFlags.All)
         ui.glowEllipseFilled(ui.getCursor() + (bannerSize / 2), scaleVec2(100, 25), colors.final.notifBgBlur)
         ui.offsetCursor(scaleVec2(10, 10))
@@ -3211,8 +3212,8 @@ function script.windowMain(dt)
       drawContact()
     end
 
-    drawStatusBar()
     drawNotifications()
+    drawStatusBar()
     drawEmojiPicker()
     drawCustomChatInput()
     drawPhone()
