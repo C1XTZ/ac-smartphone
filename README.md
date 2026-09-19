@@ -12,13 +12,14 @@ If you're looking for a more "oldschool" feel, try my [Mobilephone](https://gith
 - **Time Display** – Shows real-life time in 24h/12h format (left-click to send to chat)
 - **Now Playing** – Displays currently playing song information (left-click to send to chat)
 - **Ping Display** – Shows your ping as connection bars, can be hovered to show the exact number (left-click to send to chat)
-- **Custom Community Pictures** – Support for community branding with clickable links.
+- **Custom Server Community Integration** – Support for community branding with clickable links when joining servers.
   - Community owners can contact me with the following information to be added:
     ```ini
     Server IPs:     ;List of IP addresses of your servers. IP's should not change all the time.
-    Image:          ;Image that you want to be displayed.
-    URL:            ;URL to direct to when clicked.
-    Tooltip Text:   ;Text that you want to be displayed in the tooltip.
+    Contact Name:   ;Name that will be shown below the contact picture.
+    Contact Image:          ;Image that you want to be displayed as contact picture.
+    URL:            ;URL to direct to when contact picture is clicked.
+    Tooltip Text:   ;Text that you want to be displayed in the contact picture tooltip.
     ```
     ![](https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/.github/img/communityexample.png)
 - **In-Game Chat** – Hover over usernames to see information (right-click to open user options)
@@ -30,7 +31,11 @@ If you're looking for a more "oldschool" feel, try my [Mobilephone](https://gith
 - **Customizable Settings** – Extensive options to personalize your experience by opening the settings via the cogwheel
 
 <p align="center">
-<img width="130" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/.github/img/updater.png"> <img width="130" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/.github/img/appsettings.png"> <img width="130" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/.github/img/preview.gif"> <img width="130" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/.github/img/chatsettings.png"> <img width="130" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/.github/img/audiosettings.png"> <img width="130" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/.github/img/colorsettings.png">
+<img width="270" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/.github/img/serverchat.png"> <img width="270" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/.github/img/settings.webp"> <img width="270" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/.github/img/emojipicker.png">
+</p>
+
+<p align="center">
+<img width="320" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/.github/img/notification.png"> <img width="320" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/.github/img/minimal.png">
 </p>
 
 If you have any questions or suggestions, feel free to open an issue or pull request.  
