@@ -43,7 +43,7 @@ local settings = ac.storage {
   chatHideAnnoying = true,
   chatHideRaceMsg = false,
   chatLatestBold = false,
-  chatUsernameColor = true,
+  chatUsernameColor = false,
 
   connectionEvents = true,
   connectionEventsFriendsOnly = false,
@@ -51,11 +51,13 @@ local settings = ac.storage {
 
   notifBannerEnabled = true,
   notifBannerMessages = true,
+  notifBannerUsernameColor = false,
   notifBannerConnections = true,
   notifBannerCarName = true,
   notifBannerDuration = 5,
   notifBannerHideWhenAppUp = true,
   notifBannerFullRaise = false,
+  notifBannerAdaptivePeek = true,
   notifBannerServerPriority = false,
 
   enableAudio = true,
@@ -105,11 +107,8 @@ local colors = {
   emojiPickerButtonDark = rgbm(1, 1, 1, 0.33),
   notifBgColorLight = rgbm(0.88, 0.88, 0.88, 1),
   notifBgColorDark = rgbm(0.1, 0.1, 0.1, 1),
-  notifBgBlurColorLight = rgbm(1, 1, 1, 1),
-  notifBgBlurColorDark = rgbm(0.33, 0.33, 0.33, 1),
   notifTitleColorLight = rgbm(0, 0, 0, 0.66),
   notifTitleColorDark = rgbm(1, 1, 1, 0.33),
-  communityAverage = rgbm(),
   final = {
     display = rgbm(),
     displayTransp = rgbm(),
@@ -127,7 +126,6 @@ local colors = {
     emojiPickerOutline = rgbm(),
     emojiPickerActive = rgbm(),
     notifBg = rgbm(),
-    notifBgBlur = rgbm(),
     notifTitle = rgbm(),
   },
 }
@@ -138,10 +136,6 @@ local app = {
   hovered = false,
   canvas = { update = { message = true, emoji = true }, messageFade = nil, messageFadeSize = vec2(0, 0), emojiFade = nil, emojiFadeSize = vec2(0, 0) },
   tooltipPadding = vec2(5, 5),
-  contactText = {
-    size = nil,
-    scale = nil,
-  },
   clockText = {
     size = nil,
     scale = nil,
@@ -160,6 +154,7 @@ local app = {
     ready = false,
   },
   font = {
+    thinn = ui.DWriteFont('Inter Variable Text', '.\\src\\ttf'):weight(ui.DWriteFont.Weight.Regular),
     regular = ui.DWriteFont('Inter Variable Text', '.\\src\\ttf'):weight(ui.DWriteFont.Weight.Medium),
     semiBold = ui.DWriteFont('Inter Variable Text', '.\\src\\ttf'):weight(ui.DWriteFont.Weight.SemiBold),
     bold = ui.DWriteFont('Inter Variable Text', '.\\src\\ttf'):weight(ui.DWriteFont.Weight.Bold),
@@ -176,7 +171,7 @@ local player = {
   cspVersion = ac.getPatchVersionCode(),
   isOnline = ac.getSim().isOnlineRace,
   serverIP = ac.getServerIP(),
-  serverCommunity = 'default',
+  serverCommunity = nil,
   timePeriod = '',
   phoneMode = settings.darkMode,
 }
@@ -185,7 +180,7 @@ local communities = stringify.parse(io.load('.\\apps\\lua\\smartphone\\src\\comm
 
 local movement = {
   maxDistance = 487,
-  notifDistance = 145,
+  notifDistance = 136,
   notifTailDelay = 0.35,
   forceFullUp = true,
   timer = settings.appMoveTimer,
@@ -194,12 +189,18 @@ local movement = {
   up = false,
   distance = 0,
   smooth = 0,
+  peekSingleLine = false,
+  peekBlend = 0,
+  peekAdjustTime = 0.3,
 }
 
 local notification = {
   maxDistance = 90,
   duration = settings.notifBannerDuration,
   speed = 1.5,
+  lineHeight = { single = 45, double = 60 },
+  contentFontSize = 11,
+  bodyMaxWidth = 205,
   queue = {},
 }
 
@@ -488,6 +489,8 @@ local function getServerCommunity()
 
   return 'default'
 end
+
+player.serverCommunity = getServerCommunity()
 
 ---@param tooltipString string @Text to be displayed in the tooltip.
 ---@param changeCursor? boolean @Changes the mouse cursor to ui.MouseCursor.Hand
@@ -920,6 +923,81 @@ local function getInputMaxLength() return math.floor(490 * (13 / settings.chatFo
 ---@return integer count Number of characters escaped.
 local function escapePattern(s) return s:gsub('([%(%)%.%%%+%-%*%?%[%]%^%$])', '%%%1') end
 
+---@param y number @eased value, 0 to 1
+---@return number @t, 0 to 1, where math.smootherstep(t) equals y
+---Inverts math.smootherstep by bisection.
+local function inverseSmootherstep(y)
+  local low, high = 0, 1
+  for _ = 1, 20 do
+    local mid = (low + high) / 2
+    if math.smootherstep(mid) < y then
+      low = mid
+    else
+      high = mid
+    end
+  end
+  return (low + high) / 2
+end
+
+---@param notif table @notification queue entry
+---@return table @cached {scale, bodyText, bodyBoxHeight, isSingleLine}
+---Measures and caches a notification's truncated body text and whether it fits on one line.
+local function getNotificationLayout(notif)
+  local layout = notif.layout
+  if layout and layout.scale == app.scale then return layout end
+
+  local contentFontSize = scaleNum(notification.contentFontSize)
+  local bodyWrapWidth = scaleNum(notification.bodyMaxWidth)
+  local bodyText = notif.body
+
+  ui.pushDWriteFont(app.font.thinn)
+
+  local lineHeight = ui.measureDWriteText('A', contentFontSize).y
+  local bodyBoxHeight = lineHeight * 2
+  local bodySize = ui.measureDWriteText(bodyText, contentFontSize, bodyWrapWidth)
+
+  if bodySize.y > bodyBoxHeight then
+    local charCount = utf8len(bodyText)
+    local low = 0
+    local high = charCount
+
+    while low < high do
+      local mid = math.ceil((low + high) / 2)
+      local candidate = utf8sub(bodyText, 1, mid) .. '...'
+      local size = ui.measureDWriteText(candidate, contentFontSize, bodyWrapWidth)
+
+      if size.y <= bodyBoxHeight then
+        low = mid
+      else
+        high = mid - 1
+      end
+    end
+
+    bodyText = utf8sub(bodyText, 1, low) .. '...'
+    bodySize = ui.measureDWriteText(bodyText, contentFontSize, bodyWrapWidth)
+  end
+
+  ui.popDWriteFont()
+
+  layout = { scale = app.scale, bodyText = bodyText, bodyBoxHeight = bodyBoxHeight, isSingleLine = bodySize.y <= lineHeight + scaleNum(1) }
+  notif.layout = layout
+  return layout
+end
+
+---@param blend number @0 for the two line peek, 1 for the single line peek
+---@return number @distance the app moves to while peeking up for a notification banner
+---Gets the peek distance, moved toward the single line peek by blend, which is the one/two line height difference in pixels.
+local function getPeekDistance(blend)
+  local peekDistance = math.max(scaleNum(movement.maxDistance - movement.notifDistance), 0)
+  if blend <= 0 then return peekDistance end
+
+  local scaledMaxDistance = scaleNum(movement.maxDistance)
+  local heightDifference = scaleNum(notification.lineHeight.double) - scaleNum(notification.lineHeight.single)
+  local peekSmooth = math.smootherstep(peekDistance / scaledMaxDistance) * scaledMaxDistance
+
+  return inverseSmootherstep((peekSmooth + heightDifference * blend) / scaledMaxDistance) * scaledMaxDistance
+end
+
 --#endregion
 
 --#region GENERAL LOGIC FUNCTIONS
@@ -940,7 +1018,6 @@ local function updateColors()
   colors.final.emojiPickerActive:set(rgbm(0, 0.49, 1, 1))
 
   colors.final.notifBg:set(pickThemeColor(colors.notifBgColorLight, colors.notifBgColorDark))
-  colors.final.notifBgBlur:set(pickThemeColor(colors.communityAverage:clone():mul(colors.notifBgBlurColorLight), colors.communityAverage:clone():mul(colors.notifBgBlurColorDark)))
   colors.final.notifTitle:set(pickThemeColor(colors.notifTitleColorLight, colors.notifTitleColorDark))
 
   colors.final.messageOwn:set(settings.customColor and settings.messageColorSelf or colors.iMessageBlue)
@@ -950,50 +1027,6 @@ local function updateColors()
   colors.final.messageFriendText:set(getBrightness(colors.final.messageFriend) <= 0.225 and rgbm.colors.white or rgbm.colors.black)
 
   updateFadeCanvas()
-end
-
----@param imagePath string
----Calculates the average color of the community image, for notification banner glow
-local function getAverageCommunityImageColor(imagePath)
-  if colors.communityAverage ~= rgbm() then return end
-
-  local imgSize = ui.imageSize(imagePath)
-  if imgSize.x == 0 or imgSize.y == 0 then
-    ac.log('Image not loaded or invalid')
-    return
-  end
-
-  local canvas = ui.ExtraCanvas(imgSize, 1, render.AntialiasingMode.None)
-  canvas:update(function() ui.drawImage(imagePath, vec2(0, 0), imgSize) end)
-  canvas:accessData(function(err, data)
-    if err then
-      ac.log('Failed to access data: ' .. err)
-      return
-    end
-
-    local totalR, totalG, totalB = 0, 0, 0
-    local count = 0
-    local w, h = data:size():unpack()
-
-    for y = 0, h - 1 do
-      for x = 0, w - 1 do
-        local col = data:color(x, y)
-        totalR = totalR + col.r
-        totalG = totalG + col.g
-        totalB = totalB + col.b
-        count = count + 1
-      end
-    end
-
-    local avgR = totalR / count
-    local avgG = totalG / count
-    local avgB = totalB / count
-
-    colors.communityAverage = rgbm(avgR, avgG, avgB, 1)
-    updateColors()
-
-    canvas:dispose()
-  end)
 end
 
 local appWindow = ac.accessAppWindow('IMGUI_LUA_Smartphone_main')
@@ -1029,6 +1062,14 @@ local function moveToward(current, target, step)
   return math.floor(current + (delta > 0 and step or -step))
 end
 
+---Drops every queued notification, leaving the ones currently on screen to finish their animation.
+local function clearNotificationQueue()
+  local queue = notification.queue
+  for i = #queue, 1, -1 do
+    if queue[i].state == 'queued' then table.remove(queue, i) end
+  end
+end
+
 ---@param dt number @Delta time in seconds since last update.
 local function updateAppMovement(dt)
   if not settings.appMove then
@@ -1042,18 +1083,35 @@ local function updateAppMovement(dt)
   local scaledMaxDistance = scaleNum(movement.maxDistance)
 
   if app.hovered or chat.input.active then movement.forceFullUp = true end
+  if movement.forceFullUp then clearNotificationQueue() end
 
-  local isPeekRaise = settings.notifBannerEnabled and not movement.forceFullUp
+  local activeNotif = getActiveNotification()
+  if activeNotif then movement.peekSingleLine = getNotificationLayout(activeNotif).isSingleLine end
 
-  local peekDistance = 0
-  if isPeekRaise and not settings.notifBannerFullRaise then
-    peekDistance = scaleNum(movement.maxDistance - movement.notifDistance)
-    if peekDistance < 0 then peekDistance = 0 end
+  local wantedBlend = (settings.notifBannerAdaptivePeek and movement.peekSingleLine) and 1 or 0
+  if movement.distance > getPeekDistance(1) then
+    movement.peekBlend = wantedBlend
+  else
+    local blendStep = dt / movement.peekAdjustTime
+    movement.peekBlend = movement.peekBlend + math.max(-blendStep, math.min(blendStep, wantedBlend - movement.peekBlend))
   end
 
+  local isPeekRaise = settings.notifBannerEnabled and not movement.forceFullUp
+  local isPeek = isPeekRaise and not settings.notifBannerFullRaise
+
+  local peekDistance = 0
+  if isPeek then peekDistance = getPeekDistance(movement.peekBlend) end
+
   local targetUpDistance = movement.forceFullUp and 0 or peekDistance
-  local moveSpeedBase = (movement.forceFullUp or isPeekRaise) and 100 or 50
+
+  if activeNotif and isPeek and not movement.up and movement.distance ~= targetUpDistance then
+    movement.distance = targetUpDistance
+    movement.smooth = math.floor(math.smootherstep(math.lerpInvSat(movement.distance, 0, scaledMaxDistance)) * scaledMaxDistance)
+    return
+  end
+
   local minimumStayApplies = movement.forceFullUp or settings.notifBannerFullRaise
+  local moveSpeedBase = minimumStayApplies and 100 or 50
 
   if movement.distance <= targetUpDistance and not movement.up then
     movement.down = true
@@ -1061,7 +1119,7 @@ local function updateAppMovement(dt)
     if movement.timer > 0 then movement.timer = movement.timer - dt end
 
     local minimumStayMet = not minimumStayApplies or movement.timer <= 0
-    local hasNotif = getActiveNotification() ~= nil
+    local hasNotif = activeNotif ~= nil
     if minimumStayMet and not hasNotif then
       movement.notifTailTimer = movement.notifTailTimer - dt
     else
@@ -1097,14 +1155,17 @@ end
 ---@param title string @bold title line, e.g. the sender's username
 ---@param body string @message text shown below the title
 ---@param isServer boolean? @whether this is a server message, used for queue priority
+---@param titleColor rgbm? @driver tag color for the title, nil for the default color
 ---Queues a notification banner. With server priority off, notifications queue and show in order. With it on, user messages get gracefully skipped.
-local function showNotification(title, body, isServer)
+local function showNotification(title, body, isServer, titleColor)
   local queue = notification.queue
-  local entry = { title = title, body = body, isServer = isServer or false }
+  local entry = { title = title, body = body, isServer = isServer or false, titleColor = titleColor }
   local active = getActiveNotification()
 
   if not active or (settings.notifBannerServerPriority and entry.isServer and not active.isServer) then
-    if active then active.state = 'covering' end
+    if active then
+      active.state, active.coveredDistance = 'covering', active.distance
+    end
     entry.state, entry.distance, entry.smooth, entry.phase, entry.timer = 'active', 0, 0, 'in', 0
     queue[#queue + 1] = entry
     return
@@ -1139,12 +1200,19 @@ local function updateNotifications(dt)
   if notif.phase == 'in' then
     notif.distance = moveToward(notif.distance, maxDistance, dt * 100 * (notification.speed * app.scale))
 
+    local slideProgress = math.lerpInvSat(notif.distance, 0, maxDistance)
+    for i = #queue, 1, -1 do
+      local covered = queue[i]
+      if covered.state == 'covering' then
+        covered.distance = covered.coveredDistance * (1 - slideProgress)
+        covered.smooth = math.floor(math.smootherstep(math.lerpInvSat(covered.distance, 0, maxDistance)) * maxDistance)
+        if covered.distance <= 0 then table.remove(queue, i) end
+      end
+    end
+
     if notif.distance >= maxDistance then
       notif.phase = 'hold'
       notif.timer = notification.duration
-      for i = #queue, 1, -1 do
-        if queue[i].state == 'covering' then table.remove(queue, i) end
-      end
     end
   elseif notif.phase == 'hold' then
     notif.timer = notif.timer - dt
@@ -1188,7 +1256,7 @@ local function playAudio(event)
   audioEvent.cameraExteriorMultiplier = 1
   audioEvent.volume = settings[volumeSetting]
   audioEvent:start()
-  setTimeout(function() audioEvent:dispose() end, audioEvent:getDuration(), 'audioEvent')
+  setTimeout(function() audioEvent:dispose() end, audioEvent:getDuration())
 end
 
 local audioIndexes = {}
@@ -1363,7 +1431,7 @@ local function sendChatMessage(message)
 
     ac.sendChatMessage(message or chat.input.text)
 
-    table.insert(chat.input.history, { 0, player.driverName, chat.input.text, os.time() })
+    table.insert(chat.input.history, { 0, player.driverName, message or chat.input.text, os.time() })
     if #chat.input.history > 15 then table.remove(chat.input.history, 1) end
 
     chat.input.sendCooldown = true
@@ -1402,7 +1470,7 @@ local function matchMessage(isPlayer, message)
 
   for _, reason in ipairs(chat.hideStrings.server) do
     if lowerMessage:find(reason) then
-      if lowerMessage:find(lowerPlayerName) then
+      if lowerMessage:find(lowerPlayerName, 1, true) then
         shouldAlert = true
       elseif lowerMessage:find('^you') or lowerMessage:find('^it is currently night') then
         shouldAlert = true
@@ -1412,7 +1480,7 @@ local function matchMessage(isPlayer, message)
     end
   end
 
-  if lowerMessage:find('in a race%.$') and not lowerMessage:find('you') and not lowerMessage:find(lowerPlayerName) then return 'race', shouldAlert end
+  if lowerMessage:find('in a race%.$') and not lowerMessage:find('you') and not lowerMessage:find(lowerPlayerName, 1, true) then return 'race', shouldAlert end
 
   return false, shouldAlert
 end
@@ -1609,7 +1677,7 @@ end
 --#region DRAWING FUNCTIONS
 
 ---Draws the background.
-local function drawDisplay() ui.drawRectFilled(scaleVec2(5, 2, true), scaleVec2(app.size.x - 5, app.size.y), colors.final.display, scaleNum(50), ui.CornerFlags.Top) end
+local function drawDisplay() ui.drawRectFilled(scaleVec2(5, 2, true), scaleVec2(app.size.x - 5, app.size.y, true), colors.final.display, scaleNum(50), ui.CornerFlags.Top) end
 
 ---Draws the iPhone images.
 local function drawPhone()
@@ -1822,6 +1890,7 @@ local function drawContact()
     ui.pushDWriteFont(app.font.semiBold)
 
     local contactName = community.contact
+    if player.serverCommunity == 'default' then contactName = contactName .. ' Chat' end
     local contactTextSize = ui.measureDWriteText(contactName, fontSize)
     local contactTextCenter = math.ceil(winHalf - contactTextSize.x / 2)
     local contactTextPosY = scaleNum(83)
@@ -1844,12 +1913,11 @@ local function drawContact()
 
     local imgSize = scaleVec2(36, 36)
     local imgPos = vec2((ui.availableSpaceX() / 2) - (imgSize.x / 2), scaleNum(47))
-    local imgRounding = scaleNum(20)
 
-    ui.drawImageRounded(community.image, imgPos, imgPos + imgSize, imgRounding, ui.CornerFlags.All)
+    ui.drawImageRounded(community.image, imgPos, imgPos + imgSize, 999, ui.CornerFlags.All)
 
     if app.hovered then
-      if ui.rectHovered(imgPos, imgPos + imgSize) then
+      if ui.rectHovered(imgPos, imgPos + imgSize) or ui.rectHovered(pillPosTL, pillPosBR) then
         if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
 
         ui.tooltip(app.tooltipPadding, function()
@@ -2224,7 +2292,7 @@ local function drawMessages()
   local childSize = scaleVec2(270, 483 - chat.input.offset / app.scale)
   local entries, entryCount, totalHeight = buildMessageLayout()
   ui.setCursor(messagesPos)
-  local lastMessagePadding = entries[entryCount].userIndex == -1 and 0 or scaleNum(8)
+  local lastMessagePadding = (entryCount > 0 and entries[entryCount].userIndex == -1) and 0 or scaleNum(8)
   ui.setNextWindowContentSize(vec2(0, totalHeight - lastMessagePadding))
   ui.childWindow('Messages', childSize, false, flags.window, function()
     local winWidth = ui.windowWidth()
@@ -2244,7 +2312,7 @@ local function drawMessages()
       local totalHeightChanged = totalHeight ~= chat.scroll.lastTotalHeight
       chat.scroll.lastTotalHeight = totalHeight
 
-      local hoveredAutoscroll = (not app.hovered or chat.scroll.forceAutoscroll) or (chat.input.active and chat.input.hovered) and ui.getScrollY() ~= ui.getScrollMaxY()
+      local hoveredAutoscroll = (not app.hovered or chat.scroll.forceAutoscroll) or ((chat.input.active and chat.input.hovered) and ui.getScrollY() ~= ui.getScrollMaxY())
       local shouldPin = (chat.scroll.wasAtBottom and totalHeightChanged) or hoveredAutoscroll
       local revealHeight = totalHeight
 
@@ -2484,7 +2552,7 @@ local function drawEmojiPicker()
 
         if ui.itemClicked(ui.MouseButton.Left, true) then
           playAudio(audio.keyboard.keystroke)
-          if utf8len(chat.input.text .. emojis[i]) >= getInputMaxLength() then goto continue end
+          if utf8len(chat.input.text .. emojis[i]) > getInputMaxLength() then goto continue end
           if not chat.input.active then chat.input.active = true end
           if chat.input.text == chat.input.placeholder then chat.input.text = '' end
           chat.input.text = chat.input.text .. emojis[i]
@@ -2575,8 +2643,7 @@ local function drawCustomChatInput()
     ui.drawRectFilled(scaleVec2(2, 2), inputBoxSize, colors.final.display, scaleNum(10))
     ui.endOutline(colors.final.outline, math.max(1, math.round(1 * app.scale, 1)))
 
-    local displayText = ''
-
+    local displayText
     ui.pushDWriteFont(app.font.regular)
 
     if player.isOnline then
@@ -2675,53 +2742,54 @@ local function drawNotifications()
 
   local maxDistance = scaleNum(notification.maxDistance)
   local statusBarPadding = scaleVec2(0, 5)
-  local bannerSize = scaleVec2(260, 75)
-  local imgSize = scaleVec2(15, 15)
-  local titleFontSize = scaleNum(10)
-  local contentFontSize = scaleNum(12)
-  local contentFontColor = colors.final.elements
-  local bodyMaxWidth = scaleNum(230)
 
-  local bannerPos = scaleVec2(15, 40, true)
+  local bannerWidth = scaleNum(260)
+  local singleLineHeight = scaleNum(notification.lineHeight.single)
+  local doubleLineHeight = scaleNum(notification.lineHeight.double)
+
+  local contactImgSize = scaleVec2(28, 28)
+  local imessageImgSize = scaleVec2(10, 10)
+  local titleFontSize = scaleNum(10)
+  local contentFontSize = scaleNum(notification.contentFontSize)
+  local contentFontColor = colors.final.elements
+  local bodyMaxWidth = scaleNum(notification.bodyMaxWidth)
+
+  local bannerPos = scaleVec2(15, 41, true)
 
   for i = 1, #queue do
     local notif = queue[i]
+
     if notif.state ~= 'queued' then
+      local layout = getNotificationLayout(notif)
+      local bannerHeight = layout.isSingleLine and singleLineHeight or doubleLineHeight
+      local bannerSize = vec2(bannerWidth, bannerHeight)
+
       ui.setCursor(bannerPos)
       ui.childWindow('NotificationDropDown' .. i, bannerSize + statusBarPadding, false, flags.window, function()
         ui.offsetCursorY(statusBarPadding.y + notif.smooth - maxDistance)
-        ui.drawRectFilled(ui.getCursor(), ui.getCursor() + bannerSize, colors.final.notifBg, scaleNum(13), ui.CornerFlags.All)
-        ui.glowEllipseFilled(ui.getCursor() + (bannerSize / 2), scaleVec2(100, 25), colors.final.notifBgBlur)
-        ui.offsetCursor(scaleVec2(10, 10))
-        ui.drawImageRounded(app.images.defaultMessage, ui.getCursor(), ui.getCursor() + imgSize, scaleNum(3), ui.CornerFlags.All)
 
-        ui.offsetCursor(scaleVec2(20, 1))
+        ui.drawRectFilled(ui.getCursor(), ui.getCursor() + bannerSize, colors.final.notifBg, scaleNum(16), ui.CornerFlags.All)
+
+        local contactImgPos = ui.getCursor() + vec2(scaleNum(10), math.ceil((bannerSize.y - contactImgSize.y) / 2))
+        ui.drawImageRounded(communities[player.serverCommunity].image, contactImgPos, contactImgPos + contactImgSize, 999, ui.CornerFlags.All)
+
+        local messageIconPos = contactImgPos + scaleVec2(19, 19)
+        ui.drawImageRounded(app.images.defaultMessage, messageIconPos, messageIconPos + imessageImgSize, scaleNum(2), ui.CornerFlags.All)
+
+        ui.setCursor(ui.getCursor() + vec2(scaleNum(33), scaleNum(8)))
         ui.pushDWriteFont(app.font.regular)
-        ui.dwriteDrawText('MESSAGES', titleFontSize, ui.getCursor(), colors.final.notifTitle)
         ui.dwriteDrawText('now', titleFontSize, ui.getCursor() + scaleVec2(195, 0), colors.final.notifTitle)
         ui.popDWriteFont()
 
-        ui.offsetCursor(scaleVec2(-20, 22))
-        ui.pushDWriteFont(app.font.bold)
-        ui.dwriteDrawText(notif.title, contentFontSize, ui.getCursor(), contentFontColor)
+        ui.offsetCursorX(scaleNum(14))
+        ui.pushDWriteFont(app.font.semiBold)
+        ui.dwriteDrawText(notif.title, contentFontSize, ui.getCursor(), settings.notifBannerUsernameColor and notif.titleColor or contentFontColor)
         ui.popDWriteFont()
 
-        ui.offsetCursor(scaleVec2(0, 17))
-        ui.pushDWriteFont(app.font.regular)
-        local bodyText = notif.body
-        if ui.measureDWriteText(bodyText, contentFontSize).x > bodyMaxWidth then
-          while #bodyText > 0 and ui.measureDWriteText(bodyText .. '...', contentFontSize).x > bodyMaxWidth do
-            bodyText = bodyText:sub(1, -2)
-          end
-          bodyText = bodyText .. '...'
-        end
-        ui.dwriteDrawText(bodyText, contentFontSize, ui.getCursor(), contentFontColor)
+        ui.offsetCursorY(scaleNum(15))
+        ui.pushDWriteFont(app.font.thinn)
+        ui.dwriteTextAligned(layout.bodyText, contentFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(bodyMaxWidth, layout.bodyBoxHeight), true, contentFontColor)
         ui.popDWriteFont()
-
-        if notif.state == 'active' and ui.rectHovered(bannerPos, bannerPos + bannerSize) and ui.mouseClicked(ui.MouseButton.Left) then
-          notif.phase = 'out'
-          moveAppUp()
-        end
       end)
     end
   end
@@ -2751,6 +2819,8 @@ if player.isOnline then
     local isPlayer = senderCarIndex > -1
     local userName = ac.getDriverName(senderCarIndex) or 'Someone'
     local isFriend = userName ~= 'Someone' and checkIfFriend(userName) or false
+    local isMuted = isPlayer and ac.DriverTags(userName).muted
+    local isHiddenSender = isMuted or (settings.focusMode and isPlayer and not isFriend)
     local escapedPlayerName = escapePattern(player.driverName:lower())
     local isMentioned = message:lower():find('%f[%a_]' .. escapedPlayerName .. '%f[%A_]') ~= nil
     local hideReason, shouldAlert = matchMessage(isPlayer, message)
@@ -2767,7 +2837,7 @@ if player.isOnline then
       local currentTime = os.time()
       local currentTimeString = os.date('%H:%M', currentTime)
 
-      table.insert(chat.messages, { senderCarIndex, isPlayer and userName or 'Server', message, currentTime, false, isMentioned })
+      table.insert(chat.messages, { senderCarIndex, isPlayer and userName or communities[player.serverCommunity].contact, message, currentTime, false, isMentioned })
 
       for i = #chat.messages, 1, -1 do
         local msg = chat.messages[i]
@@ -2780,7 +2850,7 @@ if player.isOnline then
 
       chat.msgCacheGen = chat.msgCacheGen + 1
 
-      if senderCarIndex ~= -1 then
+      if senderCarIndex ~= -1 and not isMuted then
         local prevLatestMsg = chat.messages[chat.latestUserMessage]
         if prevLatestMsg then prevLatestMsg.cache = nil end
         chat.latestUserMessage = #chat.messages
@@ -2791,16 +2861,15 @@ if player.isOnline then
       local fullMovement = true
       if settings.notifBannerEnabled and settings.notifBannerMessages and senderCarIndex ~= 0 and not suppressNotif then
         fullMovement = false
-        local hideNotif = (settings.focusMode and not isFriend) or ac.DriverTags(userName).muted
-        if not hideNotif then showNotification(isPlayer and userName or 'Server', message, not isPlayer) end
+        if not isHiddenSender then showNotification(isPlayer and userName or communities[player.serverCommunity].contact, message, not isPlayer, isPlayer and chat.userNameColors[userName] or nil) end
       end
 
-      if not settings.focusMode or isFriend or not isPlayer then moveAppUp(fullMovement) end
+      if not isHiddenSender then moveAppUp(fullMovement) end
 
       if isPlayer then
         if senderCarIndex == 0 then
           playAudio(audio.message.send)
-        else
+        elseif not isMuted then
           if isFriend or not settings.messagesFriendsOnly then playAudio(audio.message.receive) end
           if (isFriend and settings.notificationsFriendMessages) or (isMentioned and settings.notificationsMentions) then setTimeout(function() playAudio(audio.notification.regular) end, audio.notification.timeout) end
         end
@@ -2814,11 +2883,10 @@ if player.isOnline then
 
   ---@param connectedCarIndex number @Car index of the car that joined/left
   ---@param action string @joined/left string
+  ---@param userName string @driver name resolved when the event fired
+  ---@param car ac.StateCar? @car resolved when the event fired
   ---Adds system messages for join/leave events.
-  local function handleConnectionEvent(connectedCarIndex, action)
-    local car = ac.getCar(connectedCarIndex)
-    local userName = ac.getDriverName(connectedCarIndex) or 'A Player'
-
+  local function handleConnectionEvent(connectedCarIndex, action, userName, car)
     if userName ~= 'A Player' and car then
       if action == ' joined' and not car.isHidingLabels then nonTrafficPlayers[userName] = true end
     end
@@ -2829,7 +2897,7 @@ if player.isOnline then
 
     if not hideTraffic and not hideNonFriend then
       deleteOldestMessages()
-      table.insert(chat.messages, { -1, 'Server', userName .. action .. ' the Server', os.time() })
+      table.insert(chat.messages, { -1, communities[player.serverCommunity].contact, userName .. action .. ' the Server', os.time() })
       chat.msgCacheGen = chat.msgCacheGen + 1
 
       if settings.messagesServer and (not settings.messagesFriendsOnly or isFriend) then playAudio(audio.message.receive) end
@@ -2853,12 +2921,40 @@ if player.isOnline then
     end
   end
 
+  local pendingConnectionEvents = {}
+
+  ---@param connectedCarIndex number @Car index of the car that joined/left
+  ---@param action string @joined/left string
+  ---Holds a join/leave event for 0.5s, dropping it along with its counterpart if the same driver's opposite event follows in the same car - a ping-induced mini disconnect rather than a real one.
+  local function queueConnectionEvent(connectedCarIndex, action)
+    local userName = ac.getDriverName(connectedCarIndex) or 'A Player'
+    local car = ac.getCar(connectedCarIndex)
+    local carName = car and car:name() or nil
+    local oppositeAction = action == ' joined' and ' left' or ' joined'
+
+    local pending = pendingConnectionEvents[connectedCarIndex]
+    if pending and pending.action == oppositeAction and pending.userName == userName and pending.carName == carName then
+      clearTimeout(pending.timeoutId)
+      pendingConnectionEvents[connectedCarIndex] = nil
+      return
+    end
+
+    if pending then clearTimeout(pending.timeoutId) end
+
+    local entry = { action = action, userName = userName, carName = carName }
+    entry.timeoutId = setTimeout(function()
+      pendingConnectionEvents[connectedCarIndex] = nil
+      handleConnectionEvent(connectedCarIndex, action, userName, car)
+    end, 0.5)
+    pendingConnectionEvents[connectedCarIndex] = entry
+  end
+
   ac.onClientConnected(function(connectedCarIndex)
-    if settings.connectionEvents then handleConnectionEvent(connectedCarIndex, ' joined') end
+    if settings.connectionEvents then queueConnectionEvent(connectedCarIndex, ' joined') end
   end)
 
   ac.onClientDisconnected(function(connectedCarIndex)
-    if settings.connectionEvents then handleConnectionEvent(connectedCarIndex, ' left') end
+    if settings.connectionEvents then queueConnectionEvent(connectedCarIndex, ' left') end
   end)
 
   --Before CSP 0.3.0p110 (3637) the onOnlineWelcome event was broken and returned a empty string
@@ -2880,8 +2976,6 @@ function onShowWindow()
 
   chat.msgCacheGen = chat.msgCacheGen + 1
   chat.layout.forceFullRebuild = true
-
-  player.serverCommunity = getServerCommunity()
 end
 
 --#endregion
@@ -3081,12 +3175,17 @@ function script.windowMainSettings()
         end)
 
         ui.tabItem('Notifications', function()
-          settingsCheckbox('Enable Notifications', 'notifBannerEnabled', 'If enabled, shows a drop-down notification for new messages\nRespects your Filters tab rules:\nIf you have disables connection event messages, no notification will be shown even if enabled here')
+          settingsCheckbox('Enable Notifications', 'notifBannerEnabled', 'If enabled, shows a drop-down notification for new messages\nRespects your Filters tab rules:\nIf you have disabled connection event messages, no notification will be shown even if enabled here')
           if settings.notifBannerEnabled then
             ui.indent(app.settingsIndentOffset)
             settingsSlider('notifBannerDuration', 1, 60, 'Show Notification for: %.0f seconds', 'How long the notification banner should be displayed', function(newValue) notification.duration = newValue end)
 
             settingsCheckbox('Use for New Messages', 'notifBannerMessages', 'If enabled, shows a notification for new chat messages')
+            if settings.notifBannerMessages then
+              ui.indent(app.settingsIndentOffset)
+              settingsCheckbox('Use Colored Usernames', 'notifBannerUsernameColor', 'If enabled, uses colored usernames in notifications if possible\nServers can overwrite CM tag colors')
+              ui.unindent(app.settingsIndentOffset)
+            end
 
             settingsCheckbox('Use for Connection Events', 'notifBannerConnections', 'If enabled, shows a notification when a player joins/leaves the server')
             if settings.notifBannerConnections then
@@ -3098,6 +3197,8 @@ function script.windowMainSettings()
             settingsCheckbox('Hide When App Already Up', 'notifBannerHideWhenAppUp', 'If enabled, no notification banner is shown if the app is already maximized')
 
             settingsCheckbox('Maximize App on Notification', 'notifBannerFullRaise', 'If enabled, the app maximizes for notifications instead of only peeking up to reveal the banner')
+
+            if not settings.notifBannerFullRaise then settingsCheckbox('Adaptive Peek Distance', 'notifBannerAdaptivePeek', 'If enabled, the app peeks up only as far as the banner needs\nSingle line notifications peek less than two line ones') end
 
             settingsCheckbox('Prioritize Server Messages', 'notifBannerServerPriority', 'If enabled, queued user chat notifications get skipped so server messages play back to back')
 
@@ -3157,7 +3258,7 @@ function script.windowMainSettings()
     if hasCarKey then
       ui.tabItem('Focus Mode', function()
         ui.textColored('IF YOU ENABLE THIS I WILL TAKE NO RESPONSIBILITY\nWHEN YOU IGNORE ADMIN MESSAGES AND GET BANNED', rgbm.colors.red)
-        settingsCheckbox('Enable Focus Mode', 'focusMode', 'If enabled, only displays messages from yourself, friends and the server')
+        settingsCheckbox('Enable Focus Mode', 'focusMode', 'If enabled, only displays messages from yourself, friends and the server', function() chat.msgCacheGen = chat.msgCacheGen + 1 end)
       end)
     end
   end)
@@ -3176,11 +3277,7 @@ function script.windowMain(dt)
   app.images.ready = app.images.ready or ui.isImageReady(app.images.phoneAtlasPath)
   if not app.images.ready then return end
 
-  local community = communities[player.serverCommunity]
-  if not community.ready then
-    community.ready = ui.isImageReady(community.image)
-    if community.ready then getAverageCommunityImageColor(community.image) end
-  end
+  if not player.serverCommunity then player.serverCommunity = getServerCommunity() end
 
   local rounded = math.round(settings.appScale, 1)
   settings.appScale = settings.appScale ~= rounded and rounded or settings.appScale
