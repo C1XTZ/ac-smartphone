@@ -12,16 +12,22 @@ If you're looking for a more "oldschool" feel, try my [Mobilephone](https://gith
 - **Time Display** – Shows real-life time in 24h/12h format (left-click to send to chat)
 - **Now Playing** – Displays currently playing song information (left-click to send to chat)
 - **Ping Display** – Shows your ping as connection bars, can be hovered to show the exact number (left-click to send to chat)
-- **Custom Server Community Integration** – Support for community branding with clickable links when joining servers.
-  - Community owners can contact me with the following information to be added:
-    ```ini
-    Server IPs:     ;List of IP addresses of your servers. IP's should not change all the time.
-    Contact Name:   ;Name that will be shown below the contact picture.
-    Contact Image:          ;Image that you want to be displayed as contact picture.
-    URL:            ;URL to direct to when contact picture is clicked.
-    Tooltip Text:   ;Text that you want to be displayed in the contact picture tooltip.
-    ```
-    ![](https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/.github/img/communityexample.png)
+- **Custom Server Community Branding** – Show players your branding as "Contact" and Notifications when they connect to your servers.
+
+  ![](https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/.github/img/communityexample.png)
+
+  Community owners can contact me with the following information to have their servers supported by the app:
+
+  ```ini
+  Server IPs:     ;IP addresses of your servers.
+  Contact Name:   ;Name displayed below the Contact image and in Notifications.
+  Contact Image:  ;Image displayed as the Contact picture.
+  URL:            ;URL opened in the users browser when the Contact is clicked.
+  Tooltip Text:   ;Text displayed when hovering over the Contact.
+  ```
+
+  This information should not change all the time, I dont want to have to update it every 2 weeks.
+
 - **In-Game Chat** – Hover over usernames to see information (right-click to open user options)
 - **iOS Message Notifications** - Makes the app move enough to reveal the notification, saving even more screen space
 - **Emoji Picker** – Every working emoji, divided into 9 groups available to satisfy your GenZ needs 🥀☠️🔥
@@ -41,6 +47,7 @@ If you're looking for a more "oldschool" feel, try my [Mobilephone](https://gith
 If you have any questions or suggestions, feel free to open an issue or pull request.  
 You can also reach me here:
 
+- Email [c1xtz@proton.me](MAILTO:c1xtz@proton.me)
 - Discord [@c1xtz](https://discord.com/users/856601560728207371)
 - Twitter [@C1XTZ](https://twitter.com/C1XTZ)
 - BlueSky [@c1xtz.bsky.social](https://bsky.app/profile/c1xtz.bsky.social)
