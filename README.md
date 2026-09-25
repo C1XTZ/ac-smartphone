@@ -9,10 +9,14 @@ If you're looking for a more "oldschool" feel, try my [Mobilephone](https://gith
 ### Current Features:
 
 - **Light / Dark Mode**
-- **Time Display** – Shows real-life time in 24h/12h format (left-click to send to chat)
-- **Now Playing** – Displays currently playing song information (left-click to send to chat)
-- **Ping Display** – Shows your ping as connection bars, can be hovered to show the exact number (left-click to send to chat)
-- **Custom Server Community Branding** – Show players your branding as "Contact" and Notifications when they connect to your servers.
+- **Time Display**  
+  Shows real-life time in 24h/12h format (left-click to send to chat)
+- **Now Playing**  
+  Displays currently playing song information (left-click to send to chat)
+- **Ping Display**  
+  Shows your ping as connection bars, can be hovered to show the exact number (left-click to send to chat)
+- **Custom Server Community Branding**  
+  Show players your branding as "Contact" and Notifications when they connect to your servers.
 
   ![](https://raw.githubusercontent.com/C1XTZ/ac-smartphone/refs/heads/main/.github/img/communityexample.png)
 
@@ -20,21 +24,27 @@ If you're looking for a more "oldschool" feel, try my [Mobilephone](https://gith
 
   ```ini
   Server IPs:     ;IP addresses of your servers.
-  Contact Name:   ;Name displayed below the Contact image and in Notifications.
-  Contact Image:  ;Image displayed as the Contact picture.
-  URL:            ;URL opened in the users browser when the Contact is clicked.
+  Contact Name:   ;Name displayed below the Contact image and in notifications.
+  Contact Images: ;Images used as the Contact picture. Two images can be specified for light/dark mode.
+  URL:            ;URL opened in the user's browser when the Contact is clicked.
   Tooltip Text:   ;Text displayed when hovering over the Contact.
   ```
 
   This information should not change all the time, I dont want to have to update it every 2 weeks.
 
-- **In-Game Chat** – Hover over usernames to see information (right-click to open user options)
-- **iOS Message Notifications** - Makes the app move enough to reveal the notification, saving even more screen space
-- **Emoji Picker** – Every working emoji, divided into 9 groups available to satisfy your GenZ needs 🥀☠️🔥
-- **iOS Sounds** – Keystrokes, messages, and notification sounds
-- **Message Filtering** – Hides spam from other apps
-  - Example: `PLP: running version 1.21, 2-60-3-True-3.3-0.9-3-2-8-5-0|C1XTZ`
-- **Customizable Settings** – Extensive options to personalize your experience by opening the settings via the cogwheel
+- **In-Game Chat**  
+  Hover over usernames to see information (right-click to open user options)
+- **iOS Message Notifications**  
+  Makes the app move enough to reveal the notification, saving even more screen space
+- **Emoji Picker**  
+  Every working emoji, divided into 9 groups available to satisfy your GenZ needs 🥀☠️🔥
+- **iOS Sounds**  
+  Keystrokes, messages, and notification sounds
+- **Message Filtering**  
+  Hides spam from other apps  
+  Example: `PLP: running version 1.21, 2-60-3-True-3.3-0.9-3-2-8-5-0|C1XTZ`
+- **Customizable Settings**  
+  Extensive options to personalize your experience by opening the settings via the cogwheel
 
 <p align="center">
 <img width="270" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/.github/img/serverchat.png"> <img width="270" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/.github/img/settings.webp"> <img width="270" src="https://raw.githubusercontent.com/C1XTZ/ac-smartphone/master/.github/img/emojipicker.png">
@@ -58,7 +68,7 @@ This project is not affiliated with, endorsed by, sponsored by, or otherwise ass
 
 # License
 
-Unless otherwise noted in **[Exceptions](#exceptions)**, **all original source code** in this repository, such as `.lua` scripts, build scripts, and any other code files, is licensed under the **GNU GPL v3.0 License**.  
+Unless otherwise noted in the **Exceptions** sections of this readme, **all original source code** in this repository, such as `.lua` scripts, build scripts, and any other code files, is licensed under the **GNU GPL v3.0 License**.  
 Files and assets identified as exceptions are **not covered by the GNU GPL v3.0 license** and are instead governed by the license terms specified for those files.
 
 ### What you can do:
@@ -136,6 +146,9 @@ All files inside the directories [`smartphone/src/img/`](./smartphone/src/img/),
 
 ## Additional Credits
 
-- **x4fab** for providing the CSP lua SDK and fixing features I'm probably the only user of.
-- **Cheesymaniac** for forwarding my CSP issues to x4fab and enduring my complaining.
-- **Eurobeat** for testing and feedback.
+- **x4fab**  
+  For providing the CSP lua SDK and fixing features I'm probably the only user of.
+- **Cheesymaniac**  
+  For forwarding my CSP issues to x4fab and enduring my complaining.
+- **Eurobeat**  
+  For testing and feedback.

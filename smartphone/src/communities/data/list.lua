@@ -1,7 +1,7 @@
 ---@meta
 ---@diagnostic disable: exp-in-action
 {
-  version = { 22092026 },
+  version = { 25092026 },
   default = { url = "https://github.com/C1XTZ/ac-smartphone", text = "Smartphone App on Github", image = ".\\apps\\lua\\smartphone\\src\\img\\default.png", contact = "Server" },
   shutokorevivalproject = {
     ips = { "5.161.43.117", "65.108.176.35", "15.235.162.98" },

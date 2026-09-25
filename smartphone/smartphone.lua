@@ -80,7 +80,7 @@ local settings = ac.storage {
 
 --#endregion
 
---#region APP TABLES
+--#region APP STATE TABLES
 
 local colors = {
   transparent = {
@@ -160,11 +160,6 @@ local app = {
     bold = ui.DWriteFont('Inter Variable Text', '.\\src\\ttf'):weight(ui.DWriteFont.Weight.Bold),
   },
 }
-
-local function updateFadeCanvas()
-  app.canvas.update.message = true
-  app.canvas.update.emoji = true
-end
 
 local player = {
   driverName = ac.getDriverName(0),
@@ -254,7 +249,7 @@ local chat = {
       '^PLP: running version',
       '^ACP: App not active$',
       '^D&O Racing APP:',
-      '^DRIFT%%%-STRUCTION POINTS:',
+      '^DRIFT%-STRUCTION POINTS:',
       '^OSRW Race Admin Version:',
       '^RSRC Race Admin',
     },
@@ -396,16 +391,7 @@ end
 
 --#endregion
 
---#region UTILITY FUNCTIONS
-
----Moves the app up.
-local function moveAppUp(full)
-  if settings.appMove then
-    if full then movement.forceFullUp = true end
-    movement.timer = settings.appMoveTimer
-    movement.up = true
-  end
-end
+--#region GENERIC UTILITIES
 
 ---@param x number @number to be scaled
 ---@param smooth? boolean @whether to add the app's movement offset
@@ -426,24 +412,6 @@ local function scaleVec2(x, y, smooth) return vec2(math.ceil(app.scale * x), mat
 ---Ceils and converts two numbers into a vec2()
 local function ceilVec2(x, y) return vec2(math.ceil(x), math.ceil(y)) end
 
----@param songString string @combined 'artist - title' string usually, whatever your mp3 player spits out
----@return string artist @artist name string
----@return string title @song title string
----Splits the title string into artist and track title.
-local function splitTitle(songString)
-  for _, pattern in ipairs(songInfo.titleSplitPatterns) do
-    local artist, title = songString:match(pattern)
-    if artist and title then
-      artist = artist:gsub('^%s*(.-)%s*$', '%1')
-      title = title:gsub('^%s*(.-)%s*$', '%1')
-      title = title:gsub('%.%w+$', '')
-      return artist, title
-    end
-  end
-  local trimmedTitle = songString:gsub('%.%w+$', '')
-  return 'Unknown Artist', trimmedTitle
-end
-
 ---@param timeString string @Input string in 24-hour format (e.g., '14:30')
 ---@return string @Time string in 12-hour format (e.g., '02:30')
 ---Converts a 24-hour time string to 12-hour format and the time period (AM/PM).
@@ -460,86 +428,14 @@ local function format12HourTime(timeString)
   return string.format('%s:%02d', hour, minute)
 end
 
----@param carIndexOrUsername number|string @The index of the car or username whose friend status is being checked.
----@return boolean @Returns true if the driver is tagged as a friend.
----Determines whether the driver of the specified car or username is marked as a friend.
-local function checkIfFriend(carIndexOrUsername)
-  local driverName
-  if type(carIndexOrUsername) == 'number' then
-    driverName = ac.getDriverName(carIndexOrUsername)
-    if not driverName then return false end
-  else
-    driverName = carIndexOrUsername
-  end
-  return ac.DriverTags(driverName).friend
-end
+--#endregion
 
----@return string @The community name of the current server.
----Determines the community name of the current server.
-local function getServerCommunity()
-  if not player.isOnline then return 'default' end
+--#region THEME & COLORS
 
-  for community, data in pairs(communities) do
-    if data.ips then
-      for _, ip in ipairs(data.ips) do
-        if ip == player.serverIP then return community end
-      end
-    end
-  end
-
-  return 'default'
-end
-
-player.serverCommunity = getServerCommunity()
-
----@param tooltipString string @Text to be displayed in the tooltip.
----@param changeCursor? boolean @Changes the mouse cursor to ui.MouseCursor.Hand
----Displays a tooltip for the last hovered item.
-local function lastItemHoveredTooltip(tooltipString, changeCursor)
-  if ui.itemHovered() then
-    if changeCursor then ui.setMouseCursor(ui.MouseCursor.Hand) end
-    ui.tooltip(app.tooltipPadding, function() ui.text(tooltipString) end)
-  end
-end
-
----Creates a checkbox bound to a settings field, with optional change callback and tooltip.
----@param label string Checkbox label.
----@param key string Name of the boolean field in the `settings` table.
----@param tooltip? string Tooltip text (optional).
----@param onChange? fun(newValue: boolean) Called after the value changes.
----@return boolean wasChanged True if the user toggled the checkbox.
-local function settingsCheckbox(label, key, tooltip, onChange)
-  local wasChanged = false
-  if
-    ui.checkbox(label, settings[key] --[[@as boolean]])
-  then
-    settings[key] = not settings[key]
-    if onChange then
-      onChange(settings[key] --[[@as boolean]])
-    end
-    wasChanged = true
-  end
-  if tooltip then lastItemHoveredTooltip(tooltip) end
-  return wasChanged
-end
-
----Creates a slider bound to a settings field, with optional change callback and tooltip.
----@param key string Name of the numeric field in the `settings` table.
----@param min number Minimum slider value.
----@param max number Maximum slider value.
----@param labelFormat string Format string for the displayed value (e.g., "Speed: %.0f").
----@param tooltip? string Tooltip text (optional).
----@param onChange? fun(newValue: number) Called after the value changes.
----@param power? number|boolean Power for non-linear slider, or `true` for integer mode. Default: `1` (linear).
----@return number currentValue The new (or current) value.
-local function settingsSlider(key, min, max, labelFormat, tooltip, onChange, power)
-  local value, changed = ui.slider('##' .. key, settings[key]--[[@as number]], min, max, labelFormat, power)
-  if changed then
-    settings[key] = value
-    if onChange then onChange(value) end
-  end
-  if tooltip then lastItemHoveredTooltip(tooltip) end
-  return value
+---Marks both cached fade canvases for updating on the next draw frame.
+local function updateFadeCanvas()
+  app.canvas.update.message = true
+  app.canvas.update.emoji = true
 end
 
 ---@param color rgbm The RGB color to calculate brightness for
@@ -561,349 +457,138 @@ local function getBrightness(color)
   return 0.2126 * lr + (0.7152 / 2) * lg + 0.0722 * lb
 end
 
----@param index integer @Car index
----Caches the driver tag color for the specified car index.
-local function getDriverColor(index)
-  local name = ac.getDriverName(index)
-  if not name or name == '' then return end
-
-  local color = ac.DriverTags(name).color:clone()
-  local isDefaultColor = (index == 0 and color == rgbm.colors.yellow) or (index > 0 and color == rgbm.colors.white)
-  if isDefaultColor then color:set(rgbm.colors.gray) end
-
-  local existingColor = chat.userNameColors[name]
-
-  local shouldUpdate = (not existingColor and color ~= rgbm.colors.gray) or (existingColor and ((existingColor == rgbm.colors.gray and color ~= rgbm.colors.gray) or existingColor ~= color))
-
-  if shouldUpdate then chat.userNameColors[name] = color end
-end
-
 ---@param light rgbm @rgbm color to use if light mode
 ---@param dark rgbm @rgbm color to use if dark mode
 ---@return rgbm @rgbm color to be used for the given mode
 ---Picks the appropriate color based on the current mode.
 local function pickThemeColor(light, dark) return (settings.darkMode or player.phoneMode) and dark or light end
 
----@param message any @The message to be sent.
----@param deleteAfter? number @The amount of time to wait before deleting the message.
----Sends a chat message as the app using the server index.
-local function sendAppMessage(message, deleteAfter)
-  local msg = { -1, 'App', message, os.time() }
-  table.insert(chat.messages, msg)
-  chat.msgCacheGen = chat.msgCacheGen + 1
-  moveAppUp()
+---Updates the colors based on the current mode.
+local function updateColors()
+  colors.final.display:set(pickThemeColor(colors.displayColorLight, colors.displayColorDark))
+  colors.final.displayTransp:set(pickThemeColor(colors.transparent.displayLight, colors.transparent.displayDark))
+  colors.final.elements:set(pickThemeColor(colors.displayColorDark, colors.displayColorLight))
+  colors.final.outline:set(pickThemeColor(colors.outlineColorLight, colors.outlineColorDark))
+  colors.final.input:set(pickThemeColor(colors.transparent.black50, colors.transparent.white50))
+  colors.final.message:set(pickThemeColor(colors.iMessageLightGray, colors.iMessageDarkGray))
+  colors.final.contactPill:set(pickThemeColor(colors.displayColorLight, colors.iMessageDarkGray))
+  colors.final.contactOutline:set(pickThemeColor(colors.outlineColorLight, colors.outlineColorMedium))
 
-  if deleteAfter then
-    setTimeout(function()
-      for i = 1, #chat.messages do
-        if chat.messages[i] == msg then
-          table.remove(chat.messages, i)
-          chat.msgCacheGen = chat.msgCacheGen + 1
-          chat.layout.forceFullRebuild = true
-          break
-        end
-      end
-    end, deleteAfter)
+  colors.final.emojiPicker:set(pickThemeColor(colors.emojiPickerButtonLight, colors.emojiPickerButtonDark))
+  colors.final.emojiPickerOutline:set(pickThemeColor(colors.transparent.black10, colors.transparent.white10))
+  colors.final.emojiPickerActive:set(rgbm(0, 0.49, 1, 1))
+
+  colors.final.notifBg:set(pickThemeColor(colors.notifBgColorLight, colors.notifBgColorDark))
+  colors.final.notifTitle:set(pickThemeColor(colors.notifTitleColorLight, colors.notifTitleColorDark))
+
+  colors.final.messageOwn:set(settings.customColor and settings.messageColorSelf or colors.iMessageBlue)
+  colors.final.messageFriend:set(settings.customColor and settings.messageColorFriend or colors.iMessageGreen)
+
+  colors.final.messageOwnText:set(getBrightness(colors.final.messageOwn) <= 0.225 and rgbm.colors.white or rgbm.colors.black)
+  colors.final.messageFriendText:set(getBrightness(colors.final.messageFriend) <= 0.225 and rgbm.colors.white or rgbm.colors.black)
+
+  updateFadeCanvas()
+end
+
+---Switches the phone mode automatically based on the current time.
+local function automaticModeSwitch()
+  if not settings.darkModeAuto then
+    if player.phoneMode then
+      player.phoneMode = false
+      updateColors()
+    end
+    return
+  end
+
+  local sim = ac.getSim()
+  local currentTime = sim.timeHours + sim.timeMinutes / 60
+  local shouldBeDark = not (currentTime > settings.darkModeAutoLightTime and currentTime < settings.darkModeAutoDarkTime)
+
+  if player.phoneMode ~= shouldBeDark then
+    player.phoneMode = shouldBeDark
+    updateColors()
   end
 end
 
----Loads emojis from src/emj/emojis.txt, fully supporting emoji grapheme clusters, and groups them by category.
----Disclosure: this piece of shit was written by Claude, it is black magic to me.
-local function loadEmojis()
-  local path = ac.getFolder(ac.FolderID.ScriptOrigin) .. '\\src\\emj\\emojis.txt'
-  local f = io.open(path, 'rb')
-  if not f then return end
-
-  local content = f:read('*a')
-  f:close()
-
-  local VS16 = 0xFE0F
-  local ZWJ = 0x200D
-
-  local function isContinuationByte(b) return b and b >= 0x80 and b <= 0xBF end
-
-  local function decodeUTF8(line, pos)
-    local b1 = line:byte(pos)
-    if not b1 then return nil, nil end
-
-    --Claude: ASCII
-    if b1 < 0x80 then return b1, 1 end
-
-    --Claude: 2-byte sequence
-    if b1 >= 0xC2 and b1 <= 0xDF then
-      local b2 = line:byte(pos + 1)
-
-      if not isContinuationByte(b2) then return nil, nil end
-
-      local cp = (b1 - 0xC0) * 0x40 + (b2 - 0x80)
-
-      return cp, 2
-    end
-
-    --Claude: 3-byte sequence
-    if b1 >= 0xE0 and b1 <= 0xEF then
-      local b2 = line:byte(pos + 1)
-      local b3 = line:byte(pos + 2)
-
-      if not isContinuationByte(b2) or not isContinuationByte(b3) then return nil, nil end
-
-      --Claude: Reject overlong encodings and UTF-16 surrogate range.
-      if b1 == 0xE0 and b2 < 0xA0 then return nil, nil end
-
-      if b1 == 0xED and b2 >= 0xA0 then return nil, nil end
-
-      local cp = (b1 - 0xE0) * 0x1000 + (b2 - 0x80) * 0x40 + (b3 - 0x80)
-
-      return cp, 3
-    end
-
-    --Claude: 4-byte sequence
-    if b1 >= 0xF0 and b1 <= 0xF4 then
-      local b2 = line:byte(pos + 1)
-      local b3 = line:byte(pos + 2)
-      local b4 = line:byte(pos + 3)
-
-      if not isContinuationByte(b2) or not isContinuationByte(b3) or not isContinuationByte(b4) then return nil, nil end
-
-      --Claude: Reject overlong encodings and > U+10FFFF.
-      if b1 == 0xF0 and b2 < 0x90 then return nil, nil end
-
-      if b1 == 0xF4 and b2 > 0x8F then return nil, nil end
-
-      local cp = (b1 - 0xF0) * 0x40000 + (b2 - 0x80) * 0x1000 + (b3 - 0x80) * 0x40 + (b4 - 0x80)
-
-      return cp, 4
-    end
-
-    return nil, nil
-  end
-
-  local function codepointToString(line, pos, len) return line:sub(pos, pos + len - 1) end
-
-  local function isSkinTone(cp) return cp >= 0x1F3FB and cp <= 0x1F3FF end
-
-  local function isRegionalIndicator(cp) return cp >= 0x1F1E6 and cp <= 0x1F1FF end
-
-  local function isTag(cp) return cp >= 0xE0020 and cp <= 0xE007F end
-
-  local function readVS16(line, pos)
-    local cp, len = decodeUTF8(line, pos)
-
-    if cp == VS16 then return pos + len, line:sub(pos, pos + len - 1) end
-
-    return pos, ''
-  end
-
-  local function readSkinTone(line, pos)
-    local cp, len = decodeUTF8(line, pos)
-
-    if cp and isSkinTone(cp) then return pos + len, line:sub(pos, pos + len - 1) end
-
-    return pos, ''
-  end
-
-  local function readKeycap(line, pos)
-    local cp, len = decodeUTF8(line, pos)
-
-    if cp == 0x20E3 then return pos + len, line:sub(pos, pos + len - 1) end
-
-    return pos, ''
-  end
-
-  local function isTagEnd(cp) return cp == 0xE007F end
-
-  --Claude: Consume subdivision flag tag sequence: 🏴 + TAG SPEC + CANCEL TAG
-  local function readTagSequence(line, pos, cluster)
-    local start = pos
-    local tagCount = 0
-
-    while pos <= #line do
-      local cp, len = decodeUTF8(line, pos)
-
-      if not cp or not isTag(cp) then break end
-
-      cluster = cluster .. codepointToString(line, pos, len)
-      pos = pos + len
-      tagCount = tagCount + 1
-
-      if isTagEnd(cp) then return cluster, pos end
-    end
-
-    --Claude: A tag character sequence without CANCEL TAG isn't a valid emoji tag sequence. Return bytes consumed so the caller can skip the whole partial run instead of just one byte.
-    if tagCount > 0 then return nil, pos - start end
-
-    return cluster, pos
-  end
-
-  local function getNextCluster(line, pos)
-    local start = pos
-
-    local baseCp, baseLen = decodeUTF8(line, pos)
-    if not baseCp then return nil, pos - start, 'invalid UTF-8' end
-
-    local cluster = codepointToString(line, pos, baseLen)
-    pos = pos + baseLen
-
-    --Claude: Regional Indicator pair
-    if isRegionalIndicator(baseCp) then
-      local cp2, len2 = decodeUTF8(line, pos)
-
-      if not cp2 or not isRegionalIndicator(cp2) then return nil, pos - start, 'singleton regional indicator' end
-
-      cluster = cluster .. codepointToString(line, pos, len2)
-      pos = pos + len2
-
-      return cluster, pos
-    end
-
-    --Claude: Black flag + tag sequence
-    if baseCp == 0x1F3F4 then
-      local taggedCluster, taggedPos = readTagSequence(line, pos, cluster)
-
-      if taggedCluster == nil then
-        --Claude: taggedPos is bytes consumed by the partial tag run;
-        --Claude: add on what was consumed before it (the base flag itself).
-        return nil, (pos - start) + taggedPos, 'malformed tag sequence'
-      end
-
-      if taggedPos ~= pos then return taggedCluster, taggedPos end
-    end
-
-    --Claude: VS16
-    do
-      local newPos, suffix = readVS16(line, pos)
-
-      if suffix ~= '' then
-        cluster = cluster .. suffix
-        pos = newPos
-      end
-    end
-
-    --Claude: Skin tone
-    do
-      local newPos, suffix = readSkinTone(line, pos)
-
-      if suffix ~= '' then
-        cluster = cluster .. suffix
-        pos = newPos
-      end
-    end
-
-    --Claude: Keycap
-    do
-      local newPos, suffix = readKeycap(line, pos)
-
-      if suffix ~= '' then
-        cluster = cluster .. suffix
-        pos = newPos
-      end
-    end
-
-    --Claude: ZWJ sequences
-    while true do
-      local cp, len = decodeUTF8(line, pos)
-
-      if cp ~= ZWJ then break end
-
-      cluster = cluster .. codepointToString(line, pos, len)
-      pos = pos + len
-
-      --Claude: ZWJ must be followed by another code point.
-      local nextCp, nextLen = decodeUTF8(line, pos)
-
-      if not nextCp then return nil, pos - start, 'ZWJ at end of cluster' end
-
-      --Claude: A ZWJ element cannot itself start with another ZWJ.
-      if nextCp == ZWJ then return nil, pos - start, 'consecutive ZWJ' end
-
-      cluster = cluster .. codepointToString(line, pos, nextLen)
-      pos = pos + nextLen
-
-      --Claude: VS16 after ZWJ element.
-      do
-        local newPos, suffix = readVS16(line, pos)
-
-        if suffix ~= '' then
-          cluster = cluster .. suffix
-          pos = newPos
-        end
-      end
-
-      --Claude: Skin tone after ZWJ element.
-      do
-        local newPos, suffix = readSkinTone(line, pos)
-
-        if suffix ~= '' then
-          cluster = cluster .. suffix
-          pos = newPos
-        end
-      end
-
-      --Claude: Keycap after a ZWJ element.
-      do
-        local newPos, suffix = readKeycap(line, pos)
-
-        if suffix ~= '' then
-          cluster = cluster .. suffix
-          pos = newPos
-        end
-      end
-    end
-
-    return cluster, pos
-  end
-
-  --Claude: Parse file
-  local groups = {}
-  local currentGroup = nil
-
-  for line in content:gmatch('[^\r\n]+') do
-    local groupName = line:match('^#%s*group:%s*(.-)%s*$')
-
-    if groupName then
-      currentGroup = {
-        name = groupName,
-        emojis = {},
-      }
-
-      groups[#groups + 1] = currentGroup
-    elseif currentGroup and line:find('%S') then
-      local pos = 1
-
-      while pos <= #line do
-        local b = line:byte(pos)
-
-        if b <= 32 then
-          pos = pos + 1
-        else
-          local cluster, newPos, err = getNextCluster(line, pos)
-
-          if not cluster then
-            --Claude: Don't silently accept malformed data.
-            ac.log(string.format('[emoji] malformed sequence in group "%s" at byte %d: %s', currentGroup.name, pos, err or 'unknown error'))
-
-            --Claude: Recover by skipping exactly what was consumed by the malformed run (at least 1 byte) so a broken entry can't trap the parser or spam the log per byte.
-            pos = pos + math.max(1, newPos or 0)
-          else
-            currentGroup.emojis[#currentGroup.emojis + 1] = cluster
-            pos = newPos
-          end
-        end
-      end
-    end
-  end
-
-  emoji.groups = groups
-  emoji.activeGroup = math.min(emoji.activeGroup, math.max(#groups, 1))
+--#endregion
+
+--#region AUDIO
+
+---@param event table @audio event table (audio.category.event)
+---Plays the specified audio event.
+local function playAudio(event)
+  if not settings.enableAudio or not event or not event.category then return end
+
+  local category = event.category
+  local enableSetting = 'enable' .. category:sub(1, 1):upper() .. category:sub(2)
+  if not settings[enableSetting] then return end
+
+  local volumeSetting = 'volume' .. category:sub(1, 1):upper() .. category:sub(2)
+  local audioEvent = ac.AudioEvent.fromFile({ filename = event.file, use3D = false, loop = false }, false)
+
+  audioEvent.cameraInteriorMultiplier = 1
+  audioEvent.cameraExteriorMultiplier = 1
+  audioEvent.volume = settings[volumeSetting]
+  audioEvent:start()
+  setTimeout(function() audioEvent:dispose() end, audioEvent:getDuration())
 end
 
----Populates the nonTrafficPlayers table with the names of players that are not hiding labels. AssettoServer traffic cars if HideAiCars is enabled for example.
-local function updateNonTrafficPlayers()
-  for i, car in ac.iterateCars() do
-    local driverName = ac.getDriverName(i - 1)
-    if driverName and driverName ~= '' and not car.isHidingLabels then nonTrafficPlayers[driverName] = true end
+local audioIndexes = {}
+
+---@param tbl table @audio table (audio.category)
+---Plays a test audio event.
+local function playTestAudio(tbl)
+  local t = {}
+  for _, v in pairs(tbl) do
+    if type(v) == 'table' and v.file then t[#t + 1] = v end
   end
+
+  local key = tbl
+  audioIndexes[key] = (audioIndexes[key] or 0) + 1
+  if audioIndexes[key] > #t then audioIndexes[key] = 1 end
+
+  return playAudio(t[audioIndexes[key]])
 end
+
+--#endregion
+
+--#region COMMUNITIES
+
+---@return string @The community name of the current server.
+---Determines the community name of the current server.
+local function getServerCommunity()
+  if not player.isOnline then return 'default' end
+
+  for community, data in pairs(communities) do
+    if data.ips then
+      for _, ip in ipairs(data.ips) do
+        if ip == player.serverIP then return community end
+      end
+    end
+  end
+
+  return 'default'
+end
+
+---@param community table @community entry, with `image` (path) and cached `imageSquare` fields
+---@return vec2, vec2 @uv1, uv2 for the theme-matching half of `community.image`, or the full image if square
+---Square community images are used as-is; non-square images are treated as a light half next to a dark half.
+local function getCommunityImageUV(community)
+  if community.imageSquare == nil then
+    local size = ui.imageSize(community.image)
+    if size.x == 0 or size.y == 0 then return vec2(0, 0), vec2(1, 1) end -- not loaded yet, try again next frame
+    community.imageSquare = size.x == size.y
+  end
+
+  if community.imageSquare then return vec2(0, 0), vec2(1, 1) end
+
+  local isDark = settings.darkMode or player.phoneMode
+  return isDark and vec2(0.5, 0) or vec2(0, 0), isDark and vec2(1, 1) or vec2(0.5, 1)
+end
+
+--#endregion
+
+--#region NOTIFICATIONS
 
 ---@return table? @the currently displaying notification queue
 ---Finds the single queue item currently sliding in/holding/sliding out.
@@ -911,32 +596,6 @@ local function getActiveNotification()
   for _, notif in ipairs(notification.queue) do
     if notif.state == 'active' then return notif end
   end
-end
-
----@return number @the current max chat input length in characters
----Chat input max length to keep chatbox from growing too tall.
-local function getInputMaxLength() return math.floor(490 * (13 / settings.chatFontSize) ^ 2) end
-
---- Escapes Lua pattern metacharacters in a string.
----@param s string Input string to escape.
----@return string escaped The escaped string.
----@return integer count Number of characters escaped.
-local function escapePattern(s) return s:gsub('([%(%)%.%%%+%-%*%?%[%]%^%$])', '%%%1') end
-
----@param y number @eased value, 0 to 1
----@return number @t, 0 to 1, where math.smootherstep(t) equals y
----Inverts math.smootherstep by bisection.
-local function inverseSmootherstep(y)
-  local low, high = 0, 1
-  for _ = 1, 20 do
-    local mid = (low + high) / 2
-    if math.smootherstep(mid) < y then
-      low = mid
-    else
-      high = mid
-    end
-  end
-  return (low + high) / 2
 end
 
 ---@param notif table @notification queue entry
@@ -984,6 +643,22 @@ local function getNotificationLayout(notif)
   return layout
 end
 
+---@param y number @eased value, 0 to 1
+---@return number @t, 0 to 1, where math.smootherstep(t) equals y
+---Inverts math.smootherstep by bisection.
+local function inverseSmootherstep(y)
+  local low, high = 0, 1
+  for _ = 1, 20 do
+    local mid = (low + high) / 2
+    if math.smootherstep(mid) < y then
+      low = mid
+    else
+      high = mid
+    end
+  end
+  return (low + high) / 2
+end
+
 ---@param blend number @0 for the two line peek, 1 for the single line peek
 ---@return number @distance the app moves to while peeking up for a notification banner
 ---Gets the peek distance, moved toward the single line peek by blend, which is the one/two line height difference in pixels.
@@ -998,57 +673,12 @@ local function getPeekDistance(blend)
   return inverseSmootherstep((peekSmooth + heightDifference * blend) / scaledMaxDistance) * scaledMaxDistance
 end
 
---#endregion
-
---#region GENERAL LOGIC FUNCTIONS
-
----Updates the colors based on the current mode.
-local function updateColors()
-  colors.final.display:set(pickThemeColor(colors.displayColorLight, colors.displayColorDark))
-  colors.final.displayTransp:set(pickThemeColor(colors.transparent.displayLight, colors.transparent.displayDark))
-  colors.final.elements:set(pickThemeColor(colors.displayColorDark, colors.displayColorLight))
-  colors.final.outline:set(pickThemeColor(colors.outlineColorLight, colors.outlineColorDark))
-  colors.final.input:set(pickThemeColor(colors.transparent.black50, colors.transparent.white50))
-  colors.final.message:set(pickThemeColor(colors.iMessageLightGray, colors.iMessageDarkGray))
-  colors.final.contactPill:set(pickThemeColor(colors.displayColorLight, colors.iMessageDarkGray))
-  colors.final.contactOutline:set(pickThemeColor(colors.outlineColorLight, colors.outlineColorMedium))
-
-  colors.final.emojiPicker:set(pickThemeColor(colors.emojiPickerButtonLight, colors.emojiPickerButtonDark))
-  colors.final.emojiPickerOutline:set(pickThemeColor(colors.transparent.black10, colors.transparent.white10))
-  colors.final.emojiPickerActive:set(rgbm(0, 0.49, 1, 1))
-
-  colors.final.notifBg:set(pickThemeColor(colors.notifBgColorLight, colors.notifBgColorDark))
-  colors.final.notifTitle:set(pickThemeColor(colors.notifTitleColorLight, colors.notifTitleColorDark))
-
-  colors.final.messageOwn:set(settings.customColor and settings.messageColorSelf or colors.iMessageBlue)
-  colors.final.messageFriend:set(settings.customColor and settings.messageColorFriend or colors.iMessageGreen)
-
-  colors.final.messageOwnText:set(getBrightness(colors.final.messageOwn) <= 0.225 and rgbm.colors.white or rgbm.colors.black)
-  colors.final.messageFriendText:set(getBrightness(colors.final.messageFriend) <= 0.225 and rgbm.colors.white or rgbm.colors.black)
-
-  updateFadeCanvas()
-end
-
-local appWindow = ac.accessAppWindow('IMGUI_LUA_Smartphone_main')
-
----Forces the app to be inside the visible ui space, optionally moves it to the bottom of the screen.
-local function forceAppIntoScreen()
-  if not appWindow or not appWindow:valid() then return end
-
-  local pos = appWindow:position()
-  local size = appWindow:size() + vec2(25, 0)
-  local screen = ac.getUI().windowSize
-
-  local targetX = math.max(0, math.min(pos.x, screen.x - size.x))
-  local targetY
-
-  if settings.forceBottom then
-    targetY = screen.y - size.y
-  else
-    targetY = math.max(0, math.min(pos.y, screen.y - size.y))
+---Drops every queued notification, leaving the ones currently on screen to finish their animation.
+local function clearNotificationQueue()
+  local queue = notification.queue
+  for i = #queue, 1, -1 do
+    if queue[i].state == 'queued' then table.remove(queue, i) end
   end
-
-  if (pos.x ~= targetX or pos.y ~= targetY) and not ui.isMouseDragging(ui.MouseButton.Left, 0) then appWindow:move(vec2(targetX, targetY)) end
 end
 
 ---@param current number @current value
@@ -1060,96 +690,6 @@ local function moveToward(current, target, step)
   local delta = target - current
   if math.abs(delta) <= step then return target end
   return math.floor(current + (delta > 0 and step or -step))
-end
-
----Drops every queued notification, leaving the ones currently on screen to finish their animation.
-local function clearNotificationQueue()
-  local queue = notification.queue
-  for i = #queue, 1, -1 do
-    if queue[i].state == 'queued' then table.remove(queue, i) end
-  end
-end
-
----@param dt number @Delta time in seconds since last update.
-local function updateAppMovement(dt)
-  if not settings.appMove then
-    if movement.distance ~= 0 then
-      movement.distance = 0
-      movement.smooth = 0
-    end
-    return
-  end
-
-  local scaledMaxDistance = scaleNum(movement.maxDistance)
-
-  if app.hovered or chat.input.active then movement.forceFullUp = true end
-  if movement.forceFullUp then clearNotificationQueue() end
-
-  local activeNotif = getActiveNotification()
-  if activeNotif then movement.peekSingleLine = getNotificationLayout(activeNotif).isSingleLine end
-
-  local wantedBlend = (settings.notifBannerAdaptivePeek and movement.peekSingleLine) and 1 or 0
-  if movement.distance > getPeekDistance(1) then
-    movement.peekBlend = wantedBlend
-  else
-    local blendStep = dt / movement.peekAdjustTime
-    movement.peekBlend = movement.peekBlend + math.max(-blendStep, math.min(blendStep, wantedBlend - movement.peekBlend))
-  end
-
-  local isPeekRaise = settings.notifBannerEnabled and not movement.forceFullUp
-  local isPeek = isPeekRaise and not settings.notifBannerFullRaise
-
-  local peekDistance = 0
-  if isPeek then peekDistance = getPeekDistance(movement.peekBlend) end
-
-  local targetUpDistance = movement.forceFullUp and 0 or peekDistance
-
-  if activeNotif and isPeek and not movement.up and movement.distance ~= targetUpDistance then
-    movement.distance = targetUpDistance
-    movement.smooth = math.floor(math.smootherstep(math.lerpInvSat(movement.distance, 0, scaledMaxDistance)) * scaledMaxDistance)
-    return
-  end
-
-  local minimumStayApplies = movement.forceFullUp or settings.notifBannerFullRaise
-  local moveSpeedBase = minimumStayApplies and 100 or 50
-
-  if movement.distance <= targetUpDistance and not movement.up then
-    movement.down = true
-
-    if movement.timer > 0 then movement.timer = movement.timer - dt end
-
-    local minimumStayMet = not minimumStayApplies or movement.timer <= 0
-    local hasNotif = activeNotif ~= nil
-    if minimumStayMet and not hasNotif then
-      movement.notifTailTimer = movement.notifTailTimer - dt
-    else
-      movement.notifTailTimer = movement.notifTailDelay
-    end
-
-    if not (minimumStayMet and not hasNotif and movement.notifTailTimer <= 0) then return end
-
-    movement.timer = 0
-  end
-
-  if movement.down and movement.timer <= 0 then
-    movement.distance = math.floor(movement.distance + dt * moveSpeedBase * (settings.appMoveSpeed * app.scale))
-    movement.smooth = math.floor(math.smootherstep(math.lerpInvSat(movement.distance, 0, scaledMaxDistance)) * scaledMaxDistance)
-
-    if movement.distance >= scaledMaxDistance then
-      movement.distance = scaledMaxDistance
-      movement.down = false
-      movement.forceFullUp = false
-      movement.up = true
-    end
-  elseif movement.up and movement.timer > 0 then
-    movement.distance = moveToward(movement.distance, targetUpDistance, dt * moveSpeedBase * (settings.appMoveSpeed * app.scale))
-    movement.smooth = math.floor(math.smootherstep(math.lerpInvSat(movement.distance, 0, scaledMaxDistance)) * scaledMaxDistance)
-
-    if movement.distance == targetUpDistance then
-      movement.up = false
-      movement.timer = settings.appMoveTimer
-    end
-  end
 end
 
 ---@param title string @bold title line, e.g. the sender's username
@@ -1240,70 +780,130 @@ local function updateNotifications(dt)
   notif.smooth = math.floor(math.smootherstep(math.lerpInvSat(notif.distance, 0, maxDistance)) * maxDistance)
 end
 
----@param event table @audio event table (audio.category.event)
----Plays the specified audio event.
-local function playAudio(event)
-  if not settings.enableAudio or not event or not event.category then return end
+--#endregion
 
-  local category = event.category
-  local enableSetting = 'enable' .. category:sub(1, 1):upper() .. category:sub(2)
-  if not settings[enableSetting] then return end
+--#region MOVEMENT
 
-  local volumeSetting = 'volume' .. category:sub(1, 1):upper() .. category:sub(2)
-  local audioEvent = ac.AudioEvent.fromFile({ filename = event.file, use3D = false, loop = false }, false)
-
-  audioEvent.cameraInteriorMultiplier = 1
-  audioEvent.cameraExteriorMultiplier = 1
-  audioEvent.volume = settings[volumeSetting]
-  audioEvent:start()
-  setTimeout(function() audioEvent:dispose() end, audioEvent:getDuration())
-end
-
-local audioIndexes = {}
----@param tbl table @audio table (audio.category)
----Plays a test audio event.
-local function playTestAudio(tbl)
-  local t = {}
-  for _, v in pairs(tbl) do
-    if type(v) == 'table' and v.file then t[#t + 1] = v end
+---@param full boolean? @Whether to force the app to fully move up, ignoring the notification peek distance
+---Moves the app up.
+local function moveAppUp(full)
+  if settings.appMove then
+    if full then movement.forceFullUp = true end
+    movement.timer = settings.appMoveTimer
+    movement.up = true
   end
-
-  local key = tbl
-  audioIndexes[key] = (audioIndexes[key] or 0) + 1
-  if audioIndexes[key] > #t then audioIndexes[key] = 1 end
-
-  return playAudio(t[audioIndexes[key]])
 end
 
----Switches the phone mode automatically based on the current time.
-local function automaticModeSwitch()
-  if not settings.darkModeAuto then
-    if player.phoneMode then
-      player.phoneMode = false
-      updateColors()
+---@param dt number @Delta time in seconds since last update.
+---Updates the app's up/down movement animation, including notification peeking.
+local function updateAppMovement(dt)
+  if not settings.appMove then
+    if movement.distance ~= 0 then
+      movement.distance = 0
+      movement.smooth = 0
     end
     return
   end
 
-  local sim = ac.getSim()
-  local currentTime = sim.timeHours + sim.timeMinutes / 60
-  local shouldBeDark = not (currentTime > settings.darkModeAutoLightTime and currentTime < settings.darkModeAutoDarkTime)
+  local scaledMaxDistance = scaleNum(movement.maxDistance)
 
-  if player.phoneMode ~= shouldBeDark then
-    player.phoneMode = shouldBeDark
-    updateColors()
+  if app.hovered or chat.input.active then movement.forceFullUp = true end
+  if movement.forceFullUp then clearNotificationQueue() end
+
+  local activeNotif = getActiveNotification()
+  if activeNotif then movement.peekSingleLine = getNotificationLayout(activeNotif).isSingleLine end
+
+  local wantedBlend = (settings.notifBannerAdaptivePeek and movement.peekSingleLine) and 1 or 0
+  if movement.distance > getPeekDistance(1) then
+    movement.peekBlend = wantedBlend
+  else
+    local blendStep = dt / movement.peekAdjustTime
+    movement.peekBlend = movement.peekBlend + math.max(-blendStep, math.min(blendStep, wantedBlend - movement.peekBlend))
+  end
+
+  local isPeekRaise = settings.notifBannerEnabled and not movement.forceFullUp
+  local isPeek = isPeekRaise and not settings.notifBannerFullRaise
+
+  local peekDistance = 0
+  if isPeek then peekDistance = getPeekDistance(movement.peekBlend) end
+
+  local targetUpDistance = movement.forceFullUp and 0 or peekDistance
+
+  if activeNotif and isPeek and not movement.up and movement.distance ~= targetUpDistance then
+    movement.distance = targetUpDistance
+    movement.smooth = math.floor(math.smootherstep(math.lerpInvSat(movement.distance, 0, scaledMaxDistance)) * scaledMaxDistance)
+    return
+  end
+
+  local minimumStayApplies = movement.forceFullUp or settings.notifBannerFullRaise
+  local moveSpeedBase = minimumStayApplies and 100 or 50
+
+  if movement.distance <= targetUpDistance and not movement.up then
+    movement.down = true
+
+    if movement.timer > 0 then movement.timer = movement.timer - dt end
+
+    local minimumStayMet = not minimumStayApplies or movement.timer <= 0
+    local hasNotif = activeNotif ~= nil
+    if minimumStayMet and not hasNotif then
+      movement.notifTailTimer = movement.notifTailTimer - dt
+    else
+      movement.notifTailTimer = movement.notifTailDelay
+    end
+
+    if not (minimumStayMet and not hasNotif and movement.notifTailTimer <= 0) then return end
+
+    movement.timer = 0
+  end
+
+  if movement.down and movement.timer <= 0 then
+    movement.distance = math.floor(movement.distance + dt * moveSpeedBase * (settings.appMoveSpeed * app.scale))
+    movement.smooth = math.floor(math.smootherstep(math.lerpInvSat(movement.distance, 0, scaledMaxDistance)) * scaledMaxDistance)
+
+    if movement.distance >= scaledMaxDistance then
+      movement.distance = scaledMaxDistance
+      movement.down = false
+      movement.forceFullUp = false
+      movement.up = true
+    end
+  elseif movement.up and movement.timer > 0 then
+    movement.distance = moveToward(movement.distance, targetUpDistance, dt * moveSpeedBase * (settings.appMoveSpeed * app.scale))
+    movement.smooth = math.floor(math.smootherstep(math.lerpInvSat(movement.distance, 0, scaledMaxDistance)) * scaledMaxDistance)
+
+    if movement.distance == targetUpDistance then
+      movement.up = false
+      movement.timer = settings.appMoveTimer
+    end
   end
 end
 
 --#endregion
 
---#region SONG INFO FUNCTIONS
+--#region SONG INFO
 
 ---@param expanded boolean @sets the width of the island
 ---Sets the width of the dynamic island.
 local function setDynamicIslandSize(expanded)
   local width = expanded and songInfo.dynamicIslandBaseWidths.y or songInfo.dynamicIslandBaseWidths.x
   songInfo.dynamicIslandSizeActive:set(width, songInfo.dynamicIslandSizeActive.y)
+end
+
+---@param songString string @combined 'artist - title' string usually, whatever your mp3 player spits out
+---@return string artist @artist name string
+---@return string title @song title string
+---Splits the title string into artist and track title.
+local function splitTitle(songString)
+  for _, pattern in ipairs(songInfo.titleSplitPatterns) do
+    local artist, title = songString:match(pattern)
+    if artist and title then
+      artist = artist:gsub('^%s*(.-)%s*$', '%1')
+      title = title:gsub('^%s*(.-)%s*$', '%1')
+      title = title:gsub('%.%w+$', '')
+      return artist, title
+    end
+  end
+  local trimmedTitle = songString:gsub('%.%w+$', '')
+  return 'Unknown Artist', trimmedTitle
 end
 
 ---@param forced? boolean @Whether to force updating the song information even if the artist and title have not changed.
@@ -1338,90 +938,86 @@ local function updateSongInfo(forced)
   end
 end
 
----@param text string @The text content to be displayed, either static or scrolling.
----@param pos vec2 @The position coordinates where the text should be drawn.
----@param size vec2 @The dimensions of the text drawing area.
----@param fontSize number @The font size to use for rendering the text.
----Draws text that can either be static, continuously scrolling, or alternating between both ends.
-local function drawSongInfoText(text, pos, size, fontSize)
-  if not text or text == '' then return end
-
-  ui.pushDWriteFont(app.font.bold)
-
-  if songInfo.cached.size == nil or songInfo.cached.text ~= text or songInfo.cached.scale ~= app.scale then
-    songInfo.cached.size = ui.measureDWriteText(text, fontSize)
-    songInfo.cached.text = text
-    songInfo.cached.scale = app.scale
-  end
-
-  local textSize = songInfo.cached.size
-  if not textSize then
-    ui.popDWriteFont()
-    return
-  end
-
-  local static = false
-  if textSize.x <= size.x - scaleNum(12) and not settings.songInfoScrollAlways then static = true end
-
-  if static then
-    ui.setCursor(ceilVec2(pos.x, pos.y + (size.y - textSize.y) / 2))
-    ui.dwriteTextAligned(text, fontSize, ui.Alignment.Center, ui.Alignment.Start, vec2(size.x, textSize.y), false, rgbm.colors.white)
-  elseif settings.songInfoScrollDirection == 1 then
-    local startOffset
-    local endOffset
-    local sidePadding = scaleNum(10)
-
-    if textSize.x > size.x then
-      local overflow = textSize.x - size.x
-      startOffset = sidePadding
-      endOffset = -(overflow + sidePadding)
-    else
-      local availableMovement = size.x - textSize.x
-      startOffset = -sidePadding
-      endOffset = availableMovement + sidePadding
-    end
-
-    local travelDistance = math.abs(endOffset - startOffset)
-    local cycleLength = travelDistance * 2
-    local cyclePosition = cycleLength > 0 and songInfo.scrollTime % cycleLength or 0
-
-    local cycleMovement
-    if cyclePosition <= travelDistance then
-      cycleMovement = cyclePosition
-    else
-      cycleMovement = cycleLength - cyclePosition
-    end
-
-    local scrollX
-    if endOffset < startOffset then
-      scrollX = startOffset - cycleMovement
-    else
-      scrollX = startOffset + cycleMovement
-    end
-
-    ui.pushClipRect(pos, pos + size)
-    ui.dwriteDrawText(text, fontSize, ceilVec2(pos.x + scrollX, pos.y + (size.y - textSize.y) / 2), rgbm.colors.white)
-    ui.popClipRect()
-  else
-    local scrollSpacing = settings.songInfoAutoSpacing and size.x / 1.5 or settings.songInfoSpacing
-    local scrollStepWidth = math.ceil(textSize.x + scrollSpacing)
-    local scrollDirection = settings.songInfoScrollDirection == 0 and -1 or 1
-    local scrollX = scrollDirection * (songInfo.scrollTime % scrollStepWidth)
-    songInfo.scrollTime = songInfo.scrollTime % scrollStepWidth
-
-    ui.pushClipRect(pos, pos + size)
-    for i = -1, math.ceil(size.x / scrollStepWidth) do
-      ui.dwriteDrawText(text, fontSize, ceilVec2(pos.x + scrollX + i * scrollStepWidth, pos.y + (size.y - textSize.y) / 2), rgbm.colors.white)
-    end
-    ui.popClipRect()
-  end
-
-  ui.popDWriteFont()
-end
-
 --#endregion
 
---#region CHAT LOGIC FUNCTIONS
+--#region CHAT LOGIC
+
+---@param carIndexOrUsername number|string @The index of the car or username whose friend status is being checked.
+---@return boolean @Returns true if the driver is tagged as a friend.
+---Determines whether the driver of the specified car or username is marked as a friend.
+local function checkIfFriend(carIndexOrUsername)
+  local driverName
+  if type(carIndexOrUsername) == 'number' then
+    driverName = ac.getDriverName(carIndexOrUsername)
+    if not driverName then return false end
+  else
+    driverName = carIndexOrUsername
+  end
+  return ac.DriverTags(driverName).friend
+end
+
+---@param index integer @Car index
+---Caches the driver tag color for the specified car index.
+local function getDriverColor(index)
+  local name = ac.getDriverName(index)
+  if not name or name == '' then return end
+
+  local color = ac.DriverTags(name).color:clone()
+  local isDefaultColor = (index == 0 and color == rgbm.colors.yellow) or (index > 0 and color == rgbm.colors.white)
+  if isDefaultColor then color:set(rgbm.colors.gray) end
+
+  local existingColor = chat.userNameColors[name]
+
+  local shouldUpdate = (not existingColor and color ~= rgbm.colors.gray) or (existingColor and ((existingColor == rgbm.colors.gray and color ~= rgbm.colors.gray) or existingColor ~= color))
+
+  if shouldUpdate then chat.userNameColors[name] = color end
+end
+
+---@return number @the current max chat input length in characters
+---Chat input max length to keep chatbox from growing too tall.
+local function getInputMaxLength() return math.floor(490 * (13 / settings.chatFontSize) ^ 2) end
+
+---@param text string @Text to search in.
+---@param word string @Word to search for, matched case-insensitively as a whole word.
+---@return boolean
+---Checks whether `word` occurs in `text` as a whole word (not as part of a longer word).
+local function containsWord(text, word)
+  if word == '' then return false end
+  local searchFrom = 1
+  while true do
+    local startIndex = text:findIgnoreCase(word, searchFrom)
+    if not startIndex then return false end
+
+    local before = text:sub(startIndex - 1, startIndex - 1)
+    local after = text:sub(startIndex + #word, startIndex + #word)
+    if not before:find('[%w_]') and not after:find('[%w_]') then return true end
+
+    searchFrom = startIndex + 1
+  end
+end
+
+---@param message any @The message to be sent.
+---@param deleteAfter? number @The amount of time to wait before deleting the message.
+---Sends a chat message as the app using the server index.
+local function sendAppMessage(message, deleteAfter)
+  local msg = { -1, 'App', message, os.time() }
+  table.insert(chat.messages, msg)
+  chat.msgCacheGen = chat.msgCacheGen + 1
+  moveAppUp()
+
+  if deleteAfter then
+    setTimeout(function()
+      for i = 1, #chat.messages do
+        if chat.messages[i] == msg then
+          table.remove(chat.messages, i)
+          chat.msgCacheGen = chat.msgCacheGen + 1
+          chat.layout.forceFullRebuild = true
+          break
+        end
+      end
+    end, deleteAfter)
+  end
+end
 
 ---@param message string? @Optional, message to be sent instead of input field text.
 ---Sends a chat message.
@@ -1456,10 +1052,6 @@ end
 ---@return boolean shouldAlert @Whether this message should trigger a critical alert sound.
 ---Determines whether a message matches one of the configured filters.
 local function matchMessage(isPlayer, message)
-  local lowerMessage = message:lower()
-  local lowerPlayerName = player.driverName:lower()
-  local shouldAlert = false
-
   if isPlayer then
     for _, pattern in ipairs(chat.hideStrings.player) do
       if message:match(pattern) then return 'annoying', false end
@@ -1468,11 +1060,13 @@ local function matchMessage(isPlayer, message)
     return nil, false
   end
 
+  local lowerMessage = message:lower()
+  local shouldAlert = false
+  local aboutPlayer = message:findIgnoreCase(player.driverName) ~= nil
+
   for _, reason in ipairs(chat.hideStrings.server) do
-    if lowerMessage:find(reason) then
-      if lowerMessage:find(lowerPlayerName, 1, true) then
-        shouldAlert = true
-      elseif lowerMessage:find('^you') or lowerMessage:find('^it is currently night') then
+    if message:findIgnoreCase(reason) then
+      if aboutPlayer or lowerMessage:startsWith('you') or lowerMessage:startsWith('it is currently night') then
         shouldAlert = true
       else
         return 'kickban', shouldAlert
@@ -1480,7 +1074,7 @@ local function matchMessage(isPlayer, message)
     end
   end
 
-  if lowerMessage:find('in a race%.$') and not lowerMessage:find('you') and not lowerMessage:find(lowerPlayerName, 1, true) then return 'race', shouldAlert end
+  if lowerMessage:endsWith('in a race.') and not message:findIgnoreCase('you') and not aboutPlayer then return 'race', shouldAlert end
 
   return false, shouldAlert
 end
@@ -1814,6 +1408,87 @@ local function drawDynamicIsland()
   end
 end
 
+---@param text string @The text content to be displayed, either static or scrolling.
+---@param pos vec2 @The position coordinates where the text should be drawn.
+---@param size vec2 @The dimensions of the text drawing area.
+---@param fontSize number @The font size to use for rendering the text.
+---Draws text that can either be static, continuously scrolling, or alternating between both ends.
+local function drawSongInfoText(text, pos, size, fontSize)
+  if not text or text == '' then return end
+
+  ui.pushDWriteFont(app.font.bold)
+
+  if songInfo.cached.size == nil or songInfo.cached.text ~= text or songInfo.cached.scale ~= app.scale then
+    songInfo.cached.size = ui.measureDWriteText(text, fontSize)
+    songInfo.cached.text = text
+    songInfo.cached.scale = app.scale
+  end
+
+  local textSize = songInfo.cached.size
+  if not textSize then
+    ui.popDWriteFont()
+    return
+  end
+
+  local static = false
+  if textSize.x <= size.x - scaleNum(12) and not settings.songInfoScrollAlways then static = true end
+
+  if static then
+    ui.setCursor(ceilVec2(pos.x, pos.y + (size.y - textSize.y) / 2))
+    ui.dwriteTextAligned(text, fontSize, ui.Alignment.Center, ui.Alignment.Start, vec2(size.x, textSize.y), false, rgbm.colors.white)
+  elseif settings.songInfoScrollDirection == 1 then
+    local startOffset
+    local endOffset
+    local sidePadding = scaleNum(10)
+
+    if textSize.x > size.x then
+      local overflow = textSize.x - size.x
+      startOffset = sidePadding
+      endOffset = -(overflow + sidePadding)
+    else
+      local availableMovement = size.x - textSize.x
+      startOffset = -sidePadding
+      endOffset = availableMovement + sidePadding
+    end
+
+    local travelDistance = math.abs(endOffset - startOffset)
+    local cycleLength = travelDistance * 2
+    local cyclePosition = cycleLength > 0 and songInfo.scrollTime % cycleLength or 0
+
+    local cycleMovement
+    if cyclePosition <= travelDistance then
+      cycleMovement = cyclePosition
+    else
+      cycleMovement = cycleLength - cyclePosition
+    end
+
+    local scrollX
+    if endOffset < startOffset then
+      scrollX = startOffset - cycleMovement
+    else
+      scrollX = startOffset + cycleMovement
+    end
+
+    ui.pushClipRect(pos, pos + size)
+    ui.dwriteDrawText(text, fontSize, ceilVec2(pos.x + scrollX, pos.y + (size.y - textSize.y) / 2), rgbm.colors.white)
+    ui.popClipRect()
+  else
+    local scrollSpacing = settings.songInfoAutoSpacing and size.x / 1.5 or settings.songInfoSpacing
+    local scrollStepWidth = math.ceil(textSize.x + scrollSpacing)
+    local scrollDirection = settings.songInfoScrollDirection == 0 and -1 or 1
+    local scrollX = scrollDirection * (songInfo.scrollTime % scrollStepWidth)
+    songInfo.scrollTime = songInfo.scrollTime % scrollStepWidth
+
+    ui.pushClipRect(pos, pos + size)
+    for i = -1, math.ceil(size.x / scrollStepWidth) do
+      ui.dwriteDrawText(text, fontSize, ceilVec2(pos.x + scrollX + i * scrollStepWidth, pos.y + (size.y - textSize.y) / 2), rgbm.colors.white)
+    end
+    ui.popClipRect()
+  end
+
+  ui.popDWriteFont()
+end
+
 ---Draws the song information.
 local function drawSongInfo()
   if settings.songInfo then
@@ -1914,7 +1589,8 @@ local function drawContact()
     local imgSize = scaleVec2(36, 36)
     local imgPos = vec2((ui.availableSpaceX() / 2) - (imgSize.x / 2), scaleNum(47))
 
-    ui.drawImageRounded(community.image, imgPos, imgPos + imgSize, 999, ui.CornerFlags.All)
+    local communityUV1, communityUV2 = getCommunityImageUV(community)
+    ui.drawImageRounded(community.image, imgPos, imgPos + imgSize, rgbm.colors.white, communityUV1, communityUV2, 999, ui.CornerFlags.All)
 
     if app.hovered then
       if ui.rectHovered(imgPos, imgPos + imgSize) or ui.rectHovered(pillPosTL, pillPosBR) then
@@ -2771,7 +2447,8 @@ local function drawNotifications()
         ui.drawRectFilled(ui.getCursor(), ui.getCursor() + bannerSize, colors.final.notifBg, scaleNum(16), ui.CornerFlags.All)
 
         local contactImgPos = ui.getCursor() + vec2(scaleNum(10), math.ceil((bannerSize.y - contactImgSize.y) / 2))
-        ui.drawImageRounded(communities[player.serverCommunity].image, contactImgPos, contactImgPos + contactImgSize, 999, ui.CornerFlags.All)
+        local communityUV1, communityUV2 = getCommunityImageUV(communities[player.serverCommunity])
+        ui.drawImageRounded(communities[player.serverCommunity].image, contactImgPos, contactImgPos + contactImgSize, rgbm.colors.white, communityUV1, communityUV2, 999, ui.CornerFlags.All)
 
         local messageIconPos = contactImgPos + scaleVec2(19, 19)
         ui.drawImageRounded(app.images.defaultMessage, messageIconPos, messageIconPos + imessageImgSize, scaleNum(2), ui.CornerFlags.All)
@@ -2814,6 +2491,304 @@ Updater.init {
 
 --#region APP EVENTS
 
+---Loads emojis from src/emj/emojis.txt, fully supporting emoji grapheme clusters, and groups them by category.
+---Disclosure: this piece of shit was written by Claude, it is black magic to me.
+local function loadEmojis()
+  local path = ac.getFolder(ac.FolderID.ScriptOrigin) .. '\\src\\emj\\emojis.txt'
+  local f = io.open(path, 'rb')
+  if not f then return end
+
+  local content = f:read('*a')
+  f:close()
+
+  local VS16 = 0xFE0F
+  local ZWJ = 0x200D
+
+  local function isContinuationByte(b) return b and b >= 0x80 and b <= 0xBF end
+
+  local function decodeUTF8(line, pos)
+    local b1 = line:byte(pos)
+    if not b1 then return nil, nil end
+
+    --Claude: ASCII
+    if b1 < 0x80 then return b1, 1 end
+
+    --Claude: 2-byte sequence
+    if b1 >= 0xC2 and b1 <= 0xDF then
+      local b2 = line:byte(pos + 1)
+
+      if not isContinuationByte(b2) then return nil, nil end
+
+      local cp = (b1 - 0xC0) * 0x40 + (b2 - 0x80)
+
+      return cp, 2
+    end
+
+    --Claude: 3-byte sequence
+    if b1 >= 0xE0 and b1 <= 0xEF then
+      local b2 = line:byte(pos + 1)
+      local b3 = line:byte(pos + 2)
+
+      if not isContinuationByte(b2) or not isContinuationByte(b3) then return nil, nil end
+
+      --Claude: Reject overlong encodings and UTF-16 surrogate range.
+      if b1 == 0xE0 and b2 < 0xA0 then return nil, nil end
+
+      if b1 == 0xED and b2 >= 0xA0 then return nil, nil end
+
+      local cp = (b1 - 0xE0) * 0x1000 + (b2 - 0x80) * 0x40 + (b3 - 0x80)
+
+      return cp, 3
+    end
+
+    --Claude: 4-byte sequence
+    if b1 >= 0xF0 and b1 <= 0xF4 then
+      local b2 = line:byte(pos + 1)
+      local b3 = line:byte(pos + 2)
+      local b4 = line:byte(pos + 3)
+
+      if not isContinuationByte(b2) or not isContinuationByte(b3) or not isContinuationByte(b4) then return nil, nil end
+
+      --Claude: Reject overlong encodings and > U+10FFFF.
+      if b1 == 0xF0 and b2 < 0x90 then return nil, nil end
+
+      if b1 == 0xF4 and b2 > 0x8F then return nil, nil end
+
+      local cp = (b1 - 0xF0) * 0x40000 + (b2 - 0x80) * 0x1000 + (b3 - 0x80) * 0x40 + (b4 - 0x80)
+
+      return cp, 4
+    end
+
+    return nil, nil
+  end
+
+  local function codepointToString(line, pos, len) return line:sub(pos, pos + len - 1) end
+
+  local function isSkinTone(cp) return cp >= 0x1F3FB and cp <= 0x1F3FF end
+
+  local function isRegionalIndicator(cp) return cp >= 0x1F1E6 and cp <= 0x1F1FF end
+
+  local function isTag(cp) return cp >= 0xE0020 and cp <= 0xE007F end
+
+  local function readVS16(line, pos)
+    local cp, len = decodeUTF8(line, pos)
+
+    if cp == VS16 then return pos + len, line:sub(pos, pos + len - 1) end
+
+    return pos, ''
+  end
+
+  local function readSkinTone(line, pos)
+    local cp, len = decodeUTF8(line, pos)
+
+    if cp and isSkinTone(cp) then return pos + len, line:sub(pos, pos + len - 1) end
+
+    return pos, ''
+  end
+
+  local function readKeycap(line, pos)
+    local cp, len = decodeUTF8(line, pos)
+
+    if cp == 0x20E3 then return pos + len, line:sub(pos, pos + len - 1) end
+
+    return pos, ''
+  end
+
+  local function isTagEnd(cp) return cp == 0xE007F end
+
+  --Claude: Consume subdivision flag tag sequence: 🏴 + TAG SPEC + CANCEL TAG
+  local function readTagSequence(line, pos, cluster)
+    local start = pos
+    local tagCount = 0
+
+    while pos <= #line do
+      local cp, len = decodeUTF8(line, pos)
+
+      if not cp or not isTag(cp) then break end
+
+      cluster = cluster .. codepointToString(line, pos, len)
+      pos = pos + len
+      tagCount = tagCount + 1
+
+      if isTagEnd(cp) then return cluster, pos end
+    end
+
+    --Claude: A tag character sequence without CANCEL TAG isn't a valid emoji tag sequence. Return bytes consumed so the caller can skip the whole partial run instead of just one byte.
+    if tagCount > 0 then return nil, pos - start end
+
+    return cluster, pos
+  end
+
+  local function getNextCluster(line, pos)
+    local start = pos
+
+    local baseCp, baseLen = decodeUTF8(line, pos)
+    if not baseCp then return nil, pos - start, 'invalid UTF-8' end
+
+    local cluster = codepointToString(line, pos, baseLen)
+    pos = pos + baseLen
+
+    --Claude: Regional Indicator pair
+    if isRegionalIndicator(baseCp) then
+      local cp2, len2 = decodeUTF8(line, pos)
+
+      if not cp2 or not isRegionalIndicator(cp2) then return nil, pos - start, 'singleton regional indicator' end
+
+      cluster = cluster .. codepointToString(line, pos, len2)
+      pos = pos + len2
+
+      return cluster, pos
+    end
+
+    --Claude: Black flag + tag sequence
+    if baseCp == 0x1F3F4 then
+      local taggedCluster, taggedPos = readTagSequence(line, pos, cluster)
+
+      if taggedCluster == nil then
+        --Claude: taggedPos is bytes consumed by the partial tag run;
+        --Claude: add on what was consumed before it (the base flag itself).
+        return nil, (pos - start) + taggedPos, 'malformed tag sequence'
+      end
+
+      if taggedPos ~= pos then return taggedCluster, taggedPos end
+    end
+
+    --Claude: VS16
+    do
+      local newPos, suffix = readVS16(line, pos)
+
+      if suffix ~= '' then
+        cluster = cluster .. suffix
+        pos = newPos
+      end
+    end
+
+    --Claude: Skin tone
+    do
+      local newPos, suffix = readSkinTone(line, pos)
+
+      if suffix ~= '' then
+        cluster = cluster .. suffix
+        pos = newPos
+      end
+    end
+
+    --Claude: Keycap
+    do
+      local newPos, suffix = readKeycap(line, pos)
+
+      if suffix ~= '' then
+        cluster = cluster .. suffix
+        pos = newPos
+      end
+    end
+
+    --Claude: ZWJ sequences
+    while true do
+      local cp, len = decodeUTF8(line, pos)
+
+      if cp ~= ZWJ then break end
+
+      cluster = cluster .. codepointToString(line, pos, len)
+      pos = pos + len
+
+      --Claude: ZWJ must be followed by another code point.
+      local nextCp, nextLen = decodeUTF8(line, pos)
+
+      if not nextCp then return nil, pos - start, 'ZWJ at end of cluster' end
+
+      --Claude: A ZWJ element cannot itself start with another ZWJ.
+      if nextCp == ZWJ then return nil, pos - start, 'consecutive ZWJ' end
+
+      cluster = cluster .. codepointToString(line, pos, nextLen)
+      pos = pos + nextLen
+
+      --Claude: VS16 after ZWJ element.
+      do
+        local newPos, suffix = readVS16(line, pos)
+
+        if suffix ~= '' then
+          cluster = cluster .. suffix
+          pos = newPos
+        end
+      end
+
+      --Claude: Skin tone after ZWJ element.
+      do
+        local newPos, suffix = readSkinTone(line, pos)
+
+        if suffix ~= '' then
+          cluster = cluster .. suffix
+          pos = newPos
+        end
+      end
+
+      --Claude: Keycap after a ZWJ element.
+      do
+        local newPos, suffix = readKeycap(line, pos)
+
+        if suffix ~= '' then
+          cluster = cluster .. suffix
+          pos = newPos
+        end
+      end
+    end
+
+    return cluster, pos
+  end
+
+  --Claude: Parse file
+  local groups = {}
+  local currentGroup = nil
+
+  for line in content:gmatch('[^\r\n]+') do
+    local groupName = line:match('^#%s*group:%s*(.-)%s*$')
+
+    if groupName then
+      currentGroup = {
+        name = groupName,
+        emojis = {},
+      }
+
+      groups[#groups + 1] = currentGroup
+    elseif currentGroup and line:find('%S') then
+      local pos = 1
+
+      while pos <= #line do
+        local b = line:byte(pos)
+
+        if b <= 32 then
+          pos = pos + 1
+        else
+          local cluster, newPos, err = getNextCluster(line, pos)
+
+          if not cluster then
+            --Claude: Don't silently accept malformed data.
+            ac.log(string.format('[emoji] malformed sequence in group "%s" at byte %d: %s', currentGroup.name, pos, err or 'unknown error'))
+
+            --Claude: Recover by skipping exactly what was consumed by the malformed run (at least 1 byte) so a broken entry can't trap the parser or spam the log per byte.
+            pos = pos + math.max(1, newPos or 0)
+          else
+            currentGroup.emojis[#currentGroup.emojis + 1] = cluster
+            pos = newPos
+          end
+        end
+      end
+    end
+  end
+
+  emoji.groups = groups
+  emoji.activeGroup = math.min(emoji.activeGroup, math.max(#groups, 1))
+end
+
+---Populates the nonTrafficPlayers table with the names of players that are not hiding labels. AssettoServer traffic cars if HideAiCars is enabled for example.
+local function updateNonTrafficPlayers()
+  for i, car in ac.iterateCars() do
+    local driverName = ac.getDriverName(i - 1)
+    if driverName and driverName ~= '' and not car.isHidingLabels then nonTrafficPlayers[driverName] = true end
+  end
+end
+
 if player.isOnline then
   ac.onChatMessage(function(message, senderCarIndex)
     local isPlayer = senderCarIndex > -1
@@ -2821,8 +2796,7 @@ if player.isOnline then
     local isFriend = userName ~= 'Someone' and checkIfFriend(userName) or false
     local isMuted = isPlayer and ac.DriverTags(userName).muted
     local isHiddenSender = isMuted or (settings.focusMode and isPlayer and not isFriend)
-    local escapedPlayerName = escapePattern(player.driverName:lower())
-    local isMentioned = message:lower():find('%f[%a_]' .. escapedPlayerName .. '%f[%A_]') ~= nil
+    local isMentioned = containsWord(message, player.driverName)
     local hideReason, shouldAlert = matchMessage(isPlayer, message)
 
     local hideMessage = hideReason == 'annoying' and settings.chatHideAnnoying or hideReason == 'kickban' and settings.chatHideKickBan or hideReason == 'race' and settings.chatHideRaceMsg
@@ -2881,12 +2855,11 @@ if player.isOnline then
     return false
   end)
 
-  ---@param connectedCarIndex number @Car index of the car that joined/left
   ---@param action string @joined/left string
   ---@param userName string @driver name resolved when the event fired
   ---@param car ac.StateCar? @car resolved when the event fired
   ---Adds system messages for join/leave events.
-  local function handleConnectionEvent(connectedCarIndex, action, userName, car)
+  local function handleConnectionEvent(action, userName, car)
     if userName ~= 'A Player' and car then
       if action == ' joined' and not car.isHidingLabels then nonTrafficPlayers[userName] = true end
     end
@@ -2944,7 +2917,7 @@ if player.isOnline then
     local entry = { action = action, userName = userName, carName = carName }
     entry.timeoutId = setTimeout(function()
       pendingConnectionEvents[connectedCarIndex] = nil
-      handleConnectionEvent(connectedCarIndex, action, userName, car)
+      handleConnectionEvent(action, userName, car)
     end, 0.5)
     pendingConnectionEvents[connectedCarIndex] = entry
   end
@@ -2958,29 +2931,82 @@ if player.isOnline then
   end)
 
   --Before CSP 0.3.0p110 (3637) the onOnlineWelcome event was broken and returned a empty string
-  if player.cspVersion >= 3637 then ac.onOnlineWelcome(function(message, config) sendAppMessage(message) end) end
-end
-
----Function to be called once when window opens, defined in `manifest.ini` as `FUNCTION_ON_SHOW = onShowWindow`
----@diagnostic disable-next-line: lowercase-global
-function onShowWindow()
-  Updater.checkVersion()
-  updateColors()
-  updateSongInfo(true)
-  loadEmojis()
-  updateNonTrafficPlayers()
-
-  if settings.focusMode then settings.focusMode = false end
-
-  if Updater.state.updateStatus == 5 then sendAppMessage('Update Available!\nInstall via App Settings') end
-
-  chat.msgCacheGen = chat.msgCacheGen + 1
-  chat.layout.forceFullRebuild = true
+  if player.cspVersion >= 3637 then ac.onOnlineWelcome(function(message) sendAppMessage(message) end) end
 end
 
 --#endregion
 
+--#region APP STARTUP
+
+Updater.checkVersion()
+updateColors()
+updateSongInfo(true)
+loadEmojis()
+updateNonTrafficPlayers()
+player.serverCommunity = getServerCommunity()
+
+if settings.focusMode then settings.focusMode = false end
+
+if Updater.state.updateStatus == 5 then sendAppMessage('Update Available!\nInstall via App Settings') end
+
+chat.msgCacheGen = chat.msgCacheGen + 1
+chat.layout.forceFullRebuild = true
+
+--#endregion
+
 --#region APP SETTINGS WINDOW
+
+---@param tooltipString string @Text to be displayed in the tooltip.
+---@param changeCursor? boolean @Changes the mouse cursor to ui.MouseCursor.Hand
+---Displays a tooltip for the last hovered item.
+local function lastItemHoveredTooltip(tooltipString, changeCursor)
+  if ui.itemHovered() then
+    if changeCursor then ui.setMouseCursor(ui.MouseCursor.Hand) end
+    ui.tooltip(app.tooltipPadding, function() ui.text(tooltipString) end)
+  end
+end
+
+---@param label string Checkbox label.
+---@param key string Name of the boolean field in the `settings` table.
+---@param tooltip? string Tooltip text (optional).
+---@param onChange? fun(newValue: boolean) Called after the value changes.
+---@return boolean wasChanged True if the user toggled the checkbox.
+---Creates a checkbox bound to a settings field, with optional change callback and tooltip.
+local function settingsCheckbox(label, key, tooltip, onChange)
+  local wasChanged = false
+  if
+    ui.checkbox(label, settings[key] --[[@as boolean]])
+  then
+    settings[key] = not settings[key]
+    if onChange then
+      onChange(settings[key] --[[@as boolean]])
+    end
+    wasChanged = true
+  end
+  if tooltip then lastItemHoveredTooltip(tooltip) end
+  return wasChanged
+end
+
+---@param key string Name of the numeric field in the `settings` table.
+---@param min number Minimum slider value.
+---@param max number Maximum slider value.
+---@param labelFormat string Format string for the displayed value (e.g., "Speed: %.0f").
+---@param tooltip? string Tooltip text (optional).
+---@param onChange? fun(newValue: number) Called after the value changes.
+---@param power? number|boolean Power for non-linear slider, or `true` for integer mode. Default: `1` (linear).
+---@return number currentValue The new (or current) value.
+---Creates a slider bound to a settings field, with optional change callback and tooltip.
+local function settingsSlider(key, min, max, labelFormat, tooltip, onChange, power)
+  local value, changed = ui.slider('##' .. key, settings[key]--[[@as number]], min, max, labelFormat, power)
+  if changed then
+    settings[key] = value
+    if onChange then onChange(value) end
+  end
+  if tooltip then lastItemHoveredTooltip(tooltip) end
+  return value
+end
+
+---Draws the app settings window.
 function script.windowMainSettings()
   local hideFooter = false
   ui.tabBar('TabBar', function()
@@ -3030,7 +3056,7 @@ function script.windowMainSettings()
           end)
 
           if not settings.darkMode then
-            settingsCheckbox('Automatic Light/Dark Mode', 'darkModeAuto', 'If enabled, app will automatically switch between dark/light mode', function(newVal) updateColors() end)
+            settingsCheckbox('Automatic Light/Dark Mode', 'darkModeAuto', 'If enabled, app will automatically switch between dark/light mode', function() updateColors() end)
 
             if settings.darkModeAuto then
               ui.indent(app.settingsIndentOffset)
@@ -3273,11 +3299,33 @@ end
 
 --#region APP MAIN WINDOW
 
+local appWindow = ac.accessAppWindow('IMGUI_LUA_Smartphone_main')
+
+---Forces the app to be inside the visible ui space, optionally moves it to the bottom of the screen.
+local function forceAppIntoScreen()
+  if not appWindow or not appWindow:valid() then return end
+
+  local pos = appWindow:position()
+  local size = appWindow:size() + vec2(25, 0)
+  local screen = ac.getUI().windowSize
+
+  local targetX = math.max(0, math.min(pos.x, screen.x - size.x))
+  local targetY
+
+  if settings.forceBottom then
+    targetY = screen.y - size.y
+  else
+    targetY = math.max(0, math.min(pos.y, screen.y - size.y))
+  end
+
+  if (pos.x ~= targetX or pos.y ~= targetY) and not ui.isMouseDragging(ui.MouseButton.Left, 0) then appWindow:move(vec2(targetX, targetY)) end
+end
+
+---@param dt number @Delta time in seconds since last frame
+---Main app window draw function, called every frame by CSP.
 function script.windowMain(dt)
   app.images.ready = app.images.ready or ui.isImageReady(app.images.phoneAtlasPath)
   if not app.images.ready then return end
-
-  if not player.serverCommunity then player.serverCommunity = getServerCommunity() end
 
   local rounded = math.round(settings.appScale, 1)
   settings.appScale = settings.appScale ~= rounded and rounded or settings.appScale
