@@ -6,7 +6,8 @@ local Updater = {}
 local scriptFolder = ac.getFolder(ac.FolderID.ScriptOrigin)
 local appName = scriptFolder:match('([^\\/]+)$')
 local appFolder = scriptFolder .. '\\'
-local repo = 'C1XTZ/ac-' .. appName:lower()
+local appKey = appName:lower()
+local repo = 'C1XTZ/ac-' .. appKey
 
 local manifestPath = appFolder .. 'manifest.ini'
 local manifest = ac.INIConfig.load(manifestPath, ac.INIFormat.Extended)
@@ -251,12 +252,12 @@ local function checkSelfUpdate()
     end
 
     local remote = JSON.parse(response.body)
-    if not remote or not remote.versions or not remote[appName] then
+    if not remote or not remote.versions or not remote[appKey] then
       error('Broken updater version data.')
       return
     end
 
-    local wantedFiles = remote[appName].files or {}
+    local wantedFiles = remote[appKey].files or {}
     local installed = manifest.sections['XTZ_UPDATER'] or {}
     local finalValues = {}
     for key in pairs(installed) do
