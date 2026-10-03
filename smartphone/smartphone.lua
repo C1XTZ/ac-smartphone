@@ -73,6 +73,7 @@ local settings = ac.storage {
   notificationsFriendConnections = true,
   notificationsFriendMessages = true,
 
+  liquidGlass = true,
   customColor = false,
   messageColorSelf = rgbm(0, 0.49, 1, 1),
   messageColorFriend = rgbm(0.2, 0.75, 0.3, 1),
@@ -109,6 +110,10 @@ local colors = {
   notifBgColorDark = rgbm(0.1, 0.1, 0.1, 1),
   notifTitleColorLight = rgbm(0, 0, 0, 0.66),
   notifTitleColorDark = rgbm(1, 1, 1, 0.33),
+  glassContactDarkColor = rgb(0.2, 0.2, 0.2),
+  glassContactLightColor = rgb(0.98, 0.98, 0.98),
+  glassNotifDarkColor = rgb(0.1, 0.1, 0.1),
+  glassNotifLightColor = rgb(0.93, 0.93, 0.93),
   final = {
     display = rgbm(),
     displayTransp = rgbm(),
@@ -127,6 +132,8 @@ local colors = {
     emojiPickerActive = rgbm(),
     notifBg = rgbm(),
     notifTitle = rgbm(),
+    glassColor = rgb(),
+    glassNotifColor = rgb(),
   },
 }
 
@@ -304,6 +311,24 @@ local emoji = {
   activeGroupDrawn = 0,
 }
 
+local glass = {
+  warp = 0.6,
+  warpDepth = 0.5,
+  warpStep = 0.8,
+  blurLevels = 2,
+  blurSpread = 0.1,
+  tint = 0.6,
+  notifTintBoost = 0.2,
+  lightRim = 0.05,
+  lightRimWidth = 0.05,
+  edgeWidth = 1,
+  cacheGen = 0,
+  canvases = {},
+  messages = { scrollY = 0, reveal = 0, metrics = {} },
+  fade = nil,
+  contact = nil,
+}
+
 local audio = {
   keyboard = {
     keystroke = { file = '.\\src\\aud\\keyboard-keystroke.mp3' },
@@ -457,14 +482,15 @@ local function getBrightness(color)
   return 0.2126 * lr + (0.7152 / 2) * lg + 0.0722 * lb
 end
 
----@param light rgbm @rgbm color to use if light mode
----@param dark rgbm @rgbm color to use if dark mode
----@return rgbm @rgbm color to be used for the given mode
+---@param light rgbm|rgb @color to use if light mode
+---@param dark rgbm|rgb @color to use if dark mode
+---@return rgbm|rgb @color to be used for the given mode
 ---Picks the appropriate color based on the current mode.
 local function pickThemeColor(light, dark) return (settings.darkMode or player.phoneMode) and dark or light end
 
 ---Updates the colors based on the current mode.
 local function updateColors()
+  glass.cacheGen = glass.cacheGen + 1
   colors.final.display:set(pickThemeColor(colors.displayColorLight, colors.displayColorDark))
   colors.final.displayTransp:set(pickThemeColor(colors.transparent.displayLight, colors.transparent.displayDark))
   colors.final.elements:set(pickThemeColor(colors.displayColorDark, colors.displayColorLight))
@@ -473,6 +499,9 @@ local function updateColors()
   colors.final.message:set(pickThemeColor(colors.iMessageLightGray, colors.iMessageDarkGray))
   colors.final.contactPill:set(pickThemeColor(colors.displayColorLight, colors.iMessageDarkGray))
   colors.final.contactOutline:set(pickThemeColor(colors.outlineColorLight, colors.outlineColorMedium))
+
+  colors.final.glassColor:set(pickThemeColor(colors.glassContactLightColor, colors.glassContactDarkColor)--[[@as rgb]])
+  colors.final.glassNotifColor:set(pickThemeColor(colors.glassNotifLightColor, colors.glassNotifDarkColor)--[[@as rgb]])
 
   colors.final.emojiPicker:set(pickThemeColor(colors.emojiPickerButtonLight, colors.emojiPickerButtonDark))
   colors.final.emojiPickerOutline:set(pickThemeColor(colors.transparent.black10, colors.transparent.white10))
@@ -1551,66 +1580,6 @@ local function drawStatusBar()
   end)
 end
 
----Draws the contact in the chat window.
-local function drawContact()
-  if not communities then return error('Communities table does not exist, probably caused by a broken app install') end
-
-  local community = communities[player.serverCommunity]
-
-  ui.setCursor(vec2(0, movement.smooth))
-  ui.childWindow('Contact', scaleVec2(app.size.x, 110), false, flags.window, function()
-    local winHalf = scaleNum(app.size.x / 2)
-    local fontSize = scaleNum(12)
-
-    ui.pushDWriteFont(app.font.semiBold)
-
-    local contactName = community.contact
-    if player.serverCommunity == 'default' then contactName = contactName .. ' Chat' end
-    local contactTextSize = ui.measureDWriteText(contactName, fontSize)
-    local contactTextCenter = math.ceil(winHalf - contactTextSize.x / 2)
-    local contactTextPosY = scaleNum(83)
-
-    local pillPaddingX = scaleNum(8)
-    local pillPaddingY = scaleNum(4)
-    local pillPosTL = vec2(contactTextCenter - pillPaddingX, contactTextPosY - pillPaddingY)
-    local pillPosBR = vec2(contactTextCenter + contactTextSize.x + pillPaddingX, contactTextPosY + contactTextSize.y + pillPaddingY)
-    local pillRounding = (pillPosBR.y - pillPosTL.y) / 2
-    local pillOutline = math.round(app.scale * 1, 2)
-
-    ui.beginOutline()
-    ui.drawRectFilled(pillPosTL, pillPosBR, colors.final.contactPill, pillRounding)
-    ui.endOutline(colors.final.contactOutline, pillOutline)
-
-    ui.setCursor(vec2(contactTextCenter, contactTextPosY))
-    ui.dwriteTextAligned(contactName, fontSize, ui.Alignment.Start, ui.Alignment.Center, contactTextSize, false, colors.final.elements)
-
-    ui.popDWriteFont()
-
-    local imgSize = scaleVec2(36, 36)
-    local imgPos = vec2((ui.availableSpaceX() / 2) - (imgSize.x / 2), scaleNum(47))
-
-    local communityUV1, communityUV2 = getCommunityImageUV(community)
-    ui.drawImageRounded(community.image, imgPos, imgPos + imgSize, rgbm.colors.white, communityUV1, communityUV2, 999, ui.CornerFlags.All)
-
-    if app.hovered then
-      if ui.rectHovered(imgPos, imgPos + imgSize) or ui.rectHovered(pillPosTL, pillPosBR) then
-        if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
-
-        ui.tooltip(app.tooltipPadding, function()
-          ui.text(community.text)
-          ui.separator()
-          ui.textColored('Click to open in Browser', colors.footerText)
-        end)
-
-        if ui.mouseReleased(ui.MouseButton.Left) then
-          playAudio(audio.keyboard.enter)
-          os.openURL(community.url, false)
-        end
-      end
-    end
-  end)
-end
-
 ---@param t number @unix timestamp
 ---@return string @formatted time string
 ---Formats a message's timestamp for display.
@@ -1956,6 +1925,88 @@ local function buildMessageLayout()
   return layoutMessages, entryCount, messageY
 end
 
+---@param entry table @layout entry from buildMessageLayout
+---@param metrics table @sizes captured from the Messages child
+---@param offset vec2 @added to every cursor position
+---@param interactive boolean @whether hover handling runs
+---Draws one chat message.
+local function drawMessageEntry(entry, metrics, offset, interactive)
+  local winWidth, winHalfWidth = metrics.winWidth, metrics.winHalfWidth
+  local messageFontSize, userNameFontSize, timestampFontSize = metrics.messageFontSize, metrics.userNameFontSize, metrics.timestampFontSize
+  local userNameOffsetX, messagePadding, messageMaxWidth, messageRounding = metrics.userNameOffsetX, metrics.messagePadding, metrics.messageMaxWidth, metrics.messageRounding
+
+  local sizes = entry.sizes
+  local userNameTextSize = sizes.userNameTextSize
+  local messageTextSize = sizes.messageTextSize
+  local timestampSize = sizes.timestampSize
+  local messageUsernameColor = rgbm.colors.gray
+  if settings.chatUsernameColor then messageUsernameColor = chat.userNameColors[entry.userName] or rgbm.colors.gray end
+
+  if entry.userIndex == 0 then
+    if entry.userNameY or entry.timestampY then
+      ui.pushDWriteFont(app.font.bold)
+      if entry.userNameY then
+        ui.setCursor(ceilVec2(userNameOffsetX, entry.userNameY) + offset)
+        ui.dwriteTextAligned(entry.userName, userNameFontSize, ui.Alignment.End, ui.Alignment.Start, ceilVec2(messageMaxWidth, userNameTextSize.y), false, messageUsernameColor)
+      end
+      if entry.timestampY then
+        ui.setCursor(ceilVec2(winWidth - timestampSize.x - scaleNum(6), entry.timestampY) + offset)
+        ui.dwriteTextAligned(formatMessageTimestamp(entry.time), timestampFontSize, ui.Alignment.Start, ui.Alignment.Start, ceilVec2(timestampSize.x, timestampSize.y), true, rgbm.colors.gray)
+      end
+      ui.popDWriteFont()
+    end
+
+    ui.pushDWriteFont(entry.fontWeight)
+    ui.setCursor(ceilVec2(winWidth - scaleNum(5), entry.bubbleY) + offset)
+    ui.drawRectFilled(ui.getCursor() - ceilVec2(messageTextSize.x + messagePadding.x, messageTextSize.y + messagePadding.y), ui.getCursor(), colors.final.messageOwn, messageRounding)
+    ui.setCursor(ui.getCursor() - ceilVec2(messageTextSize.x + messagePadding.x / 2, messageTextSize.y + messagePadding.y / 2))
+    ui.dwriteTextAligned(entry.text, messageFontSize, ui.Alignment.Start, ui.Alignment.Start, ceilVec2(messageTextSize.x, messageTextSize.y + messageRounding), true, colors.final.messageOwnText)
+    ui.popDWriteFont()
+  elseif entry.userIndex > 0 then
+    if entry.userNameY or entry.timestampY then
+      ui.pushDWriteFont(app.font.bold)
+
+      if entry.userNameY then
+        ui.setCursor(ceilVec2(userNameOffsetX / 2, entry.userNameY) + offset)
+        ui.dwriteTextAligned(entry.userName, userNameFontSize, ui.Alignment.Start, ui.Alignment.Start, ceilVec2(math.min(userNameTextSize.x, messageMaxWidth), userNameTextSize.y), false, messageUsernameColor)
+
+        if interactive and app.hovered then
+          if ui.itemHovered() then
+            ui.setMouseCursor(ui.MouseCursor.Hand)
+            if ac.getDriverName(entry.userIndex) == entry.userName then ui.setDriverTooltip(entry.userIndex) end
+            chat.popup.hovered = { userIndex = entry.userIndex, userName = entry.userName }
+          end
+        end
+      end
+
+      if entry.timestampY then
+        ui.setCursor(ceilVec2(scaleNum(5), entry.timestampY) + offset)
+        ui.dwriteTextAligned(formatMessageTimestamp(entry.time), timestampFontSize, ui.Alignment.Start, ui.Alignment.Start, ceilVec2(timestampSize.x, timestampSize.y), true, rgbm.colors.gray)
+      end
+
+      ui.popDWriteFont()
+    end
+
+    local bubbleColor, messageTextColor = colors.final.message, pickThemeColor(rgbm.colors.black, rgbm.colors.white)
+    if checkIfFriend(entry.userName) then
+      bubbleColor = colors.final.messageFriend
+      messageTextColor = colors.final.messageFriendText
+    end
+
+    ui.pushDWriteFont(entry.fontWeight)
+    ui.setCursor(ceilVec2(messageTextSize.x + messagePadding.x + scaleNum(5), entry.bubbleY) + offset)
+    ui.drawRectFilled(ui.getCursor() - ceilVec2(messageTextSize.x + messagePadding.x, messageTextSize.y + messagePadding.y), ui.getCursor(), bubbleColor, messageRounding)
+    ui.setCursor(ui.getCursor() - ceilVec2(messageTextSize.x + messagePadding.x / 2, messageTextSize.y + messagePadding.y / 2))
+    ui.dwriteTextAligned(entry.text, messageFontSize, ui.Alignment.Start, ui.Alignment.Start, ceilVec2(messageTextSize.x, messageTextSize.y + messageRounding), true, messageTextColor)
+    ui.popDWriteFont()
+  elseif entry.userIndex == -1 then
+    ui.pushDWriteFont(app.font.bold)
+    ui.setCursor(ceilVec2(winHalfWidth - messageTextSize.x / 2, entry.textY) + offset)
+    ui.dwriteTextAligned(entry.text, messageFontSize, ui.Alignment.Center, ui.Alignment.Start, ceilVec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgbm.colors.gray)
+    ui.popDWriteFont()
+  end
+end
+
 ---Draws the chat messages.
 local function drawMessages()
   if not player.isOnline then return end
@@ -1981,6 +2032,11 @@ local function drawMessages()
     local messageMaxWidth = scaleNum(250)
     local messageRounding = scaleNum(10)
 
+    local metrics = glass.messages.metrics
+    metrics.winWidth, metrics.winHalfWidth = winWidth, winHalfWidth
+    metrics.messageFontSize, metrics.userNameFontSize, metrics.timestampFontSize = messageFontSize, userNameFontSize, timestampFontSize
+    metrics.userNameOffsetX, metrics.messagePadding, metrics.messageMaxWidth, metrics.messageRounding = userNameOffsetX, messagePadding, messageMaxWidth, messageRounding
+
     if #chat.messages > 0 then
       local winHeight = ui.windowHeight()
       local scrollBuffer = scaleNum(200)
@@ -2004,6 +2060,8 @@ local function drawMessages()
         chat.scroll.stickyHeight = totalHeight
       end
 
+      glass.messages.scrollY, glass.messages.reveal = ui.getScrollY(), revealHeight
+
       local visibleTop = ui.getScrollY() - scrollBuffer
       local visibleBottom = ui.getScrollY() + winHeight + scrollBuffer
 
@@ -2012,77 +2070,7 @@ local function drawMessages()
       for i = startIndex, entryCount do
         local entry = entries[i]
         if entry.startY > visibleBottom or entry.endY > revealHeight then break end
-
-        local sizes = entry.sizes
-        local userNameTextSize = sizes.userNameTextSize
-        local messageTextSize = sizes.messageTextSize
-        local timestampSize = sizes.timestampSize
-        local messageUsernameColor = rgbm.colors.gray
-        if settings.chatUsernameColor then messageUsernameColor = chat.userNameColors[entry.userName] or rgbm.colors.gray end
-
-        if entry.userIndex == 0 then
-          if entry.userNameY or entry.timestampY then
-            ui.pushDWriteFont(app.font.bold)
-            if entry.userNameY then
-              ui.setCursor(ceilVec2(userNameOffsetX, entry.userNameY))
-              ui.dwriteTextAligned(entry.userName, userNameFontSize, ui.Alignment.End, ui.Alignment.Start, ceilVec2(messageMaxWidth, userNameTextSize.y), false, messageUsernameColor)
-            end
-            if entry.timestampY then
-              ui.setCursor(ceilVec2(winWidth - timestampSize.x - scaleNum(6), entry.timestampY))
-              ui.dwriteTextAligned(formatMessageTimestamp(entry.time), timestampFontSize, ui.Alignment.Start, ui.Alignment.Start, ceilVec2(timestampSize.x, timestampSize.y), true, rgbm.colors.gray)
-            end
-            ui.popDWriteFont()
-          end
-
-          ui.pushDWriteFont(entry.fontWeight)
-          ui.setCursor(ceilVec2(winWidth - scaleNum(5), entry.bubbleY))
-          ui.drawRectFilled(ui.getCursor() - ceilVec2(messageTextSize.x + messagePadding.x, messageTextSize.y + messagePadding.y), ui.getCursor(), colors.final.messageOwn, messageRounding)
-          ui.setCursor(ui.getCursor() - ceilVec2(messageTextSize.x + messagePadding.x / 2, messageTextSize.y + messagePadding.y / 2))
-          ui.dwriteTextAligned(entry.text, messageFontSize, ui.Alignment.Start, ui.Alignment.Start, ceilVec2(messageTextSize.x, messageTextSize.y + messageRounding), true, colors.final.messageOwnText)
-          ui.popDWriteFont()
-        elseif entry.userIndex > 0 then
-          if entry.userNameY or entry.timestampY then
-            ui.pushDWriteFont(app.font.bold)
-
-            if entry.userNameY then
-              ui.setCursor(ceilVec2(userNameOffsetX / 2, entry.userNameY))
-              ui.dwriteTextAligned(entry.userName, userNameFontSize, ui.Alignment.Start, ui.Alignment.Start, ceilVec2(math.min(userNameTextSize.x, messageMaxWidth), userNameTextSize.y), false, messageUsernameColor)
-
-              if app.hovered then
-                if ui.itemHovered() then
-                  ui.setMouseCursor(ui.MouseCursor.Hand)
-                  if ac.getDriverName(entry.userIndex) == entry.userName then ui.setDriverTooltip(entry.userIndex) end
-                  chat.popup.hovered = { userIndex = entry.userIndex, userName = entry.userName }
-                end
-              end
-            end
-
-            if entry.timestampY then
-              ui.setCursor(ceilVec2(scaleNum(5), entry.timestampY))
-              ui.dwriteTextAligned(formatMessageTimestamp(entry.time), timestampFontSize, ui.Alignment.Start, ui.Alignment.Start, ceilVec2(timestampSize.x, timestampSize.y), true, rgbm.colors.gray)
-            end
-
-            ui.popDWriteFont()
-          end
-
-          local bubbleColor, messageTextColor = colors.final.message, pickThemeColor(rgbm.colors.black, rgbm.colors.white)
-          if checkIfFriend(entry.userName) then
-            bubbleColor = colors.final.messageFriend
-            messageTextColor = colors.final.messageFriendText
-          end
-
-          ui.pushDWriteFont(entry.fontWeight)
-          ui.setCursor(ceilVec2(messageTextSize.x + messagePadding.x + scaleNum(5), entry.bubbleY))
-          ui.drawRectFilled(ui.getCursor() - ceilVec2(messageTextSize.x + messagePadding.x, messageTextSize.y + messagePadding.y), ui.getCursor(), bubbleColor, messageRounding)
-          ui.setCursor(ui.getCursor() - ceilVec2(messageTextSize.x + messagePadding.x / 2, messageTextSize.y + messagePadding.y / 2))
-          ui.dwriteTextAligned(entry.text, messageFontSize, ui.Alignment.Start, ui.Alignment.Start, ceilVec2(messageTextSize.x, messageTextSize.y + messageRounding), true, messageTextColor)
-          ui.popDWriteFont()
-        elseif entry.userIndex == -1 then
-          ui.pushDWriteFont(app.font.bold)
-          ui.setCursor(ceilVec2(winHalfWidth - messageTextSize.x / 2, entry.textY))
-          ui.dwriteTextAligned(entry.text, messageFontSize, ui.Alignment.Center, ui.Alignment.Start, ceilVec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgbm.colors.gray)
-          ui.popDWriteFont()
-        end
+        drawMessageEntry(entry, metrics, vec2(), true)
       end
 
       chat.scroll.wasAtBottom = (ui.getScrollMaxY() - ui.getScrollY()) < scaleNum(50)
@@ -2127,9 +2115,346 @@ local function drawMessages()
 
     ui.drawImageRounded(app.canvas.messageFade, vec2(0, fadeY), vec2(fadeSize.x, fadeY + fadeHeight), rounding * (1 - peek), ui.CornerFlags.Top)
     ui.drawRectFilled(vec2(barInset, capY), vec2(fadeSize.x - barInset, capY + barHeight), colors.final.display, rounding * (1 - peek), ui.CornerFlags.Top)
+
+    if settings.liquidGlass then glass.fade = { top = fadeY, height = fadeHeight, width = fadeSize.x, capTop = capY, capHeight = barHeight, capInset = barInset, rounding = rounding * (1 - peek) } end
   end)
 
   ui.popClipRect()
+end
+
+--#region LIQUID GLASS
+
+glass.shader = {
+  async = true,
+  blendMode = render.BlendMode.BlendAccurate,
+  values = {
+    quadSize = vec2(),
+    glassCenter = vec2(),
+    glassSize = vec2(),
+    glassRadius = 0,
+    secondCenter = vec2(),
+    secondSize = vec2(),
+    secondRadius = -1,
+    edgeWidth = 1,
+    darkLineAlpha = 0,
+    darkLineWidth = 0,
+    lineColor = rgbm(),
+  },
+  shader = [[
+    static const float2 LIGHT_DIR = float2(-0.6, -0.8);
+    static const float SPEC_POWER = 3.0;
+    static const float LIT_STRENGTH = 1;
+    static const float FAR_STRENGTH = 0.5;
+    static const float RIM_FALLOFF = 1.5;
+    static const float HAIR_FALLOFF = 0.5;
+    static const float HAIR_STRENGTH = 0.5;
+    static const float INNER_GLOW = 0.05;
+    static const float FAR_SHADE = 0.15;
+    static const float DARK_FEATHER = 0.8;
+
+    float roundedBoxDistance(float2 localPosition, float2 boxHalfSize, float cornerRadius) {
+      float2 corner = abs(localPosition) - boxHalfSize + cornerRadius;
+      return min(max(corner.x, corner.y), 0.0) + length(max(corner, 0.0)) - cornerRadius;
+    }
+
+    float glassDistance(float2 localPosition) {
+      float firstDistance = roundedBoxDistance(localPosition - glassCenter, glassSize * 0.5, glassRadius);
+      if (secondRadius < 0.0) return firstDistance;
+      return min(firstDistance, roundedBoxDistance(localPosition - secondCenter, secondSize * 0.5, secondRadius));
+    }
+
+    float4 main(PS_IN pin) {
+      float2 localPosition = (pin.Tex - 0.5) * quadSize;
+      float edgeDistance = glassDistance(localPosition);
+      float coverage = 1.0 - smoothstep(-1.0, 1.0, edgeDistance);
+      if (coverage <= 0.001) return float4(0, 0, 0, 0);
+
+      float2 gradientStep = float2(0.75, 0);
+      float2 edgeNormal = normalize(float2(
+        glassDistance(localPosition + gradientStep.xy) - glassDistance(localPosition - gradientStep.xy),
+        glassDistance(localPosition + gradientStep.yx) - glassDistance(localPosition - gradientStep.yx)) + 1e-5);
+      float lightFacing = dot(edgeNormal, LIGHT_DIR);
+      float rim = pow(1.0 - saturate(-edgeDistance / glassRadius), 2.0);
+
+      float rimDepth = -edgeDistance - darkLineWidth;
+      float insideDarkLine = lerp(1.0, smoothstep(0.0, DARK_FEATHER, rimDepth), step(0.01, darkLineWidth));
+      float darkAlpha = darkLineAlpha * (1.0 - insideDarkLine);
+
+      float rimBand = smoothstep(edgeWidth * RIM_FALLOFF, 0.0, rimDepth) * insideDarkLine;
+      float hairBand = smoothstep(edgeWidth * HAIR_FALLOFF, 0.0, rimDepth) * insideDarkLine;
+      float specular = (pow(saturate(lightFacing), SPEC_POWER) * LIT_STRENGTH + pow(saturate(-lightFacing), SPEC_POWER) * FAR_STRENGTH) * rimBand;
+
+      float hairAlpha = hairBand * HAIR_STRENGTH;
+      float lightAlpha = saturate(specular + rim * INNER_GLOW);
+      float shadeAlpha = FAR_SHADE * pow(saturate(-lightFacing), 2.0) * rim;
+      float totalAlpha = hairAlpha + lightAlpha + shadeAlpha + darkAlpha;
+      float3 color = (lineColor.rgb * hairAlpha + float3(1, 1, 1) * lightAlpha) / max(totalAlpha, 1e-4);
+      return float4(color, coverage * saturate(totalAlpha));
+    }
+  ]],
+}
+
+---@param topLeft vec2 @top left of the first shape
+---@param bottomRight vec2 @bottom right of the first shape
+---@param rounding number @corner radius of the first shape
+---@param padding number @margin around the shapes in px
+---@param second? {topLeft: vec2, bottomRight: vec2, rounding: number} @optional second shape, outlined together with the first
+---Draws the glass rim around one or two rounded shapes.
+local function drawGlassEdges(topLeft, bottomRight, rounding, padding, second)
+  local isLightMode = not (settings.darkMode or player.phoneMode)
+  local pixelScale = math.max(1, app.scale)
+
+  local boundsTopLeft, boundsBottomRight = topLeft, bottomRight
+  if second then
+    boundsTopLeft = vec2(math.min(topLeft.x, second.topLeft.x), math.min(topLeft.y, second.topLeft.y))
+    boundsBottomRight = vec2(math.max(bottomRight.x, second.bottomRight.x), math.max(bottomRight.y, second.bottomRight.y))
+  end
+
+  local quadPosition = boundsTopLeft - padding
+  local quadSize = ceilVec2(boundsBottomRight.x - boundsTopLeft.x + padding * 2, boundsBottomRight.y - boundsTopLeft.y + padding * 2)
+  local quadCenter = quadPosition + quadSize / 2
+
+  local shaderValues = glass.shader.values
+  shaderValues.quadSize:set(quadSize)
+  shaderValues.glassCenter:set((topLeft + bottomRight) / 2 - quadCenter)
+  shaderValues.glassSize:set(bottomRight - topLeft)
+  shaderValues.glassRadius = rounding
+  if second then
+    shaderValues.secondCenter:set((second.topLeft + second.bottomRight) / 2 - quadCenter)
+    shaderValues.secondSize:set(second.bottomRight - second.topLeft)
+    shaderValues.secondRadius = second.rounding
+  else
+    shaderValues.secondRadius = -1
+  end
+  shaderValues.edgeWidth = glass.edgeWidth * pixelScale
+  shaderValues.darkLineAlpha = isLightMode and glass.lightRim or 0
+  shaderValues.darkLineWidth = isLightMode and glass.lightRimWidth * pixelScale or 0
+  shaderValues.lineColor:set(colors.final.contactOutline)
+  glass.shader.p1 = quadPosition
+  glass.shader.p2 = quadPosition + quadSize
+  ui.renderShader(glass.shader)
+end
+
+---@param key string @unique id of the element
+---@param topLeft vec2 @top left in the current window
+---@param bottomRight vec2 @bottom right in the current window
+---@param rounding number @corner radius
+---@param options? {origin: vec2?, overlays: boolean?, skipEdges: boolean?, color: rgb?, tint: number?} @window origin, whether to capture the fade and contact, whether to skip the rim, tint color and alpha overrides
+---Draws a liquid glass rounded rect.
+local function drawGlass(key, topLeft, bottomRight, rounding, options)
+  local messages = glass.messages
+
+  local size = bottomRight - topLeft
+  local halfShortSide = math.min(size.x, size.y) / 2
+  local blurRadius = halfShortSide * glass.blurSpread
+  local padding = math.ceil(blurRadius + 2 ^ glass.blurLevels)
+  local quadPosition = topLeft - padding
+  local quadSize = ceilVec2(size.x + padding * 2, size.y + padding * 2)
+  local capturePosition = quadPosition + (options and options.origin or vec2())
+
+  local canvasSet = glass.canvases[key]
+  if not canvasSet or canvasSet.size.x ~= quadSize.x or canvasSet.size.y ~= quadSize.y then
+    if canvasSet then
+      for level = 0, glass.blurLevels do
+        canvasSet.chain[level].canvas:dispose()
+      end
+      canvasSet.blurred:dispose()
+    end
+
+    canvasSet = { size = quadSize, chain = {}, signature = {} }
+    for level = 0, glass.blurLevels do
+      local levelSize = vec2(math.max(2, math.ceil(quadSize.x / 2 ^ level)), math.max(2, math.ceil(quadSize.y / 2 ^ level)))
+      canvasSet.chain[level] = { size = levelSize, canvas = ui.ExtraCanvas(levelSize, 1) }
+    end
+    canvasSet.blurred = ui.ExtraCanvas(canvasSet.chain[glass.blurLevels].size, 1)
+    glass.canvases[key] = canvasSet
+  end
+
+  local signature = canvasSet.signature
+  local isDirty = (options and options.overlays)
+    or signature.scrollY ~= messages.scrollY
+    or signature.reveal ~= messages.reveal
+    or signature.winWidth ~= messages.metrics.winWidth
+    or signature.generation ~= chat.msgCacheGen
+    or signature.revision ~= glass.cacheGen
+    or signature.isOnline ~= player.isOnline
+    or signature.x ~= capturePosition.x
+    or signature.y ~= capturePosition.y
+
+  if isDirty then
+    signature.scrollY, signature.reveal, signature.winWidth = messages.scrollY, messages.reveal, messages.metrics.winWidth
+    signature.generation, signature.revision, signature.isOnline = chat.msgCacheGen, glass.cacheGen, player.isOnline
+    signature.x, signature.y = capturePosition.x, capturePosition.y
+
+    local fade, contact = glass.fade, glass.contact
+    local messagesPosition = scaleVec2(10, 18)
+    local capture = canvasSet.chain[0].canvas
+
+    capture:update(function()
+      capture:clear(colors.final.display)
+
+      local entries, entryCount = buildMessageLayout()
+      if player.isOnline and entryCount > 0 and messages.metrics.winWidth then
+        local offset = vec2(messagesPosition.x - capturePosition.x, messagesPosition.y - capturePosition.y - messages.scrollY)
+        local visibleTop = capturePosition.y - messagesPosition.y + messages.scrollY
+        for entryIndex = getFirstVisibleMessageIndex(entries, entryCount, visibleTop), entryCount do
+          local entry = entries[entryIndex]
+          if entry.startY > visibleTop + quadSize.y or entry.endY > messages.reveal then break end
+          drawMessageEntry(entry, messages.metrics, offset, false)
+        end
+      end
+
+      if not (options and options.overlays) then return end
+
+      if fade and app.canvas.messageFade then
+        local offset = messagesPosition - capturePosition
+        ui.drawImage(app.canvas.messageFade, vec2(0, fade.top) + offset, vec2(fade.width, fade.top + fade.height) + offset)
+        ui.drawRectFilled(vec2(fade.capInset, fade.capTop) + offset, vec2(fade.width - fade.capInset, fade.capTop + fade.capHeight) + offset, colors.final.display, fade.rounding, ui.CornerFlags.Top)
+      end
+
+      if contact then
+        local offset = vec2(-capturePosition.x, -capturePosition.y)
+        ui.drawImageRounded(contact.image, contact.imgPos + offset, contact.imgPos + contact.imgSize + offset, rgbm.colors.white, contact.uv1, contact.uv2, 999, ui.CornerFlags.All)
+        ui.drawRectFilled(contact.pillPosTL + offset, contact.pillPosBR + offset, contact.pillColor, contact.rounding)
+
+        ui.pushDWriteFont(app.font.semiBold)
+        ui.setCursor(contact.textPos + offset)
+        ui.dwriteTextAligned(contact.text, contact.fontSize, ui.Alignment.Start, ui.Alignment.Center, contact.textSize, false, colors.final.elements)
+        ui.popDWriteFont()
+      end
+    end)
+
+    for level = 1, glass.blurLevels do
+      local source, target = canvasSet.chain[level - 1].canvas, canvasSet.chain[level]
+      target.canvas:update(function() ui.drawImage(source, vec2(0, 0), target.size) end)
+    end
+
+    local smallest = canvasSet.chain[glass.blurLevels]
+    canvasSet.blurred:update(function()
+      ui.drawImage(smallest.canvas, vec2(0, 0), smallest.size)
+      for tap = 1, 8 do
+        local angle = tap * math.pi / 4
+        local shift = vec2(math.cos(angle) * blurRadius / quadSize.x, math.sin(angle) * blurRadius / quadSize.y)
+        ui.drawImage(smallest.canvas, vec2(0, 0), smallest.size, rgbm(1, 1, 1, 1 / (tap + 1)), shift, vec2(1, 1) + shift)
+      end
+    end)
+  end
+
+  local center = (topLeft + bottomRight) / 2
+  local depth = halfShortSide * glass.warpDepth
+  local layers = math.clamp(math.ceil(depth / (glass.warpStep * app.scale)), 1, 40)
+
+  for layer = 0, layers - 1 do
+    local inset = layer * depth / layers
+    local layerTopLeft, layerBottomRight = topLeft + inset, bottomRight - inset
+    local halfWidth, halfHeight = (layerBottomRight.x - layerTopLeft.x) / 2, (layerBottomRight.y - layerTopLeft.y) / 2
+    if halfHeight < 1.5 then break end
+
+    local shift = halfShortSide * glass.warp * (1 - layer / layers) ^ 2
+    local zoomX, zoomY = math.max(0.2, 1 - shift / halfWidth), math.max(0.2, 1 - shift / halfHeight)
+    local sampleTopLeft = vec2(center.x + (layerTopLeft.x - center.x) * zoomX, center.y + (layerTopLeft.y - center.y) * zoomY)
+    local sampleBottomRight = vec2(center.x + (layerBottomRight.x - center.x) * zoomX, center.y + (layerBottomRight.y - center.y) * zoomY)
+
+    ui.drawImageRounded(
+      canvasSet.blurred,
+      layerTopLeft,
+      layerBottomRight,
+      rgbm.colors.white,
+      vec2((sampleTopLeft.x - quadPosition.x) / quadSize.x, (sampleTopLeft.y - quadPosition.y) / quadSize.y),
+      vec2((sampleBottomRight.x - quadPosition.x) / quadSize.x, (sampleBottomRight.y - quadPosition.y) / quadSize.y),
+      math.max(1, math.min(rounding - inset, halfHeight)),
+      ui.CornerFlags.All
+    )
+  end
+
+  local tintColor = options and options.color or colors.final.glassColor
+  ui.drawRectFilled(topLeft, bottomRight, rgbm(tintColor.r, tintColor.g, tintColor.b, options and options.tint or glass.tint), rounding)
+
+  if not (options and options.skipEdges) then drawGlassEdges(topLeft, bottomRight, rounding, padding) end
+end
+
+--#endregion
+
+---Draws the contact in the chat window.
+local function drawContact()
+  if not communities then return error('Communities table does not exist, probably caused by a broken app install') end
+
+  local community = communities[player.serverCommunity]
+
+  ui.setCursor(vec2(0, movement.smooth))
+  ui.childWindow('Contact', scaleVec2(app.size.x, 110), false, flags.window, function()
+    local winHalf = scaleNum(app.size.x / 2)
+    local fontSize = scaleNum(12)
+
+    ui.pushDWriteFont(app.font.semiBold)
+
+    local contactName = community.contact
+    if player.serverCommunity == 'default' then contactName = contactName .. ' Chat' end
+    local contactTextSize = ui.measureDWriteText(contactName, fontSize)
+    local contactTextCenter = math.ceil(winHalf - contactTextSize.x / 2)
+    local contactTextPosY = scaleNum(83)
+
+    local pillPaddingX = scaleNum(8)
+    local pillPaddingY = scaleNum(4)
+    local pillPosTL = vec2(contactTextCenter - pillPaddingX, contactTextPosY - pillPaddingY)
+    local pillPosBR = vec2(contactTextCenter + contactTextSize.x + pillPaddingX, contactTextPosY + contactTextSize.y + pillPaddingY)
+    local pillRounding = (pillPosBR.y - pillPosTL.y) / 2
+
+    if settings.liquidGlass then
+      drawGlass('contact', pillPosTL, pillPosBR, pillRounding, { skipEdges = true })
+    else
+      ui.beginOutline()
+      ui.drawRectFilled(pillPosTL, pillPosBR, colors.final.contactPill, pillRounding)
+      ui.endOutline(colors.final.contactOutline, math.round(app.scale * 1, 2))
+    end
+
+    ui.setCursor(vec2(contactTextCenter, contactTextPosY))
+    ui.dwriteTextAligned(contactName, fontSize, ui.Alignment.Start, ui.Alignment.Center, contactTextSize, false, colors.final.elements)
+
+    ui.popDWriteFont()
+
+    local imgSize = scaleVec2(36, 36)
+    local imgPos = vec2((ui.availableSpaceX() / 2) - (imgSize.x / 2), scaleNum(47))
+
+    local communityUV1, communityUV2 = getCommunityImageUV(community)
+    ui.drawImageRounded(community.image, imgPos, imgPos + imgSize, rgbm.colors.white, communityUV1, communityUV2, 999, ui.CornerFlags.All)
+    if settings.liquidGlass then drawGlassEdges(pillPosTL, pillPosBR, pillRounding, scaleNum(2), { topLeft = imgPos, bottomRight = imgPos + imgSize, rounding = imgSize.x / 2 }) end
+
+    if settings.liquidGlass then
+      glass.contact = {
+        image = community.image,
+        imgPos = imgPos,
+        imgSize = imgSize,
+        uv1 = communityUV1,
+        uv2 = communityUV2,
+        pillPosTL = pillPosTL,
+        pillPosBR = pillPosBR,
+        rounding = pillRounding,
+        pillColor = colors.final.contactPill,
+        text = contactName,
+        textPos = vec2(contactTextCenter, contactTextPosY),
+        textSize = contactTextSize,
+        fontSize = fontSize,
+      }
+    end
+
+    if app.hovered then
+      if ui.rectHovered(imgPos, imgPos + imgSize) or ui.rectHovered(pillPosTL, pillPosBR) then
+        if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
+
+        ui.tooltip(app.tooltipPadding, function()
+          ui.text(community.text)
+          ui.separator()
+          ui.textColored('Click to open in Browser', colors.footerText)
+        end)
+
+        if ui.mouseReleased(ui.MouseButton.Left) then
+          playAudio(audio.keyboard.enter)
+          os.openURL(community.url, false)
+        end
+      end
+    end
+  end)
 end
 
 ---Draws the emoji picker button and window.
@@ -2431,6 +2756,7 @@ local function drawNotifications()
   local bodyMaxWidth = scaleNum(notification.bodyMaxWidth)
 
   local bannerPos = scaleVec2(15, 41, true)
+  local bannerOrigin = scaleVec2(15, 41)
 
   for i = 1, #queue do
     local notif = queue[i]
@@ -2444,7 +2770,16 @@ local function drawNotifications()
       ui.childWindow('NotificationDropDown' .. i, bannerSize + statusBarPadding, false, flags.window, function()
         ui.offsetCursorY(statusBarPadding.y + notif.smooth - maxDistance)
 
-        ui.drawRectFilled(ui.getCursor(), ui.getCursor() + bannerSize, colors.final.notifBg, scaleNum(16), ui.CornerFlags.All)
+        if settings.liquidGlass then
+          drawGlass('notif' .. i, ui.getCursor(), ui.getCursor() + bannerSize, scaleNum(16), {
+            origin = bannerOrigin,
+            overlays = true,
+            color = colors.final.glassNotifColor,
+            tint = glass.tint + glass.notifTintBoost,
+          })
+        else
+          ui.drawRectFilled(ui.getCursor(), ui.getCursor() + bannerSize, colors.final.notifBg, scaleNum(16), ui.CornerFlags.All)
+        end
 
         local contactImgPos = ui.getCursor() + vec2(scaleNum(10), math.ceil((bannerSize.y - contactImgSize.y) / 2))
         local communityUV1, communityUV2 = getCommunityImageUV(communities[player.serverCommunity])
@@ -3076,6 +3411,8 @@ function script.windowMainSettings()
             end
           end
 
+          settingsCheckbox('Liquid Glass', 'liquidGlass', 'If enabled, the contact name, contact image outline and notification banners use a glass style')
+
           settingsCheckbox('Custom Message Colors', 'customColor', 'If enabled, allows you to recolor certain elements', function() updateColors() end)
           if settings.customColor then
             ui.offsetCursorY(-5)
@@ -3352,6 +3689,7 @@ function script.windowMain(dt)
   ui.childWindow('Phone', vec2(app.images.phoneAtlasSize.x / 2, app.images.phoneAtlasSize.y), false, flags.window, function()
     drawDisplay()
 
+    glass.fade, glass.contact = nil, nil
     if not emoji.picker then
       drawMessages()
       drawContact()
