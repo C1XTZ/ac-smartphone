@@ -482,9 +482,10 @@ local function getBrightness(color)
   return 0.2126 * lr + (0.7152 / 2) * lg + 0.0722 * lb
 end
 
----@param light rgbm|rgb @color to use if light mode
----@param dark rgbm|rgb @color to use if dark mode
----@return rgbm|rgb @color to be used for the given mode
+---@generic Color
+---@param light Color @Color to use if light mode
+---@param dark Color @Color to use if dark mode
+---@return Color @Color to be used for the given mode
 ---Picks the appropriate color based on the current mode.
 local function pickThemeColor(light, dark) return (settings.darkMode or player.phoneMode) and dark or light end
 
@@ -500,8 +501,8 @@ local function updateColors()
   colors.final.contactPill:set(pickThemeColor(colors.displayColorLight, colors.iMessageDarkGray))
   colors.final.contactOutline:set(pickThemeColor(colors.outlineColorLight, colors.outlineColorMedium))
 
-  colors.final.glassColor:set(pickThemeColor(colors.glassContactLightColor, colors.glassContactDarkColor)--[[@as rgb]])
-  colors.final.glassNotifColor:set(pickThemeColor(colors.glassNotifLightColor, colors.glassNotifDarkColor)--[[@as rgb]])
+  colors.final.glassColor:set(pickThemeColor(colors.glassContactLightColor, colors.glassContactDarkColor))
+  colors.final.glassNotifColor:set(pickThemeColor(colors.glassNotifLightColor, colors.glassNotifDarkColor))
 
   colors.final.emojiPicker:set(pickThemeColor(colors.emojiPickerButtonLight, colors.emojiPickerButtonDark))
   colors.final.emojiPickerOutline:set(pickThemeColor(colors.transparent.black10, colors.transparent.white10))
@@ -1925,6 +1926,38 @@ local function buildMessageLayout()
   return layoutMessages, entryCount, messageY
 end
 
+---@param entry table @message layout entry containing the username's Y position
+---@param userNameSize vec2 @measured size of the username text
+---@return boolean @whether the username overlaps a visible notification banner
+---Checks whether the username of a message is currently covered by a notification banner.
+local function isUserNameCovered(entry, userNameSize)
+  if not getActiveNotification() then return false end
+
+  local messagesWindowLeft = scaleNum(10)
+  local messagesWindowTop = scaleNum(18)
+  local usernameLeft = math.ceil(scaleNum(13) / 2)
+  local usernameRight = usernameLeft + math.min(userNameSize.x, scaleNum(250))
+  local notificationLeft = scaleNum(15) - messagesWindowLeft
+  local notificationRight = notificationLeft + scaleNum(260)
+  local usernameTop = entry.userNameY - glass.messages.scrollY
+  local usernameBottom = usernameTop + userNameSize.y
+
+  for i = 1, #notification.queue do
+    local notif = notification.queue[i]
+
+    if notif.state ~= 'queued' then
+      local layout = getNotificationLayout(notif)
+      local bannerHeight = layout.isSingleLine and scaleNum(notification.lineHeight.single) or scaleNum(notification.lineHeight.double)
+      local bannerTop = (scaleNum(41) + scaleNum(5) + notif.smooth - scaleNum(notification.maxDistance)) - messagesWindowTop
+      local bannerBottom = bannerTop + bannerHeight
+
+      if usernameLeft < notificationRight and usernameRight > notificationLeft and usernameTop < bannerBottom and usernameBottom > bannerTop then return true end
+    end
+  end
+
+  return false
+end
+
 ---@param entry table @layout entry from buildMessageLayout
 ---@param metrics table @sizes captured from the Messages child
 ---@param offset vec2 @added to every cursor position
@@ -1970,7 +2003,8 @@ local function drawMessageEntry(entry, metrics, offset, interactive)
         ui.setCursor(ceilVec2(userNameOffsetX / 2, entry.userNameY) + offset)
         ui.dwriteTextAligned(entry.userName, userNameFontSize, ui.Alignment.Start, ui.Alignment.Start, ceilVec2(math.min(userNameTextSize.x, messageMaxWidth), userNameTextSize.y), false, messageUsernameColor)
 
-        if interactive and app.hovered then
+        local usernameCovered = isUserNameCovered(entry, userNameTextSize)
+        if interactive and app.hovered and not usernameCovered then
           if ui.itemHovered() then
             ui.setMouseCursor(ui.MouseCursor.Hand)
             if ac.getDriverName(entry.userIndex) == entry.userName then ui.setDriverTooltip(entry.userIndex) end
@@ -2565,7 +2599,7 @@ local function drawEmojiPicker()
         if i % emojisPerRow == 0 and i ~= emojiCount then ui.newLine(emojiSpacing) end
       end
       ui.endGroup()
-      ui.endOutline(colors.final.emojiPickerOutline, scaleNum(1))
+      ui.endOutline(colors.final.emojiPickerOutline, math.round(app.scale * 1, 2))
 
       if gridHovered and ui.mouseWheel() ~= 0 then
         local mouseWheel = (ui.mouseWheel() * -1) * scaleNum(settings.chatScrollDistance)
@@ -3411,7 +3445,7 @@ function script.windowMainSettings()
             end
           end
 
-          settingsCheckbox('Liquid Glass', 'liquidGlass', 'If enabled, the contact name, contact image outline and notification banners use a glass style')
+          settingsCheckbox('Liquid Glass', 'liquidGlass', 'If enabled, a iOS 27-like liquid glass effect will be used for some elements.')
 
           settingsCheckbox('Custom Message Colors', 'customColor', 'If enabled, allows you to recolor certain elements', function() updateColors() end)
           if settings.customColor then
