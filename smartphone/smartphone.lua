@@ -318,10 +318,8 @@ local glass = {
   blurLevels = 2,
   blurSpread = 0.1,
   tint = 0.6,
-  notifTintBoost = 0.2,
-  lightRim = 0.05,
-  lightRimWidth = 0.05,
-  edgeWidth = 1,
+  notifTintBoost = 0.1,
+  edgeWidth = 1.5,
   cacheGen = 0,
   canvases = {},
   messages = { scrollY = 0, reveal = 0, metrics = {} },
@@ -2170,8 +2168,6 @@ glass.shader = {
     secondSize = vec2(),
     secondRadius = -1,
     edgeWidth = 1,
-    darkLineAlpha = 0,
-    darkLineWidth = 0,
     lineColor = rgbm(),
   },
   shader = [[
@@ -2184,7 +2180,6 @@ glass.shader = {
     static const float HAIR_STRENGTH = 0.5;
     static const float INNER_GLOW = 0.05;
     static const float FAR_SHADE = 0.15;
-    static const float DARK_FEATHER = 0.8;
 
     float roundedBoxDistance(float2 localPosition, float2 boxHalfSize, float cornerRadius) {
       float2 corner = abs(localPosition) - boxHalfSize + cornerRadius;
@@ -2210,18 +2205,15 @@ glass.shader = {
       float lightFacing = dot(edgeNormal, LIGHT_DIR);
       float rim = pow(1.0 - saturate(-edgeDistance / glassRadius), 2.0);
 
-      float rimDepth = -edgeDistance - darkLineWidth;
-      float insideDarkLine = lerp(1.0, smoothstep(0.0, DARK_FEATHER, rimDepth), step(0.01, darkLineWidth));
-      float darkAlpha = darkLineAlpha * (1.0 - insideDarkLine);
-
-      float rimBand = smoothstep(edgeWidth * RIM_FALLOFF, 0.0, rimDepth) * insideDarkLine;
-      float hairBand = smoothstep(edgeWidth * HAIR_FALLOFF, 0.0, rimDepth) * insideDarkLine;
+      float rimDepth = -edgeDistance;
+      float rimBand = smoothstep(edgeWidth * RIM_FALLOFF, 0.0, rimDepth);
+      float hairBand = smoothstep(edgeWidth * HAIR_FALLOFF, 0.0, rimDepth);
       float specular = (pow(saturate(lightFacing), SPEC_POWER) * LIT_STRENGTH + pow(saturate(-lightFacing), SPEC_POWER) * FAR_STRENGTH) * rimBand;
 
       float hairAlpha = hairBand * HAIR_STRENGTH;
       float lightAlpha = saturate(specular + rim * INNER_GLOW);
       float shadeAlpha = FAR_SHADE * pow(saturate(-lightFacing), 2.0) * rim;
-      float totalAlpha = hairAlpha + lightAlpha + shadeAlpha + darkAlpha;
+      float totalAlpha = hairAlpha + lightAlpha + shadeAlpha;
       float3 color = (lineColor.rgb * hairAlpha + float3(1, 1, 1) * lightAlpha) / max(totalAlpha, 1e-4);
       return float4(color, coverage * saturate(totalAlpha));
     }
@@ -2235,7 +2227,6 @@ glass.shader = {
 ---@param second? {topLeft: vec2, bottomRight: vec2, rounding: number} @optional second shape, outlined together with the first
 ---Draws the glass rim around one or two rounded shapes.
 local function drawGlassEdges(topLeft, bottomRight, rounding, padding, second)
-  local isLightMode = not (settings.darkMode or player.phoneMode)
   local pixelScale = math.max(1, app.scale)
 
   local boundsTopLeft, boundsBottomRight = topLeft, bottomRight
@@ -2261,8 +2252,6 @@ local function drawGlassEdges(topLeft, bottomRight, rounding, padding, second)
     shaderValues.secondRadius = -1
   end
   shaderValues.edgeWidth = glass.edgeWidth * pixelScale
-  shaderValues.darkLineAlpha = isLightMode and glass.lightRim or 0
-  shaderValues.darkLineWidth = isLightMode and glass.lightRimWidth * pixelScale or 0
   shaderValues.lineColor:set(colors.final.contactOutline)
   glass.shader.p1 = quadPosition
   glass.shader.p2 = quadPosition + quadSize
@@ -3667,6 +3656,72 @@ function script.windowMainSettings()
 end
 
 --#endregion
+
+---@param count? number
+---@param userCount? number
+---@param seed? number
+local function debugFillMessages(count, userCount, seed)
+  count, userCount, seed = count or 100, userCount or 5, seed or os.time()
+  math.randomseed(seed)
+
+  local playerMessages = {
+    'yo',
+    'stop ramming',
+    'anyone else lagging?',
+    'this car is brutal',
+    'lmao',
+    'ggs',
+    'brb',
+    'can you send the setup',
+    'anyone bayshore whitelining?',
+    'this is a long message meant to test text wrapping behavior inside the chat bubble and make sure multi-line entries still line up correctly',
+  }
+
+  local serverMessages = {
+    '%s has been kicked.',
+    '%s has joined the server.',
+    '%s has left the server.',
+    '%s has been banned.',
+  }
+
+  local function pick(list, last)
+    local i
+    repeat
+      i = math.random(#list)
+    until i ~= last or #list == 1
+    return i, list[i]
+  end
+
+  local lastPlayer, lastServer
+  local baseTime = os.time() - count * 5
+
+  for i = 1, count do
+    local userIndex = math.random(-1, userCount - 1)
+    local username, text
+
+    if userIndex == -1 then
+      username = 'Server'
+      lastServer, text = pick(serverMessages, lastServer)
+      text = text:format('TestDriver' .. math.random(0, userCount - 1))
+    else
+      username = 'TestDriver' .. userIndex
+      lastPlayer, text = pick(playerMessages, lastPlayer)
+    end
+
+    table.insert(chat.messages, {
+      userIndex,
+      username,
+      text,
+      baseTime + i * 5,
+      true,
+      false,
+    })
+  end
+
+  chat.msgCacheGen = chat.msgCacheGen + 1
+end
+
+debugFillMessages(46, 5, 23)
 
 --#region APP MAIN WINDOW
 
