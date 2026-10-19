@@ -197,12 +197,16 @@ local movement = {
 }
 
 local notification = {
-  maxDistance = 90,
   duration = settings.notifBannerDuration,
-  speed = 1.5,
+  speed = 1,
+  width = 260,
+  verticalOffset = { rest = 5, hidden = -85 },
+  avatar = { size = 28, padding = 10 },
+  messageIcon = { size = 10, offset = 19 },
+  spring = { width = { stiffness = 260, damping = 40 }, verticalOffset = { stiffness = 180, damping = 40 } },
+  threshold = { expand = 0.8, fadeIn = 0.7 },
+  content = { fontSize = 11, bodyMaxWidth = 205 },
   lineHeight = { single = 45, double = 60 },
-  contentFontSize = 11,
-  bodyMaxWidth = 205,
   queue = {},
 }
 
@@ -309,6 +313,11 @@ local emoji = {
   groups = {},
   activeGroup = 1,
   activeGroupDrawn = 0,
+  cluster = {
+    zeroWidthJoiner = '\226\128\141',
+    regionalIndicator = '^\240\159\135[\166-\191]$',
+    extenderPatterns = { '^\239\184[\142\143]$', '^\226\131\163$', '^\240\159\143[\187-\191]$', '^\243\160[\128\129][\128-\191]$', '^[\204\205][\128-\191]$' },
+  },
 }
 
 local glass = {
@@ -617,6 +626,7 @@ end
 --#endregion
 
 --#region NOTIFICATIONS
+--Notification animation implementation (spring drop, width expand, content fade) inspired by apple-server-notifications by lint0 & lem.
 
 ---@return table? @the currently displaying notification queue
 ---Finds the single queue item currently sliding in/holding/sliding out.
@@ -628,29 +638,47 @@ end
 
 ---@param notif table @notification queue entry
 ---@return table @cached {scale, bodyText, bodyBoxHeight, isSingleLine}
----Measures and caches a notification's truncated body text and whether it fits on one line.
+---Measures and caches a notification's truncated body text and whether it fits on one line. Truncation counts each emoji (including ZWJ sequences, flags, skin tones and keycaps) as one character.
 local function getNotificationLayout(notif)
   local layout = notif.layout
   if layout and layout.scale == app.scale then return layout end
 
-  local contentFontSize = scaleNum(notification.contentFontSize)
-  local bodyWrapWidth = scaleNum(notification.bodyMaxWidth)
+  local contentFontSize = scaleNum(notification.content.fontSize)
+  local bodyWrapWidth = scaleNum(notification.content.bodyMaxWidth)
   local bodyText = notif.body
 
   ui.pushDWriteFont(app.font.thinn)
 
   local lineHeight = ui.measureDWriteText('A', contentFontSize).y
+  local singleLineBody = ui.measureDWriteText(bodyText:gsub('[\r\n]', ''), contentFontSize)
+  lineHeight = math.max(lineHeight, singleLineBody.y)
   local bodyBoxHeight = lineHeight * 2
   local bodySize = ui.measureDWriteText(bodyText, contentFontSize, bodyWrapWidth)
 
   if bodySize.y > bodyBoxHeight then
-    local charCount = utf8len(bodyText)
+    local units = {}
+
+    for character in bodyText:gmatch('[\1-\127\194-\244][\128-\191]*') do
+      local previous = units[#units]
+      local joins = previous ~= nil and (character == emoji.cluster.zeroWidthJoiner or previous:sub(-3) == emoji.cluster.zeroWidthJoiner or (previous:find(emoji.cluster.regionalIndicator) ~= nil and character:find(emoji.cluster.regionalIndicator) ~= nil))
+
+      for _, pattern in ipairs(emoji.cluster.extenderPatterns) do
+        if previous and character:find(pattern) then joins = true end
+      end
+
+      if joins then
+        units[#units] = previous .. character
+      else
+        units[#units + 1] = character
+      end
+    end
+
     local low = 0
-    local high = charCount
+    local high = #units
 
     while low < high do
       local mid = math.ceil((low + high) / 2)
-      local candidate = utf8sub(bodyText, 1, mid) .. '...'
+      local candidate = table.concat(units, '', 1, mid) .. '...'
       local size = ui.measureDWriteText(candidate, contentFontSize, bodyWrapWidth)
 
       if size.y <= bodyBoxHeight then
@@ -660,7 +688,7 @@ local function getNotificationLayout(notif)
       end
     end
 
-    bodyText = utf8sub(bodyText, 1, low) .. '...'
+    bodyText = table.concat(units, '', 1, low) .. '...'
     bodySize = ui.measureDWriteText(bodyText, contentFontSize, bodyWrapWidth)
   end
 
@@ -709,15 +737,32 @@ local function clearNotificationQueue()
   end
 end
 
----@param current number @current value
----@param target number @value to move toward
----@param step number @maximum change allowed this call
----@return number @current moved toward target by up to step, without overshooting
----Moves a value toward a target by a fixed step, clamping so it never overshoots past the target.
-local function moveToward(current, target, step)
-  local delta = target - current
-  if math.abs(delta) <= step then return target end
-  return math.floor(current + (delta > 0 and step or -step))
+---@param spring table @{current, target, velocity}
+---@param config table @{stiffness, damping}
+---@param dt number @Delta time in seconds since last update.
+---Steps a spring toward its target using semi-implicit Euler with exponential damping.
+local function updateSpring(spring, config, dt)
+  spring.velocity = (spring.velocity + (spring.target - spring.current) * config.stiffness * dt) * math.exp(-config.damping * dt)
+  spring.current = spring.current + spring.velocity * dt
+end
+
+---@param notif table @queue entry to put on screen
+---Starts a queue entry's intro with the banner collapsed (just wide enough for the avatar and message icon plus mirrored padding) above the banner window.
+local function activateNotification(notif)
+  notif.minimumWidth = notification.avatar.padding * 2 + math.max(notification.avatar.size, notification.messageIcon.offset + notification.messageIcon.size)
+  notif.state, notif.phase, notif.timer = 'active', 'in', 0
+  notif.width = { current = notif.minimumWidth, target = notif.minimumWidth, velocity = 0 }
+  notif.verticalOffset = { current = notification.verticalOffset.hidden, target = notification.verticalOffset.rest, velocity = 0 }
+end
+
+---@param notif table @queue entry
+---@return number @banner width in px
+---@return number @banner left edge in px, relative to the full width banner window
+---@return number @banner top in px, relative to the banner window
+---Gets the scaled banner geometry from the entry's springs.
+local function getNotificationBanner(notif)
+  local bannerWidth = scaleNum(notif.width.current)
+  return bannerWidth, math.floor((scaleNum(notification.width) - bannerWidth) / 2), math.round(app.scale * notif.verticalOffset.current)
 end
 
 ---@param title string @bold title line, e.g. the sender's username
@@ -732,9 +777,10 @@ local function showNotification(title, body, isServer, titleColor)
 
   if not active or (settings.notifBannerServerPriority and entry.isServer and not active.isServer) then
     if active then
-      active.state, active.coveredDistance = 'covering', active.distance
+      active.state, active.phase = 'covering', 'out'
+      active.verticalOffset.target = notification.verticalOffset.hidden
     end
-    entry.state, entry.distance, entry.smooth, entry.phase, entry.timer = 'active', 0, 0, 'in', 0
+    activateNotification(entry)
     queue[#queue + 1] = entry
     return
   end
@@ -757,60 +803,64 @@ local function showNotification(title, body, isServer, titleColor)
 end
 
 ---@param dt number @Delta time in seconds since last update.
----Updates the notification banner's slide animation.
+---Updates the notification banner springs, hold timer and queue promotion.
 local function updateNotifications(dt)
   local queue = notification.queue
-  local notif = getActiveNotification()
-  if not notif then return end
+  local springDelta = math.min(dt, 1 / 30) * notification.speed
+  local travel = notification.verticalOffset.rest - notification.verticalOffset.hidden
 
-  local maxDistance = scaleNum(notification.maxDistance)
+  for entryIndex = #queue, 1, -1 do
+    local notif = queue[entryIndex]
 
-  if notif.phase == 'in' then
-    notif.distance = moveToward(notif.distance, maxDistance, dt * 100 * (notification.speed * app.scale))
+    if notif.state ~= 'queued' then
+      updateSpring(notif.width, notification.spring.width, springDelta)
+      updateSpring(notif.verticalOffset, notification.spring.verticalOffset, springDelta)
 
-    local slideProgress = math.lerpInvSat(notif.distance, 0, maxDistance)
-    for i = #queue, 1, -1 do
-      local covered = queue[i]
-      if covered.state == 'covering' then
-        covered.distance = covered.coveredDistance * (1 - slideProgress)
-        covered.smooth = math.floor(math.smootherstep(math.lerpInvSat(covered.distance, 0, maxDistance)) * maxDistance)
-        if covered.distance <= 0 then table.remove(queue, i) end
-      end
-    end
+      local bannerHeight = notification.lineHeight[getNotificationLayout(notif).isSingleLine and 'single' or 'double']
 
-    if notif.distance >= maxDistance then
-      notif.phase = 'hold'
-      notif.timer = notification.duration
-    end
-  elseif notif.phase == 'hold' then
-    notif.timer = notif.timer - dt
-    if notif.timer <= 0 then notif.phase = 'out' end
-  elseif notif.phase == 'out' then
-    notif.distance = moveToward(notif.distance, 0, dt * 100 * (notification.speed * app.scale))
+      if notif.phase == 'in' then
+        if (notif.verticalOffset.current - notification.verticalOffset.hidden) / travel > notification.threshold.expand then notif.width.target = notification.width end
 
-    if notif.distance <= 0 then
-      for i, s in ipairs(queue) do
-        if s == notif then
-          table.remove(queue, i)
-          break
+        if math.abs(notif.width.current - notification.width) < 2 and math.abs(notif.verticalOffset.current - notification.verticalOffset.rest) < 2 then
+          notif.phase = 'hold'
+          notif.timer = notification.duration
+        end
+      elseif notif.phase == 'hold' then
+        notif.timer = notif.timer - dt
+        if notif.timer <= 0 then
+          notif.phase = 'out'
+          notif.verticalOffset.target = notification.verticalOffset.hidden
+        end
+      elseif notif.verticalOffset.current + bannerHeight <= 0 then
+        table.remove(queue, entryIndex)
+
+        if notif.state == 'active' then
+          for _, queued in ipairs(queue) do
+            if queued.state == 'queued' then
+              activateNotification(queued)
+              break
+            end
+          end
         end
       end
-      for _, s in ipairs(queue) do
-        if s.state == 'queued' then
-          s.state, s.distance, s.smooth, s.phase, s.timer = 'active', 0, 0, 'in', 0
-          break
-        end
-      end
-      return
     end
   end
-
-  notif.smooth = math.floor(math.smootherstep(math.lerpInvSat(notif.distance, 0, maxDistance)) * maxDistance)
 end
 
 --#endregion
 
 --#region MOVEMENT
+
+---@param current number @current value
+---@param target number @value to move toward
+---@param step number @maximum change allowed this call
+---@return number @current moved toward target by up to step, without overshooting
+---Moves a value toward a target by a fixed step, clamping so it never overshoots past the target.
+local function moveToward(current, target, step)
+  local delta = target - current
+  if math.abs(delta) <= step then return target end
+  return math.floor(current + (delta > 0 and step or -step))
+end
 
 ---@param full boolean? @Whether to force the app to fully move up, ignoring the notification peek distance
 ---Moves the app up.
@@ -1936,7 +1986,6 @@ local function isUserNameCovered(entry, userNameSize)
   local usernameLeft = math.ceil(scaleNum(13) / 2)
   local usernameRight = usernameLeft + math.min(userNameSize.x, scaleNum(250))
   local notificationLeft = scaleNum(15) - messagesWindowLeft
-  local notificationRight = notificationLeft + scaleNum(260)
   local usernameTop = entry.userNameY - glass.messages.scrollY
   local usernameBottom = usernameTop + userNameSize.y
 
@@ -1946,10 +1995,12 @@ local function isUserNameCovered(entry, userNameSize)
     if notif.state ~= 'queued' then
       local layout = getNotificationLayout(notif)
       local bannerHeight = layout.isSingleLine and scaleNum(notification.lineHeight.single) or scaleNum(notification.lineHeight.double)
-      local bannerTop = (scaleNum(41) + scaleNum(5) + notif.smooth - scaleNum(notification.maxDistance)) - messagesWindowTop
+      local bannerWidth, bannerOffsetX, bannerOffsetY = getNotificationBanner(notif)
+      local bannerLeft = notificationLeft + bannerOffsetX
+      local bannerTop = scaleNum(41) + bannerOffsetY - messagesWindowTop
       local bannerBottom = bannerTop + bannerHeight
 
-      if usernameLeft < notificationRight and usernameRight > notificationLeft and usernameTop < bannerBottom and usernameBottom > bannerTop then return true end
+      if usernameLeft < bannerLeft + bannerWidth and usernameRight > bannerLeft and usernameTop < bannerBottom and usernameBottom > bannerTop then return true end
     end
   end
 
@@ -2164,9 +2215,6 @@ glass.shader = {
     glassCenter = vec2(),
     glassSize = vec2(),
     glassRadius = 0,
-    secondCenter = vec2(),
-    secondSize = vec2(),
-    secondRadius = -1,
     edgeWidth = 1,
     lineColor = rgbm(),
   },
@@ -2187,9 +2235,7 @@ glass.shader = {
     }
 
     float glassDistance(float2 localPosition) {
-      float firstDistance = roundedBoxDistance(localPosition - glassCenter, glassSize * 0.5, glassRadius);
-      if (secondRadius < 0.0) return firstDistance;
-      return min(firstDistance, roundedBoxDistance(localPosition - secondCenter, secondSize * 0.5, secondRadius));
+      return roundedBoxDistance(localPosition - glassCenter, glassSize * 0.5, glassRadius);
     }
 
     float4 main(PS_IN pin) {
@@ -2224,19 +2270,12 @@ glass.shader = {
 ---@param bottomRight vec2 @bottom right of the first shape
 ---@param rounding number @corner radius of the first shape
 ---@param padding number @margin around the shapes in px
----@param second? {topLeft: vec2, bottomRight: vec2, rounding: number} @optional second shape, outlined together with the first
----Draws the glass rim around one or two rounded shapes.
-local function drawGlassEdges(topLeft, bottomRight, rounding, padding, second)
+---Draws the glass rim around a rounded shape.
+local function drawGlassEdges(topLeft, bottomRight, rounding, padding)
   local pixelScale = math.max(1, app.scale)
 
-  local boundsTopLeft, boundsBottomRight = topLeft, bottomRight
-  if second then
-    boundsTopLeft = vec2(math.min(topLeft.x, second.topLeft.x), math.min(topLeft.y, second.topLeft.y))
-    boundsBottomRight = vec2(math.max(bottomRight.x, second.bottomRight.x), math.max(bottomRight.y, second.bottomRight.y))
-  end
-
-  local quadPosition = boundsTopLeft - padding
-  local quadSize = ceilVec2(boundsBottomRight.x - boundsTopLeft.x + padding * 2, boundsBottomRight.y - boundsTopLeft.y + padding * 2)
+  local quadPosition = topLeft - padding
+  local quadSize = ceilVec2(bottomRight.x - topLeft.x + padding * 2, bottomRight.y - topLeft.y + padding * 2)
   local quadCenter = quadPosition + quadSize / 2
 
   local shaderValues = glass.shader.values
@@ -2244,13 +2283,6 @@ local function drawGlassEdges(topLeft, bottomRight, rounding, padding, second)
   shaderValues.glassCenter:set((topLeft + bottomRight) / 2 - quadCenter)
   shaderValues.glassSize:set(bottomRight - topLeft)
   shaderValues.glassRadius = rounding
-  if second then
-    shaderValues.secondCenter:set((second.topLeft + second.bottomRight) / 2 - quadCenter)
-    shaderValues.secondSize:set(second.bottomRight - second.topLeft)
-    shaderValues.secondRadius = second.rounding
-  else
-    shaderValues.secondRadius = -1
-  end
   shaderValues.edgeWidth = glass.edgeWidth * pixelScale
   shaderValues.lineColor:set(colors.final.contactOutline)
   glass.shader.p1 = quadPosition
@@ -2262,17 +2294,24 @@ end
 ---@param topLeft vec2 @top left in the current window
 ---@param bottomRight vec2 @bottom right in the current window
 ---@param rounding number @corner radius
----@param options? {origin: vec2?, overlays: boolean?, skipEdges: boolean?, color: rgb?, tint: number?} @window origin, whether to capture the fade and contact, whether to skip the rim, tint color and alpha overrides
+---@param options? {origin: vec2?, overlays: boolean?, color: rgb?, tint: number?, capture: {topLeft: vec2, bottomRight: vec2}?} @window origin, whether to capture the fade and contact, tint color and alpha overrides, a fixed capture area for shapes that change size
 ---Draws a liquid glass rounded rect.
 local function drawGlass(key, topLeft, bottomRight, rounding, options)
   local messages = glass.messages
 
   local size = bottomRight - topLeft
   local halfShortSide = math.min(size.x, size.y) / 2
-  local blurRadius = halfShortSide * glass.blurSpread
+
+  local captureTopLeft, captureBottomRight = topLeft, bottomRight
+  if options and options.capture then
+    captureTopLeft, captureBottomRight = options.capture.topLeft, options.capture.bottomRight
+  end
+  local captureSize = captureBottomRight - captureTopLeft
+
+  local blurRadius = math.min(captureSize.x, captureSize.y) / 2 * glass.blurSpread
   local padding = math.ceil(blurRadius + 2 ^ glass.blurLevels)
-  local quadPosition = topLeft - padding
-  local quadSize = ceilVec2(size.x + padding * 2, size.y + padding * 2)
+  local quadPosition = captureTopLeft - padding
+  local quadSize = ceilVec2(captureSize.x + padding * 2, captureSize.y + padding * 2)
   local capturePosition = quadPosition + (options and options.origin or vec2())
 
   local canvasSet = glass.canvases[key]
@@ -2393,7 +2432,7 @@ local function drawGlass(key, topLeft, bottomRight, rounding, options)
   local tintColor = options and options.color or colors.final.glassColor
   ui.drawRectFilled(topLeft, bottomRight, rgbm(tintColor.r, tintColor.g, tintColor.b, options and options.tint or glass.tint), rounding)
 
-  if not (options and options.skipEdges) then drawGlassEdges(topLeft, bottomRight, rounding, padding) end
+  drawGlassEdges(topLeft, bottomRight, rounding, padding)
 end
 
 --#endregion
@@ -2424,7 +2463,7 @@ local function drawContact()
     local pillRounding = (pillPosBR.y - pillPosTL.y) / 2
 
     if settings.liquidGlass then
-      drawGlass('contact', pillPosTL, pillPosBR, pillRounding, { skipEdges = true })
+      drawGlass('contact', pillPosTL, pillPosBR, pillRounding)
     else
       ui.beginOutline()
       ui.drawRectFilled(pillPosTL, pillPosBR, colors.final.contactPill, pillRounding)
@@ -2441,7 +2480,6 @@ local function drawContact()
 
     local communityUV1, communityUV2 = getCommunityImageUV(community)
     ui.drawImageRounded(community.image, imgPos, imgPos + imgSize, rgbm.colors.white, communityUV1, communityUV2, 999, ui.CornerFlags.All)
-    if settings.liquidGlass then drawGlassEdges(pillPosTL, pillPosBR, pillRounding, scaleNum(2), { topLeft = imgPos, bottomRight = imgPos + imgSize, rounding = imgSize.x / 2 }) end
 
     if settings.liquidGlass then
       glass.contact = {
@@ -2764,67 +2802,89 @@ local function drawNotifications()
   local queue = notification.queue
   if not getActiveNotification() then return end
 
-  local maxDistance = scaleNum(notification.maxDistance)
-  local statusBarPadding = scaleVec2(0, 5)
+  local statusBarPadding = scaleVec2(0, notification.verticalOffset.rest)
 
-  local bannerWidth = scaleNum(260)
+  local windowWidth = scaleNum(notification.width)
   local singleLineHeight = scaleNum(notification.lineHeight.single)
   local doubleLineHeight = scaleNum(notification.lineHeight.double)
 
-  local contactImgSize = scaleVec2(28, 28)
-  local imessageImgSize = scaleVec2(10, 10)
+  local contactImgSize = scaleVec2(notification.avatar.size, notification.avatar.size)
+  local imessageImgSize = scaleVec2(notification.messageIcon.size, notification.messageIcon.size)
   local titleFontSize = scaleNum(10)
-  local contentFontSize = scaleNum(notification.contentFontSize)
+  local contentFontSize = scaleNum(notification.content.fontSize)
   local contentFontColor = colors.final.elements
-  local bodyMaxWidth = scaleNum(notification.bodyMaxWidth)
+  local bodyMaxWidth = scaleNum(notification.content.bodyMaxWidth)
 
   local bannerPos = scaleVec2(15, 41, true)
   local bannerOrigin = scaleVec2(15, 41)
 
-  for i = 1, #queue do
-    local notif = queue[i]
+  local travel = notification.verticalOffset.rest - notification.verticalOffset.hidden
+
+  for entryIndex = 1, #queue do
+    local notif = queue[entryIndex]
 
     if notif.state ~= 'queued' then
       local layout = getNotificationLayout(notif)
       local bannerHeight = layout.isSingleLine and singleLineHeight or doubleLineHeight
-      local bannerSize = vec2(bannerWidth, bannerHeight)
+      local windowSize = vec2(windowWidth, bannerHeight)
 
       ui.setCursor(bannerPos)
-      ui.childWindow('NotificationDropDown' .. i, bannerSize + statusBarPadding, false, flags.window, function()
-        ui.offsetCursorY(statusBarPadding.y + notif.smooth - maxDistance)
+      ui.childWindow('NotificationDropDown' .. entryIndex, windowSize + statusBarPadding, false, flags.window, function()
+        local windowOrigin = ui.getCursor()
+        local bannerWidth, bannerOffsetX, bannerOffsetY = getNotificationBanner(notif)
+        local bannerTopLeft = windowOrigin + vec2(bannerOffsetX, bannerOffsetY)
+        local bannerBottomRight = bannerTopLeft + vec2(bannerWidth, bannerHeight)
+
+        local widthProgress = math.saturate((notif.width.current - notif.minimumWidth) / (notification.width - notif.minimumWidth))
+        local verticalProgress = math.saturate((notif.verticalOffset.current - notification.verticalOffset.hidden) / travel)
+        local bannerRounding = math.lerp(bannerHeight / 2, scaleNum(16), widthProgress)
 
         if settings.liquidGlass then
-          drawGlass('notif' .. i, ui.getCursor(), ui.getCursor() + bannerSize, scaleNum(16), {
+          local captureTopLeft = windowOrigin + vec2(0, bannerOffsetY)
+          drawGlass('notif' .. entryIndex, bannerTopLeft, bannerBottomRight, bannerRounding, {
             origin = bannerOrigin,
             overlays = true,
             color = colors.final.glassNotifColor,
             tint = glass.tint + glass.notifTintBoost,
+            capture = { topLeft = captureTopLeft, bottomRight = captureTopLeft + windowSize },
           })
         else
-          ui.drawRectFilled(ui.getCursor(), ui.getCursor() + bannerSize, colors.final.notifBg, scaleNum(16), ui.CornerFlags.All)
+          ui.drawRectFilled(bannerTopLeft, bannerBottomRight, colors.final.notifBg, bannerRounding, ui.CornerFlags.All)
         end
 
-        local contactImgPos = ui.getCursor() + vec2(scaleNum(10), math.ceil((bannerSize.y - contactImgSize.y) / 2))
+        local contentAlpha = math.lerpInvSat(widthProgress, notification.threshold.fadeIn, 1)
+        if notif.phase == 'out' then contentAlpha = math.min(contentAlpha, verticalProgress) end
+
+        ui.pushClipRect(bannerTopLeft, bannerBottomRight)
+
+        local contactImgPos = bannerTopLeft + vec2(scaleNum(notification.avatar.padding), math.ceil((bannerHeight - contactImgSize.y) / 2))
         local communityUV1, communityUV2 = getCommunityImageUV(communities[player.serverCommunity])
         ui.drawImageRounded(communities[player.serverCommunity].image, contactImgPos, contactImgPos + contactImgSize, rgbm.colors.white, communityUV1, communityUV2, 999, ui.CornerFlags.All)
 
-        local messageIconPos = contactImgPos + scaleVec2(19, 19)
+        local messageIconPos = contactImgPos + scaleVec2(notification.messageIcon.offset, notification.messageIcon.offset)
         ui.drawImageRounded(app.images.defaultMessage, messageIconPos, messageIconPos + imessageImgSize, scaleNum(2), ui.CornerFlags.All)
 
-        ui.setCursor(ui.getCursor() + vec2(scaleNum(33), scaleNum(8)))
-        ui.pushDWriteFont(app.font.regular)
-        ui.dwriteDrawText('now', titleFontSize, ui.getCursor() + scaleVec2(195, 0), colors.final.notifTitle)
-        ui.popDWriteFont()
+        if contentAlpha > 0 then
+          local textPos = bannerTopLeft + vec2(scaleNum(47), scaleNum(8))
 
-        ui.offsetCursorX(scaleNum(14))
-        ui.pushDWriteFont(app.font.semiBold)
-        ui.dwriteDrawText(notif.title, contentFontSize, ui.getCursor(), settings.notifBannerUsernameColor and notif.titleColor or contentFontColor)
-        ui.popDWriteFont()
+          ui.pushStyleVarAlpha(contentAlpha)
 
-        ui.offsetCursorY(scaleNum(15))
-        ui.pushDWriteFont(app.font.thinn)
-        ui.dwriteTextAligned(layout.bodyText, contentFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(bodyMaxWidth, layout.bodyBoxHeight), true, contentFontColor)
-        ui.popDWriteFont()
+          ui.pushDWriteFont(app.font.regular)
+          ui.dwriteDrawText('now', titleFontSize, vec2(bannerBottomRight.x - scaleNum(32), textPos.y), colors.final.notifTitle)
+          ui.popDWriteFont()
+
+          ui.pushDWriteFont(app.font.semiBold)
+          ui.dwriteDrawText(notif.title, contentFontSize, textPos, settings.notifBannerUsernameColor and notif.titleColor or contentFontColor)
+          ui.popDWriteFont()
+
+          ui.setCursor(textPos + vec2(0, scaleNum(15)))
+          ui.pushDWriteFont(app.font.thinn)
+          ui.dwriteTextAligned(layout.bodyText, contentFontSize, ui.Alignment.Start, ui.Alignment.Start, vec2(bodyMaxWidth, layout.bodyBoxHeight), true, contentFontColor)
+          ui.popDWriteFont()
+          ui.popStyleVar()
+        end
+
+        ui.popClipRect()
       end)
     end
   end
