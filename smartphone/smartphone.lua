@@ -227,12 +227,10 @@ local songInfo = {
   isNotPlaying = false,
   dynamicIslandSizeActive = vec2(40, 20),
   dynamicIslandBaseWidths = vec2(40, 80),
-  cached = {
-    size = nil,
-    text = nil,
-    scale = nil,
-  },
-  scrollTime = 0,
+  current = { text = '', scrollTime = 0 },
+  previous = { text = '', scrollTime = 0 },
+  fade = 1,
+  fadeDuration = 0.5,
   titleSplitPatterns = {
     '^(.-)%s*%- %s*(.+)$',
     '^(.-)%-([^%-]+)$',
@@ -1006,10 +1004,22 @@ local function updateSongInfo(forced)
       songInfo.title = current.title
     end
 
+    local wasShowing = songInfo.final ~= ''
     songInfo.final = (songInfo.artist ~= '' and songInfo.artist:lower() ~= 'unknown artist') and (songInfo.artist .. ' - ' .. songInfo.title) or songInfo.title
     songInfo.hasCover = current.hasCover
 
-    if songInfo.final ~= songInfo.cached.text then songInfo.scrollTime = 0 end
+    if songInfo.final ~= songInfo.current.text then
+      songInfo.previous = songInfo.current
+      songInfo.current = { text = songInfo.final, scrollTime = 0 }
+
+      if wasShowing then
+        songInfo.current.carryProgress = songInfo.previous.scrollProgress
+      else
+        songInfo.previous.text = ''
+      end
+
+      songInfo.fade = 0
+    end
 
     if songInfo.dynamicIslandSizeActive.x == songInfo.dynamicIslandBaseWidths.x then setDynamicIslandSize(true) end
     songInfo.isNotPlaying = not current.isPlaying
@@ -1486,23 +1496,23 @@ local function drawDynamicIsland()
   end
 end
 
----@param text string @The text content to be displayed, either static or scrolling.
+---@param state table @songInfo.current or songInfo.previous: {text, size, scale, scrollTime}
 ---@param pos vec2 @The position coordinates where the text should be drawn.
 ---@param size vec2 @The dimensions of the text drawing area.
 ---@param fontSize number @The font size to use for rendering the text.
 ---Draws text that can either be static, continuously scrolling, or alternating between both ends.
-local function drawSongInfoText(text, pos, size, fontSize)
-  if not text or text == '' then return end
+local function drawSongInfoText(state, pos, size, fontSize)
+  local text = state.text
+  if text == '' then return end
 
   ui.pushDWriteFont(app.font.bold)
 
-  if songInfo.cached.size == nil or songInfo.cached.text ~= text or songInfo.cached.scale ~= app.scale then
-    songInfo.cached.size = ui.measureDWriteText(text, fontSize)
-    songInfo.cached.text = text
-    songInfo.cached.scale = app.scale
+  if state.size == nil or state.scale ~= app.scale then
+    state.size = ui.measureDWriteText(text, fontSize)
+    state.scale = app.scale
   end
 
-  local textSize = songInfo.cached.size
+  local textSize = state.size
   if not textSize then
     ui.popDWriteFont()
     return
@@ -1512,6 +1522,7 @@ local function drawSongInfoText(text, pos, size, fontSize)
   if textSize.x <= size.x - scaleNum(12) and not settings.songInfoScrollAlways then static = true end
 
   if static then
+    state.scrollProgress = nil
     ui.setCursor(ceilVec2(pos.x, pos.y + (size.y - textSize.y) / 2))
     ui.dwriteTextAligned(text, fontSize, ui.Alignment.Center, ui.Alignment.Start, vec2(size.x, textSize.y), false, rgbm.colors.white)
   elseif settings.songInfoScrollDirection == 1 then
@@ -1531,7 +1542,10 @@ local function drawSongInfoText(text, pos, size, fontSize)
 
     local travelDistance = math.abs(endOffset - startOffset)
     local cycleLength = travelDistance * 2
-    local cyclePosition = cycleLength > 0 and songInfo.scrollTime % cycleLength or 0
+    if state.carryProgress then state.scrollTime = state.carryProgress * cycleLength end
+
+    local cyclePosition = cycleLength > 0 and state.scrollTime % cycleLength or 0
+    state.scrollProgress = cycleLength > 0 and cyclePosition / cycleLength or 0
 
     local cycleMovement
     if cyclePosition <= travelDistance then
@@ -1554,8 +1568,11 @@ local function drawSongInfoText(text, pos, size, fontSize)
     local scrollSpacing = settings.songInfoAutoSpacing and size.x / 1.5 or settings.songInfoSpacing
     local scrollStepWidth = math.ceil(textSize.x + scrollSpacing)
     local scrollDirection = settings.songInfoScrollDirection == 0 and -1 or 1
-    local scrollX = scrollDirection * (songInfo.scrollTime % scrollStepWidth)
-    songInfo.scrollTime = songInfo.scrollTime % scrollStepWidth
+    if state.carryProgress then state.scrollTime = state.carryProgress * scrollStepWidth end
+
+    local scrollX = scrollDirection * (state.scrollTime % scrollStepWidth)
+    state.scrollTime = state.scrollTime % scrollStepWidth
+    state.scrollProgress = state.scrollTime / scrollStepWidth
 
     ui.pushClipRect(pos, pos + size)
     for i = -1, math.ceil(size.x / scrollStepWidth) do
@@ -1564,6 +1581,7 @@ local function drawSongInfoText(text, pos, size, fontSize)
     ui.popClipRect()
   end
 
+  state.carryProgress = nil
   ui.popDWriteFont()
 end
 
@@ -1591,7 +1609,19 @@ local function drawSongInfo()
     local pos = settings.songInfoGradient and scaleVec2(86, 21) or scaleVec2(89, 21)
     local textSize = settings.songInfoGradient and scaleVec2(135, 15) or scaleVec2(132, 15)
 
-    drawSongInfoText(songInfo.final, pos, textSize, fontSize)
+    if songInfo.final ~= '' then
+      local fadeEased = math.smootherstep(songInfo.fade)
+
+      if songInfo.fade < 1 then
+        ui.pushStyleVarAlpha(1 - fadeEased)
+        drawSongInfoText(songInfo.previous, pos, textSize, fontSize)
+        ui.popStyleVar()
+      end
+
+      ui.pushStyleVarAlpha(fadeEased)
+      drawSongInfoText(songInfo.current, pos, textSize, fontSize)
+      ui.popStyleVar()
+    end
 
     if settings.songInfoGradient and songInfo.dynamicIslandSizeActive.x == songInfo.dynamicIslandBaseWidths.y then
       local gradientWidth = scaleNum(settings.songInfoGradientWidth)
@@ -3717,72 +3747,6 @@ end
 
 --#endregion
 
----@param count? number
----@param userCount? number
----@param seed? number
-local function debugFillMessages(count, userCount, seed)
-  count, userCount, seed = count or 100, userCount or 5, seed or os.time()
-  math.randomseed(seed)
-
-  local playerMessages = {
-    'yo',
-    'stop ramming',
-    'anyone else lagging?',
-    'this car is brutal',
-    'lmao',
-    'ggs',
-    'brb',
-    'can you send the setup',
-    'anyone bayshore whitelining?',
-    'this is a long message meant to test text wrapping behavior inside the chat bubble and make sure multi-line entries still line up correctly',
-  }
-
-  local serverMessages = {
-    '%s has been kicked.',
-    '%s has joined the server.',
-    '%s has left the server.',
-    '%s has been banned.',
-  }
-
-  local function pick(list, last)
-    local i
-    repeat
-      i = math.random(#list)
-    until i ~= last or #list == 1
-    return i, list[i]
-  end
-
-  local lastPlayer, lastServer
-  local baseTime = os.time() - count * 5
-
-  for i = 1, count do
-    local userIndex = math.random(-1, userCount - 1)
-    local username, text
-
-    if userIndex == -1 then
-      username = 'Server'
-      lastServer, text = pick(serverMessages, lastServer)
-      text = text:format('TestDriver' .. math.random(0, userCount - 1))
-    else
-      username = 'TestDriver' .. userIndex
-      lastPlayer, text = pick(playerMessages, lastPlayer)
-    end
-
-    table.insert(chat.messages, {
-      userIndex,
-      username,
-      text,
-      baseTime + i * 5,
-      true,
-      false,
-    })
-  end
-
-  chat.msgCacheGen = chat.msgCacheGen + 1
-end
-
-debugFillMessages(46, 5, 23)
-
 --#region APP MAIN WINDOW
 
 local appWindow = ac.accessAppWindow('IMGUI_LUA_Smartphone_main')
@@ -3823,7 +3787,13 @@ function script.windowMain(dt)
     app.images.phoneAtlasSize = app.images.phoneAtlasSize == vec2(0, 0) and phoneFull:div(vec2(2, 2)):scale(app.scale) or app.images.phoneAtlasSize
   end
 
-  if settings.songInfo then songInfo.scrollTime = songInfo.scrollTime + math.min(dt, 1 / 30) * (settings.songInfoScrollSpeed * app.scale) end
+  if settings.songInfo then
+    local frameDelta = math.min(dt, 1 / 30)
+    local scrollDelta = frameDelta * (settings.songInfoScrollSpeed * app.scale)
+    songInfo.current.scrollTime = songInfo.current.scrollTime + scrollDelta
+    songInfo.previous.scrollTime = songInfo.previous.scrollTime + scrollDelta
+    songInfo.fade = math.min(1, songInfo.fade + frameDelta / songInfo.fadeDuration)
+  end
 
   updateAppMovement(dt)
   updateNotifications(dt)
