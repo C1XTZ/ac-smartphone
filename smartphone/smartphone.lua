@@ -283,6 +283,7 @@ local chat = {
   msgCacheGen = 0,
   layout = {
     messages = {},
+    sizing = nil,
     cacheGen = -1,
     messageCount = 0,
     totalHeight = 0,
@@ -329,7 +330,7 @@ local glass = {
   edgeWidth = 1.5,
   cacheGen = 0,
   canvases = {},
-  messages = { scrollY = 0, reveal = 0, metrics = {} },
+  messages = { scrollY = 0, reveal = 0, layout = {} },
   fade = nil,
   contact = nil,
 }
@@ -388,6 +389,7 @@ local function utf8len(s)
       i = i + 1
     end
   end
+
   return len
 end
 
@@ -405,6 +407,7 @@ local function utf8sub(s, i, j)
   local startChar = (i >= 0) and i or l + i + 1
   local endChar = (j >= 0) and j or l + j + 1
   if startChar > endChar then return '' end
+
   local startByte, endByte = 1, bytes
   while pos <= bytes do
     len = len + 1
@@ -416,6 +419,7 @@ local function utf8sub(s, i, j)
       break
     end
   end
+
   return s:sub(startByte, endByte)
 end
 
@@ -537,7 +541,15 @@ local function automaticModeSwitch()
 
   local sim = ac.getSim()
   local currentTime = sim.timeHours + sim.timeMinutes / 60
-  local shouldBeDark = not (currentTime > settings.darkModeAutoLightTime and currentTime < settings.darkModeAutoDarkTime)
+  local lightTime = settings.darkModeAutoLightTime
+  local darkTime = settings.darkModeAutoDarkTime
+  local isLightTime = false
+  if lightTime < darkTime then
+    isLightTime = currentTime >= lightTime and currentTime < darkTime
+  elseif lightTime > darkTime then
+    isLightTime = currentTime >= lightTime or currentTime < darkTime
+  end
+  local shouldBeDark = not isLightTime
 
   if player.phoneMode ~= shouldBeDark then
     player.phoneMode = shouldBeDark
@@ -692,7 +704,17 @@ local function getNotificationLayout(notif)
 
   ui.popDWriteFont()
 
-  layout = { scale = app.scale, bodyText = bodyText, bodyBoxHeight = bodyBoxHeight, isSingleLine = bodySize.y <= lineHeight + scaleNum(1) }
+  local isSingleLine = bodySize.y <= lineHeight + scaleNum(1)
+  local bannerHeight = notification.lineHeight[isSingleLine and 'single' or 'double']
+
+  layout = {
+    scale = app.scale,
+    bodyText = bodyText,
+    bodyBoxHeight = bodyBoxHeight,
+    isSingleLine = isSingleLine,
+    bannerHeight = bannerHeight,
+    scaledBannerHeight = scaleNum(bannerHeight),
+  }
   notif.layout = layout
   return layout
 end
@@ -710,6 +732,7 @@ local function inverseSmootherstep(y)
       high = mid
     end
   end
+
   return (low + high) / 2
 end
 
@@ -793,6 +816,7 @@ local function showNotification(title, body, isServer, titleColor)
         break
       end
     end
+
     table.insert(queue, insertAt, entry)
     return
   end
@@ -814,7 +838,7 @@ local function updateNotifications(dt)
       updateSpring(notif.width, notification.spring.width, springDelta)
       updateSpring(notif.verticalOffset, notification.spring.verticalOffset, springDelta)
 
-      local bannerHeight = notification.lineHeight[getNotificationLayout(notif).isSingleLine and 'single' or 'double']
+      local bannerHeight = getNotificationLayout(notif).bannerHeight
 
       if notif.phase == 'in' then
         if (notif.verticalOffset.current - notification.verticalOffset.hidden) / travel > notification.threshold.expand then notif.width.target = notification.width end
@@ -859,6 +883,12 @@ local function moveToward(current, target, step)
   if math.abs(delta) <= step then return target end
   return math.floor(current + (delta > 0 and step or -step))
 end
+
+---@param distance number @current app movement distance in px
+---@param scaledMaxDistance number @maximum app movement distance in px
+---@return number @eased movement distance in px
+---Gets the eased movement distance used to draw the app's sliding transition.
+local function getMovementSmooth(distance, scaledMaxDistance) return math.floor(math.smootherstep(math.lerpInvSat(distance, 0, scaledMaxDistance)) * scaledMaxDistance) end
 
 ---@param full boolean? @Whether to force the app to fully move up, ignoring the notification peek distance
 ---Moves the app up.
@@ -907,7 +937,7 @@ local function updateAppMovement(dt)
 
   if activeNotif and isPeek and not movement.up and movement.distance ~= targetUpDistance then
     movement.distance = targetUpDistance
-    movement.smooth = math.floor(math.smootherstep(math.lerpInvSat(movement.distance, 0, scaledMaxDistance)) * scaledMaxDistance)
+    movement.smooth = getMovementSmooth(movement.distance, scaledMaxDistance)
     return
   end
 
@@ -934,7 +964,7 @@ local function updateAppMovement(dt)
 
   if movement.down and movement.timer <= 0 then
     movement.distance = math.floor(movement.distance + dt * moveSpeedBase * (settings.appMoveSpeed * app.scale))
-    movement.smooth = math.floor(math.smootherstep(math.lerpInvSat(movement.distance, 0, scaledMaxDistance)) * scaledMaxDistance)
+    movement.smooth = getMovementSmooth(movement.distance, scaledMaxDistance)
 
     if movement.distance >= scaledMaxDistance then
       movement.distance = scaledMaxDistance
@@ -944,7 +974,7 @@ local function updateAppMovement(dt)
     end
   elseif movement.up and movement.timer > 0 then
     movement.distance = moveToward(movement.distance, targetUpDistance, dt * moveSpeedBase * (settings.appMoveSpeed * app.scale))
-    movement.smooth = math.floor(math.smootherstep(math.lerpInvSat(movement.distance, 0, scaledMaxDistance)) * scaledMaxDistance)
+    movement.smooth = getMovementSmooth(movement.distance, scaledMaxDistance)
 
     if movement.distance == targetUpDistance then
       movement.up = false
@@ -978,6 +1008,7 @@ local function splitTitle(songString)
       return artist, title
     end
   end
+
   local trimmedTitle = songString:gsub('%.%w+$', '')
   return 'Unknown Artist', trimmedTitle
 end
@@ -988,8 +1019,9 @@ local function updateSongInfo(forced)
   if not settings.songInfo then return end
 
   local current = ac.currentlyPlaying()
+  local coverChanged = current.isPlaying and current.hasCover ~= songInfo.hasCover
 
-  if not forced and current.artist == songInfo.artist and current.title == songInfo.title and current.isPlaying == not songInfo.isNotPlaying then return end
+  if not forced and current.artist == songInfo.artist and current.title == songInfo.title and current.isPlaying == not songInfo.isNotPlaying and not coverChanged then return end
 
   if (current.artist == '' and current.title == '') or not current.isPlaying then
     songInfo.final = ''
@@ -1071,6 +1103,7 @@ local function getInputMaxLength() return math.floor(490 * (13 / settings.chatFo
 ---Checks whether `word` occurs in `text` as a whole word (not as part of a longer word).
 local function containsWord(text, word)
   if word == '' then return false end
+
   local searchFrom = 1
   while true do
     local startIndex = text:findIgnoreCase(word, searchFrom)
@@ -1186,10 +1219,12 @@ local function deleteOldestMessages()
     chat.msgCacheGen = chat.msgCacheGen + 1
     chat.layout.pendingRemoveCount = chat.layout.pendingRemoveCount + removedCount
     if chat.latestUserMessage then chat.latestUserMessage = chat.latestUserMessage > removedCount and chat.latestUserMessage - removedCount or nil end
+
     local activeUserNames = {}
     for i = 1, #chat.messages do
       activeUserNames[chat.messages[i][2]] = true
     end
+
     for userName, _ in pairs(chat.userNameColors) do
       if not activeUserNames[userName] then chat.userNameColors[userName] = nil end
     end
@@ -1223,9 +1258,11 @@ local function handleKeyboardInput()
     emoji.picker = false
     return
   elseif ui.keyboardButtonDown(ui.KeyIndex.Control) and ui.keyboardButtonPressed(ui.KeyIndex.V, true) then
-    local clipboardText = ui.getClipboardText()
-    if utf8len(chat.input.text .. clipboardText) > inputMaxLength then return end
-    chat.input.text = chat.input.text .. clipboardText
+    local clipboardText = (ui.getClipboardText() or ''):gsub('[%c]', '')
+    local inputText = chat.input.selected and '' or chat.input.text
+    if utf8len(inputText .. clipboardText) > inputMaxLength then return end
+    chat.input.text = inputText .. clipboardText
+    chat.input.selected = nil
     return
   elseif ui.keyboardButtonDown(ui.KeyIndex.Control) and ui.keyboardButtonPressed(ui.KeyIndex.A) and msgLen then
     if chat.input.selected then chat.input.selected = nil end
@@ -1241,15 +1278,18 @@ local function handleKeyboardInput()
     return
   elseif ui.keyPressed(ui.Key.Up) and chat.input.active then
     if chat.input.historyIndex < #chat.input.history then
+      chat.input.selected = nil
       chat.input.historyIndex = chat.input.historyIndex + 1
       chat.input.text = chat.input.history[#chat.input.history - chat.input.historyIndex + 1][3]
     end
     return
   elseif ui.keyPressed(ui.Key.Down) and chat.input.active then
     if chat.input.historyIndex > 1 then
+      chat.input.selected = nil
       chat.input.historyIndex = chat.input.historyIndex - 1
       chat.input.text = chat.input.history[#chat.input.history - chat.input.historyIndex + 1][3]
     elseif chat.input.historyIndex == 1 then
+      chat.input.selected = nil
       chat.input.historyIndex = 0
       chat.input.text = ''
     end
@@ -1667,6 +1707,25 @@ local function formatMessageTimestamp(t)
   return settings.use12HourClock and format12HourTime(localTime) .. ' ' .. player.timePeriod or localTime
 end
 
+---@return table @scaled chat text sizes and spacing
+---Gets cached chat sizing for the current font size and app scale.
+local function getChatSizing()
+  local sizing = chat.layout.sizing
+  if sizing and sizing.fontSize == settings.chatFontSize and sizing.scale == app.scale then return sizing end
+
+  sizing = {
+    fontSize = settings.chatFontSize,
+    scale = app.scale,
+    messageFontSize = scaleNum(settings.chatFontSize),
+    userNameFontSize = scaleNum(settings.chatFontSize - 2),
+    timestampFontSize = scaleNum(settings.chatFontSize - 4),
+    messagePadding = scaleVec2(15, 10),
+  }
+
+  chat.layout.sizing = sizing
+  return sizing
+end
+
 ---@param message table @chat message entry
 ---@param userNameFontSize number @font size for the username
 ---@param contentFontSize number @font size for the message text
@@ -1708,7 +1767,7 @@ end
 ---@param entryCount number @number of valid entries
 ---@param visibleTop number @top Y of the visible scroll window
 ---@return number @index of the first potentially visible entry
----Gets the first visible message entry, so the render loop doesn't have to scan every message every frame.
+---Gets the first visible message entry, so the draw loop doesn't have to scan every message every frame.
 local function getFirstVisibleMessageIndex(messages, entryCount, visibleTop)
   local lo, hi = 1, entryCount + 1
   while lo < hi do
@@ -1719,6 +1778,7 @@ local function getFirstVisibleMessageIndex(messages, entryCount, visibleTop)
       lo = mid + 1
     end
   end
+
   return lo
 end
 
@@ -1728,18 +1788,15 @@ end
 ---@param messageY number @Y cursor before this message
 ---@param lastUserIndex number|nil @userIndex of the previous message
 ---@param lastUserName string|nil @username of the previous message
+---@param sizing table @scaled chat text sizes and spacing
 ---@return boolean @true if the message is filtered out
 ---@return number @Y cursor after this message
 ---@return number|nil @new lastUserIndex
 ---@return string|nil @new lastUserName
 ---Positions a single message entry for both full and selective layout rebuilds.
-local function positionMessageEntry(entry, message, rawIndex, messageY, lastUserIndex, lastUserName)
-  local contentFontSize = scaleNum(settings.chatFontSize)
-  local userNameFontSize = scaleNum(settings.chatFontSize - 2)
-  local timestampFontSize = scaleNum(settings.chatFontSize - 4)
+local function positionMessageEntry(entry, message, rawIndex, messageY, lastUserIndex, lastUserName, sizing)
   local userNameOffsetY = scaleNum(settings.chatFontSize - 2 + 13)
-  local messagePadding = scaleVec2(15, 10)
-
+  local messagePadding = sizing.messagePadding
   local userIndex = message[1]
   local userName = message[2]
   local content = message[3]
@@ -1753,7 +1810,7 @@ local function positionMessageEntry(entry, message, rawIndex, messageY, lastUser
   if (rawIndex == chat.latestUserMessage and settings.chatLatestBold) or (isMentioned and userIndex > 0) then fontWeight = app.font.bold end
 
   local wrapWidth = userIndex == -1 and scaleNum(220) or scaleNum(190)
-  local sizes = getMessageSizes(message, userNameFontSize, contentFontSize, timestampFontSize, timestamp, showTimestamp, fontWeight, wrapWidth)
+  local sizes = getMessageSizes(message, sizing.userNameFontSize, sizing.messageFontSize, sizing.timestampFontSize, timestamp, showTimestamp, fontWeight, wrapWidth)
   local messageTextSize = sizes.messageTextSize or vec2(0, 0)
   local timestampSize = sizes.timestampSize or vec2(0, 0)
 
@@ -1814,6 +1871,7 @@ local function getEntryIndexForRawIndex(layoutMessages, messageCount, rawIndex)
       lo = mid + 1
     end
   end
+
   if lo <= messageCount and layoutMessages[lo].rawIndex == rawIndex then return lo end
   return nil
 end
@@ -1825,6 +1883,7 @@ end
 local function buildMessageLayout()
   if chat.layout.cacheGen == chat.msgCacheGen then return chat.layout.messages, chat.layout.messageCount, chat.layout.totalHeight end
 
+  local sizing = getChatSizing()
   local firstMessagePadding = scaleNum(366)
   local layoutMessages = chat.layout.messages
   local rawCount = #chat.messages
@@ -1873,7 +1932,7 @@ local function buildMessageLayout()
           local firstKeptMessage = layoutMessages[1]
           local oldFirstEndY = firstKeptMessage.endY
           local rawIndex = firstKeptMessage.rawIndex - pendingRemoveCount
-          positionMessageEntry(firstKeptMessage, chat.messages[rawIndex], rawIndex, firstMessagePadding, nil, nil)
+          positionMessageEntry(firstKeptMessage, chat.messages[rawIndex], rawIndex, firstMessagePadding, nil, nil, sizing)
           local heightShift = firstKeptMessage.endY - oldFirstEndY
 
           messageY, lastUserIndex, lastUserName = firstKeptMessage.endY, firstKeptMessage.userIndex, firstKeptMessage.userName
@@ -1935,7 +1994,7 @@ local function buildMessageLayout()
           for i = recalcFrom, messageCount do
             local rawIndex = layoutMessages[i].rawIndex
             local _
-            _, messageY, lastUserIndex, lastUserName = positionMessageEntry(layoutMessages[i], chat.messages[rawIndex], rawIndex, messageY, lastUserIndex, lastUserName)
+            _, messageY, lastUserIndex, lastUserName = positionMessageEntry(layoutMessages[i], chat.messages[rawIndex], rawIndex, messageY, lastUserIndex, lastUserName, sizing)
           end
         end
 
@@ -1947,7 +2006,8 @@ local function buildMessageLayout()
             entry = {}
             layoutMessages[messageCount] = entry
           end
-          local skipped, newMsgDist, newLastUserIndex, newLastUserName = positionMessageEntry(entry, message, rawIndex, messageY, lastUserIndex, lastUserName)
+
+          local skipped, newMsgDist, newLastUserIndex, newLastUserName = positionMessageEntry(entry, message, rawIndex, messageY, lastUserIndex, lastUserName, sizing)
           if skipped then
             messageCount = messageCount - 1
           else
@@ -1979,7 +2039,8 @@ local function buildMessageLayout()
       entry = {}
       layoutMessages[entryCount] = entry
     end
-    local skipped, newMsgDist, newLastUserIndex, newLastUserName = positionMessageEntry(entry, message, i, messageY, lastDrawnUserIndex, lastDrawnUserName)
+
+    local skipped, newMsgDist, newLastUserIndex, newLastUserName = positionMessageEntry(entry, message, i, messageY, lastDrawnUserIndex, lastDrawnUserName, sizing)
     if skipped then
       entryCount = entryCount - 1
     else
@@ -2024,7 +2085,7 @@ local function isUserNameCovered(entry, userNameSize)
 
     if notif.state ~= 'queued' then
       local layout = getNotificationLayout(notif)
-      local bannerHeight = layout.isSingleLine and scaleNum(notification.lineHeight.single) or scaleNum(notification.lineHeight.double)
+      local bannerHeight = layout.scaledBannerHeight
       local bannerWidth, bannerOffsetX, bannerOffsetY = getNotificationBanner(notif)
       local bannerLeft = notificationLeft + bannerOffsetX
       local bannerTop = scaleNum(41) + bannerOffsetY - messagesWindowTop
@@ -2038,20 +2099,21 @@ local function isUserNameCovered(entry, userNameSize)
 end
 
 ---@param entry table @layout entry from buildMessageLayout
----@param metrics table @sizes captured from the Messages child
+---@param layout table @sizes captured from the Messages child
 ---@param offset vec2 @added to every cursor position
 ---@param interactive boolean @whether hover handling runs
 ---Draws one chat message.
-local function drawMessageEntry(entry, metrics, offset, interactive)
-  local winWidth, winHalfWidth = metrics.winWidth, metrics.winHalfWidth
-  local messageFontSize, userNameFontSize, timestampFontSize = metrics.messageFontSize, metrics.userNameFontSize, metrics.timestampFontSize
-  local userNameOffsetX, messagePadding, messageMaxWidth, messageRounding = metrics.userNameOffsetX, metrics.messagePadding, metrics.messageMaxWidth, metrics.messageRounding
+local function drawMessageEntry(entry, layout, offset, interactive)
+  local winWidth, winHalfWidth = layout.winWidth, layout.winHalfWidth
+  local messageFontSize, userNameFontSize, timestampFontSize = layout.messageFontSize, layout.userNameFontSize, layout.timestampFontSize
+  local userNameOffsetX, messagePadding, messageMaxWidth, messageRounding = layout.userNameOffsetX, layout.messagePadding, layout.messageMaxWidth, layout.messageRounding
 
   local sizes = entry.sizes
   local userNameTextSize = sizes.userNameTextSize
   local messageTextSize = sizes.messageTextSize
   local timestampSize = sizes.timestampSize
   local messageUsernameColor = rgbm.colors.gray
+  local bubbleColor, messageTextColor, bubbleRight
   if settings.chatUsernameColor then messageUsernameColor = chat.userNameColors[entry.userName] or rgbm.colors.gray end
 
   if entry.userIndex == 0 then
@@ -2068,12 +2130,8 @@ local function drawMessageEntry(entry, metrics, offset, interactive)
       ui.popDWriteFont()
     end
 
-    ui.pushDWriteFont(entry.fontWeight)
-    ui.setCursor(ceilVec2(winWidth - scaleNum(5), entry.bubbleY) + offset)
-    ui.drawRectFilled(ui.getCursor() - ceilVec2(messageTextSize.x + messagePadding.x, messageTextSize.y + messagePadding.y), ui.getCursor(), colors.final.messageOwn, messageRounding)
-    ui.setCursor(ui.getCursor() - ceilVec2(messageTextSize.x + messagePadding.x / 2, messageTextSize.y + messagePadding.y / 2))
-    ui.dwriteTextAligned(entry.text, messageFontSize, ui.Alignment.Start, ui.Alignment.Start, ceilVec2(messageTextSize.x, messageTextSize.y + messageRounding), true, colors.final.messageOwnText)
-    ui.popDWriteFont()
+    bubbleColor, messageTextColor = colors.final.messageOwn, colors.final.messageOwnText
+    bubbleRight = winWidth - scaleNum(5)
   elseif entry.userIndex > 0 then
     if entry.userNameY or entry.timestampY then
       ui.pushDWriteFont(app.font.bold)
@@ -2100,22 +2158,25 @@ local function drawMessageEntry(entry, metrics, offset, interactive)
       ui.popDWriteFont()
     end
 
-    local bubbleColor, messageTextColor = colors.final.message, pickThemeColor(rgbm.colors.black, rgbm.colors.white)
+    bubbleColor, messageTextColor = colors.final.message, pickThemeColor(rgbm.colors.black, rgbm.colors.white)
     if checkIfFriend(entry.userName) then
       bubbleColor = colors.final.messageFriend
       messageTextColor = colors.final.messageFriendText
     end
-
-    ui.pushDWriteFont(entry.fontWeight)
-    ui.setCursor(ceilVec2(messageTextSize.x + messagePadding.x + scaleNum(5), entry.bubbleY) + offset)
-    ui.drawRectFilled(ui.getCursor() - ceilVec2(messageTextSize.x + messagePadding.x, messageTextSize.y + messagePadding.y), ui.getCursor(), bubbleColor, messageRounding)
-    ui.setCursor(ui.getCursor() - ceilVec2(messageTextSize.x + messagePadding.x / 2, messageTextSize.y + messagePadding.y / 2))
-    ui.dwriteTextAligned(entry.text, messageFontSize, ui.Alignment.Start, ui.Alignment.Start, ceilVec2(messageTextSize.x, messageTextSize.y + messageRounding), true, messageTextColor)
-    ui.popDWriteFont()
+    bubbleRight = messageTextSize.x + messagePadding.x + scaleNum(5)
   elseif entry.userIndex == -1 then
     ui.pushDWriteFont(app.font.bold)
     ui.setCursor(ceilVec2(winHalfWidth - messageTextSize.x / 2, entry.textY) + offset)
     ui.dwriteTextAligned(entry.text, messageFontSize, ui.Alignment.Center, ui.Alignment.Start, ceilVec2(messageTextSize.x, messageTextSize.y + messageRounding), true, rgbm.colors.gray)
+    ui.popDWriteFont()
+  end
+
+  if entry.userIndex >= 0 then
+    ui.pushDWriteFont(entry.fontWeight)
+    ui.setCursor(ceilVec2(bubbleRight, entry.bubbleY) + offset)
+    ui.drawRectFilled(ui.getCursor() - ceilVec2(messageTextSize.x + messagePadding.x, messageTextSize.y + messagePadding.y), ui.getCursor(), bubbleColor, messageRounding)
+    ui.setCursor(ui.getCursor() - ceilVec2(messageTextSize.x + messagePadding.x / 2, messageTextSize.y + messagePadding.y / 2))
+    ui.dwriteTextAligned(entry.text, messageFontSize, ui.Alignment.Start, ui.Alignment.Start, ceilVec2(messageTextSize.x, messageTextSize.y + messageRounding), true, messageTextColor)
     ui.popDWriteFont()
   end
 end
@@ -2131,24 +2192,21 @@ local function drawMessages()
   local messagesPos = scaleVec2(10, 18, true)
   local childSize = scaleVec2(270, 483 - chat.input.offset / app.scale)
   local entries, entryCount, totalHeight = buildMessageLayout()
+  local chatSizing = getChatSizing()
   ui.setCursor(messagesPos)
   local lastMessagePadding = (entryCount > 0 and entries[entryCount].userIndex == -1) and 0 or scaleNum(8)
   ui.setNextWindowContentSize(vec2(0, totalHeight - lastMessagePadding))
   ui.childWindow('Messages', childSize, false, flags.window, function()
     local winWidth = ui.windowWidth()
     local winHalfWidth = winWidth / 2
-    local messageFontSize = scaleNum(settings.chatFontSize)
-    local userNameFontSize = scaleNum(settings.chatFontSize - 2)
-    local timestampFontSize = scaleNum(settings.chatFontSize - 4)
     local userNameOffsetX = scaleNum(13)
-    local messagePadding = scaleVec2(15, 10)
     local messageMaxWidth = scaleNum(250)
     local messageRounding = scaleNum(10)
 
-    local metrics = glass.messages.metrics
-    metrics.winWidth, metrics.winHalfWidth = winWidth, winHalfWidth
-    metrics.messageFontSize, metrics.userNameFontSize, metrics.timestampFontSize = messageFontSize, userNameFontSize, timestampFontSize
-    metrics.userNameOffsetX, metrics.messagePadding, metrics.messageMaxWidth, metrics.messageRounding = userNameOffsetX, messagePadding, messageMaxWidth, messageRounding
+    local layout = glass.messages.layout
+    layout.winWidth, layout.winHalfWidth = winWidth, winHalfWidth
+    layout.messageFontSize, layout.userNameFontSize, layout.timestampFontSize = chatSizing.messageFontSize, chatSizing.userNameFontSize, chatSizing.timestampFontSize
+    layout.userNameOffsetX, layout.messagePadding, layout.messageMaxWidth, layout.messageRounding = userNameOffsetX, chatSizing.messagePadding, messageMaxWidth, messageRounding
 
     if #chat.messages > 0 then
       local winHeight = ui.windowHeight()
@@ -2183,7 +2241,7 @@ local function drawMessages()
       for i = startIndex, entryCount do
         local entry = entries[i]
         if entry.startY > visibleBottom or entry.endY > revealHeight then break end
-        drawMessageEntry(entry, metrics, vec2(), true)
+        drawMessageEntry(entry, layout, vec2(), true)
       end
 
       chat.scroll.wasAtBottom = (ui.getScrollMaxY() - ui.getScrollY()) < scaleNum(50)
@@ -2251,13 +2309,13 @@ glass.shader = {
   shader = [[
     static const float2 LIGHT_DIR = float2(-0.6, -0.8);
     static const float SPEC_POWER = 3.0;
-    static const float LIT_STRENGTH = 1;
-    static const float FAR_STRENGTH = 0.5;
-    static const float RIM_FALLOFF = 1.5;
+    static const float LIT_STRENGTH = 0.4;
+    static const float FAR_STRENGTH = 0.05;
+    static const float RIM_FALLOFF = 1.2;
     static const float HAIR_FALLOFF = 0.5;
-    static const float HAIR_STRENGTH = 0.5;
+    static const float HAIR_STRENGTH = 0.12;
     static const float INNER_GLOW = 0.05;
-    static const float FAR_SHADE = 0.15;
+    static const float FAR_SHADE = 0.18;
 
     float roundedBoxDistance(float2 localPosition, float2 boxHalfSize, float cornerRadius) {
       float2 corner = abs(localPosition) - boxHalfSize + cornerRadius;
@@ -2279,9 +2337,8 @@ glass.shader = {
         glassDistance(localPosition + gradientStep.xy) - glassDistance(localPosition - gradientStep.xy),
         glassDistance(localPosition + gradientStep.yx) - glassDistance(localPosition - gradientStep.yx)) + 1e-5);
       float lightFacing = dot(edgeNormal, LIGHT_DIR);
-      float rim = pow(1.0 - saturate(-edgeDistance / glassRadius), 2.0);
-
       float rimDepth = -edgeDistance;
+      float rim = pow(1.0 - saturate(rimDepth / glassRadius), 2.0);
       float rimBand = smoothstep(edgeWidth * RIM_FALLOFF, 0.0, rimDepth);
       float hairBand = smoothstep(edgeWidth * HAIR_FALLOFF, 0.0, rimDepth);
       float specular = (pow(saturate(lightFacing), SPEC_POWER) * LIT_STRENGTH + pow(saturate(-lightFacing), SPEC_POWER) * FAR_STRENGTH) * rimBand;
@@ -2336,6 +2393,7 @@ local function drawGlass(key, topLeft, bottomRight, rounding, options)
   if options and options.capture then
     captureTopLeft, captureBottomRight = options.capture.topLeft, options.capture.bottomRight
   end
+
   local captureSize = captureBottomRight - captureTopLeft
 
   local blurRadius = math.min(captureSize.x, captureSize.y) / 2 * glass.blurSpread
@@ -2366,7 +2424,7 @@ local function drawGlass(key, topLeft, bottomRight, rounding, options)
   local isDirty = (options and options.overlays)
     or signature.scrollY ~= messages.scrollY
     or signature.reveal ~= messages.reveal
-    or signature.winWidth ~= messages.metrics.winWidth
+    or signature.winWidth ~= messages.layout.winWidth
     or signature.generation ~= chat.msgCacheGen
     or signature.revision ~= glass.cacheGen
     or signature.isOnline ~= player.isOnline
@@ -2374,7 +2432,7 @@ local function drawGlass(key, topLeft, bottomRight, rounding, options)
     or signature.y ~= capturePosition.y
 
   if isDirty then
-    signature.scrollY, signature.reveal, signature.winWidth = messages.scrollY, messages.reveal, messages.metrics.winWidth
+    signature.scrollY, signature.reveal, signature.winWidth = messages.scrollY, messages.reveal, messages.layout.winWidth
     signature.generation, signature.revision, signature.isOnline = chat.msgCacheGen, glass.cacheGen, player.isOnline
     signature.x, signature.y = capturePosition.x, capturePosition.y
 
@@ -2386,13 +2444,13 @@ local function drawGlass(key, topLeft, bottomRight, rounding, options)
       capture:clear(colors.final.display)
 
       local entries, entryCount = buildMessageLayout()
-      if player.isOnline and entryCount > 0 and messages.metrics.winWidth then
+      if player.isOnline and entryCount > 0 and messages.layout.winWidth then
         local offset = vec2(messagesPosition.x - capturePosition.x, messagesPosition.y - capturePosition.y - messages.scrollY)
         local visibleTop = capturePosition.y - messagesPosition.y + messages.scrollY
         for entryIndex = getFirstVisibleMessageIndex(entries, entryCount, visibleTop), entryCount do
           local entry = entries[entryIndex]
           if entry.startY > visibleTop + quadSize.y or entry.endY > messages.reveal then break end
-          drawMessageEntry(entry, messages.metrics, offset, false)
+          drawMessageEntry(entry, messages.layout, offset, false)
         end
       end
 
@@ -2482,6 +2540,7 @@ local function drawContact()
 
     local contactName = community.contact
     if player.serverCommunity == 'default' then contactName = contactName .. ' Chat' end
+
     local contactTextSize = ui.measureDWriteText(contactName, fontSize)
     local contactTextCenter = math.ceil(winHalf - contactTextSize.x / 2)
     local contactTextPosY = scaleNum(83)
@@ -2722,6 +2781,7 @@ end
 local function drawCustomChatInput()
   local inputSize = scaleVec2(235, 32 + chat.input.offset / app.scale)
   local inputBoxSize = scaleVec2(232, 27 + chat.input.offset / app.scale)
+
   local inputFontSize = scaleNum(settings.chatFontSize)
   local inputWrap = scaleNum(190)
 
@@ -2833,13 +2893,11 @@ local function drawNotifications()
   if not getActiveNotification() then return end
 
   local statusBarPadding = scaleVec2(0, notification.verticalOffset.rest)
-
   local windowWidth = scaleNum(notification.width)
-  local singleLineHeight = scaleNum(notification.lineHeight.single)
-  local doubleLineHeight = scaleNum(notification.lineHeight.double)
 
   local contactImgSize = scaleVec2(notification.avatar.size, notification.avatar.size)
   local imessageImgSize = scaleVec2(notification.messageIcon.size, notification.messageIcon.size)
+
   local titleFontSize = scaleNum(10)
   local contentFontSize = scaleNum(notification.content.fontSize)
   local contentFontColor = colors.final.elements
@@ -2855,7 +2913,7 @@ local function drawNotifications()
 
     if notif.state ~= 'queued' then
       local layout = getNotificationLayout(notif)
-      local bannerHeight = layout.isSingleLine and singleLineHeight or doubleLineHeight
+      local bannerHeight = layout.scaledBannerHeight
       local windowSize = vec2(windowWidth, bannerHeight)
 
       ui.setCursor(bannerPos)
@@ -3477,9 +3535,9 @@ function script.windowMainSettings()
           end)
           ui.unindent(app.settingsIndentOffset)
 
-          settingsCheckbox('Force App to Bottom', 'forceBottom', 'If enabled, app will be forced to the bottom of the screen')
+          settingsCheckbox('Force App to Bottom', 'forceBottom', 'If enabled, the app stays at the bottom of the screen')
 
-          settingsCheckbox('Chat Inactivity Minimizes Phone', 'appMove', 'If enabled, the app will move down to free screen space', function(newVal)
+          settingsCheckbox('Chat Inactivity Minimizes Phone', 'appMove', 'If enabled, the app moves down to free up screen space after chat inactivity', function(newVal)
             if newVal then
               movement.up = false
               movement.timer = settings.appMoveTimer
@@ -3488,23 +3546,23 @@ function script.windowMainSettings()
 
           if settings.appMove then
             ui.indent(app.settingsIndentOffset)
-            settingsSlider('appMoveTimer', 1, 120, 'Inactivity: %.0f seconds', 'Time before app moves down', function(newVal) movement.timer = newVal end)
+            settingsSlider('appMoveTimer', 1, 120, 'Inactivity: %.0f seconds', 'Time before the app moves down', function(newVal) movement.timer = newVal end)
 
-            settingsSlider('appMoveSpeed', 1, 50, 'Speed: %.0f', 'How fast the app should move up/down')
+            settingsSlider('appMoveSpeed', 1, 50, 'Speed: %.0f', 'How quickly the app moves up or down')
             ui.unindent(app.settingsIndentOffset)
           end
 
-          settingsCheckbox('Use 12h Clock', 'use12HourClock', 'If enabled, uses 12 hour time format\nMessage timestamps will include AM/PM', function() chat.msgCacheGen = chat.msgCacheGen + 1 end)
+          settingsCheckbox('Use 12-Hour Clock', 'use12HourClock', 'If enabled, uses a 12-hour time format\nMessage timestamps include AM/PM', function() chat.msgCacheGen = chat.msgCacheGen + 1 end)
         end)
 
         ui.tabItem('Theme', function()
-          settingsCheckbox('Dark Mode', 'darkMode', 'If enabled, app will use dark mode', function(newVal)
+          settingsCheckbox('Dark Mode', 'darkMode', 'If enabled, uses dark mode', function(newVal)
             if newVal then settings.darkModeAuto = false end
             updateColors()
           end)
 
           if not settings.darkMode then
-            settingsCheckbox('Automatic Light/Dark Mode', 'darkModeAuto', 'If enabled, app will automatically switch between dark/light mode', function() updateColors() end)
+            settingsCheckbox('Automatic Light/Dark Mode', 'darkModeAuto', 'If enabled, automatically switches between light and dark modes', function() updateColors() end)
 
             if settings.darkModeAuto then
               ui.indent(app.settingsIndentOffset)
@@ -3524,9 +3582,9 @@ function script.windowMainSettings()
             end
           end
 
-          settingsCheckbox('Liquid Glass', 'liquidGlass', 'If enabled, a iOS 27-like liquid glass effect will be used for some elements.')
+          settingsCheckbox('Liquid Glass', 'liquidGlass', 'If enabled, uses an iOS-style Liquid Glass effect on some elements')
 
-          settingsCheckbox('Custom Message Colors', 'customColor', 'If enabled, allows you to recolor certain elements', function() updateColors() end)
+          settingsCheckbox('Custom Message Colors', 'customColor', 'If enabled, lets you customize the colors of your messages and friends’ messages', function() updateColors() end)
           if settings.customColor then
             ui.offsetCursorY(-5)
             local colorPickerWidth = 130
@@ -3560,7 +3618,7 @@ function script.windowMainSettings()
         end)
 
         ui.tabItem('Music', function()
-          settingsCheckbox('Show Music Information', 'songInfo', 'If enabled, shows current song information if detected\nCheck your CSP Music settings if there are issues', function(newVal)
+          settingsCheckbox('Show Music Information', 'songInfo', 'If enabled, shows detected song information\nCheck your CSP music settings if information is missing or incorrect', function(newVal)
             if not newVal then
               songInfo.final = ''
               songInfo.artist = ''
@@ -3573,19 +3631,19 @@ function script.windowMainSettings()
           if settings.songInfo then
             ui.indent(app.settingsIndentOffset)
 
-            settingsCheckbox('Always Scroll Text', 'songInfoScrollAlways', 'If enabled, will scroll text even if it could be displayed in full without scrolling', function() updateSongInfo(true) end)
+            settingsCheckbox('Always Scroll Text', 'songInfoScrollAlways', 'If enabled, scrolls text even when it fits without scrolling', function() updateSongInfo(true) end)
 
-            settingsCheckbox('Auto Spacing', 'songInfoAutoSpacing', 'Automatically spaces the song text based on app size')
+            settingsCheckbox('Auto Spacing', 'songInfoAutoSpacing', 'Adjusts the spacing between song details to fit the app size')
 
-            if not settings.songInfoAutoSpacing then settingsSlider('songInfoSpacing', 0, 300, 'Spacing: %.0f', 'The amount of spacing between the end and start of the song', nil, true) end
+            if not settings.songInfoAutoSpacing then settingsSlider('songInfoSpacing', 0, 300, 'Spacing: %.0f', 'Space between the end and start of the song text', nil, true) end
 
-            settingsSlider('songInfoScrollSpeed', 1, 300, 'Scroll Speed: %.0f', 'Speed that the text is scrolled at')
+            settingsSlider('songInfoScrollSpeed', 1, 300, 'Scroll Speed: %.0f', 'How quickly the text scrolls')
 
             local scrollDirNames = { [0] = 'Left', [1] = 'Retro', [2] = 'Right' }
             local scrollDirStr = scrollDirNames[settings.songInfoScrollDirection]
             settings.songInfoScrollDirection = ui.slider('##songInfoScrollDirection', settings.songInfoScrollDirection, 0, 2, 'Scroll Direction: ' .. scrollDirStr, true)
 
-            settingsCheckbox('Enable Edge Gradients', 'songInfoGradient', 'If enabled, left and right edges of the text will be blended in with a gradient')
+            settingsCheckbox('Enable Edge Gradients', 'songInfoGradient', 'If enabled, blends the left and right edges of the text into the background')
             if settings.songInfoGradient then
               ui.indent(app.settingsIndentOffset)
               settingsSlider('songInfoGradientWidth', 0, 100, 'Gradient Width: %.0f', 'Width of the gradient')
@@ -3593,7 +3651,7 @@ function script.windowMainSettings()
               ui.unindent(app.settingsIndentOffset)
             end
 
-            settingsCheckbox('Hide Selfie Camera', 'songInfoHidesCamera', 'If enabled, will hide the selfie camera below the song information')
+            settingsCheckbox('Hide Selfie Camera', 'songInfoHidesCamera', 'If enabled, hides the selfie camera below the song information')
 
             ui.unindent(app.settingsIndentOffset)
           end
@@ -3605,16 +3663,16 @@ function script.windowMainSettings()
       ui.tabBar('ChatTabs', function()
         ui.tabItem('Visuals', function()
           ui.indent(app.settingsIndentOffset)
-          settingsSlider('chatFontSize', 6, 36, 'Chat Fontsize: %.0f', nil, function() chat.msgCacheGen = chat.msgCacheGen + 1 end)
+          settingsSlider('chatFontSize', 6, 36, 'Chat Font Size: %.0f', nil, function() chat.msgCacheGen = chat.msgCacheGen + 1 end)
 
-          settingsSlider('chatScrollDistance', 1, 100, 'Chat Scroll Distance: %.0f', 'Distance to scroll the chat per mouse wheel scroll')
+          settingsSlider('chatScrollDistance', 1, 100, 'Chat Scroll Distance: %.0f', 'How far the chat scrolls with each mouse wheel movement')
           ui.unindent(app.settingsIndentOffset)
 
-          settingsCheckbox('Show Timestamps', 'chatShowTimestamps', 'If enabled, shows message timestamps', function() chat.msgCacheGen = chat.msgCacheGen + 1 end)
+          settingsCheckbox('Show Timestamps', 'chatShowTimestamps', 'If enabled, shows timestamps on chat messages', function() chat.msgCacheGen = chat.msgCacheGen + 1 end)
 
-          settingsCheckbox('Use Colored Usernames', 'chatUsernameColor', 'If enabled, uses colored usernames if possible\nServers can overwrite CM tag colors')
+          settingsCheckbox('Use Colored Usernames', 'chatUsernameColor', 'If enabled, shows colored usernames when available\nServers can override CM tag colors')
 
-          settingsCheckbox('Highlight Latest Message', 'chatLatestBold', 'If enabled, text of the latest message will always be bold', function()
+          settingsCheckbox('Highlight Latest Message', 'chatLatestBold', 'If enabled, keeps your latest message in bold', function()
             local latestMsg = chat.messages[chat.latestUserMessage]
             if latestMsg then latestMsg.cache = nil end
             chat.msgCacheGen = chat.msgCacheGen + 1
@@ -3622,61 +3680,65 @@ function script.windowMainSettings()
         end)
 
         ui.tabItem('Filters', function()
-          settingsCheckbox('Chat History Settings', 'chatHistorySettings', 'If enabled, allows you to change the chat message history settings\nDefault:\n500 messages minimum\nAfter 500 messages, the oldest will be removed if they are older than 15 minutes')
+          settingsCheckbox(
+            'Chat History Settings',
+            'chatHistorySettings',
+            'If enabled, lets you change how many messages are kept and when older messages are removed\nDefault:\nAt least 500 messages\nOnce the history exceeds 500 messages, older messages are removed after 15 minutes'
+          )
           if settings.chatHistorySettings then
             ui.indent(app.settingsIndentOffset)
-            settingsSlider('chatKeepSize', 10, 1000, 'Always keep %.0f Messages', 'History will always keep at least this many messages regardless of how old they are')
+            settingsSlider('chatKeepSize', 10, 1000, 'Always Keep %.0f Messages', 'Keeps at least this many messages, regardless of their age')
 
-            settingsSlider('chatOlderThan', 1, 60, 'Remove if older than %.0f min', 'Messages older than this will be removed once the history reaches ' .. settings.chatKeepSize .. ' messages')
+            settingsSlider('chatOlderThan', 1, 60, 'Remove if Older Than %.0f min', 'Removes messages older than this once the history exceeds ' .. settings.chatKeepSize .. ' messages')
             ui.unindent(app.settingsIndentOffset)
           end
 
-          settingsCheckbox('Show Join/Leave Messages', 'connectionEvents', 'If enabled, shows server message when a player joins/leaves the server')
+          settingsCheckbox('Show Join/Leave Messages', 'connectionEvents', 'If enabled, shows a server message when a player joins or leaves')
           if settings.connectionEvents then
             ui.indent(app.settingsIndentOffset)
-            settingsCheckbox('Friends Only', 'connectionEventsFriendsOnly', 'If enabled, only shows join/leave messages of friends')
+            settingsCheckbox('Friends Only', 'connectionEventsFriendsOnly', 'If enabled, only shows messages when friends join or leave')
 
-            settingsCheckbox('Hide Traffic', 'connectionEventsHideTraffic', 'If enabled, hides join/leave messages of hidden AssettoServer traffic cars')
+            settingsCheckbox('Hide Traffic', 'connectionEventsHideTraffic', 'If enabled, hides join/leave messages for AssettoServer traffic cars that hide their labels')
             ui.unindent(app.settingsIndentOffset)
           end
 
-          settingsCheckbox('Hide Kick Ban Messages', 'chatHideKickBan', 'If enabled, hides kick and ban messages from other players')
+          settingsCheckbox('Hide Kick and Ban Messages', 'chatHideKickBan', 'If enabled, hides kick and ban messages from other players')
 
-          settingsCheckbox('Hide Annoying Messages', 'chatHideAnnoying', 'If enabled, hides annoying messages from apps such as Pit Lane Penalty and Real Penalty')
+          settingsCheckbox('Hide Annoying Messages', 'chatHideAnnoying', 'If enabled, hides messages from apps such as Pit Lane Penalty and Real Penalty')
           if settings.chatHideAnnoying then
             ui.indent(app.settingsIndentOffset)
-            settingsCheckbox('AssettoServer Race Challenge Results', 'chatHideRaceMsg', 'If enabled, also hides "X just beat Y in a Race" server messages')
+            settingsCheckbox('AssettoServer Race Challenge Results', 'chatHideRaceMsg', 'If enabled, also hides server messages such as "X just beat Y in a race"')
             ui.unindent(app.settingsIndentOffset)
           end
         end)
 
         ui.tabItem('Notifications', function()
-          settingsCheckbox('Enable Notifications', 'notifBannerEnabled', 'If enabled, shows a drop-down notification for new messages\nRespects your Filters tab rules:\nIf you have disabled connection event messages, no notification will be shown even if enabled here')
+          settingsCheckbox('Enable Notifications', 'notifBannerEnabled', 'If enabled, shows notification banners for new messages\nFollows the rules in the Filters tab. If join/leave messages are disabled there, no connection notification will appear.')
           if settings.notifBannerEnabled then
             ui.indent(app.settingsIndentOffset)
-            settingsSlider('notifBannerDuration', 1, 60, 'Show Notification for: %.0f seconds', 'How long the notification banner should be displayed', function(newValue) notification.duration = newValue end)
+            settingsSlider('notifBannerDuration', 1, 60, 'Notification Duration: %.0f seconds', 'How long each notification banner stays visible', function(newValue) notification.duration = newValue end)
 
-            settingsCheckbox('Use for New Messages', 'notifBannerMessages', 'If enabled, shows a notification for new chat messages')
+            settingsCheckbox('Use for New Messages', 'notifBannerMessages', 'If enabled, shows a banner for new chat messages')
             if settings.notifBannerMessages then
               ui.indent(app.settingsIndentOffset)
-              settingsCheckbox('Use Colored Usernames', 'notifBannerUsernameColor', 'If enabled, uses colored usernames in notifications if possible\nServers can overwrite CM tag colors')
+              settingsCheckbox('Use Colored Usernames', 'notifBannerUsernameColor', 'If enabled, uses colored usernames in notifications when available\nServers can override CM tag colors')
               ui.unindent(app.settingsIndentOffset)
             end
 
-            settingsCheckbox('Use for Connection Events', 'notifBannerConnections', 'If enabled, shows a notification when a player joins/leaves the server')
+            settingsCheckbox('Use for Connection Events', 'notifBannerConnections', 'If enabled, shows a notification when a player joins or leaves the server')
             if settings.notifBannerConnections then
               ui.indent(app.settingsIndentOffset)
               settingsCheckbox('Show Player Selected Car', 'notifBannerCarName', "If enabled, includes the player's car in connection event notifications")
               ui.unindent(app.settingsIndentOffset)
             end
 
-            settingsCheckbox('Hide When App Already Up', 'notifBannerHideWhenAppUp', 'If enabled, no notification banner is shown if the app is already maximized')
+            settingsCheckbox('Hide When App Is Maximized', 'notifBannerHideWhenAppUp', 'If enabled, hides notification banners while the app is maximized')
 
-            settingsCheckbox('Maximize App on Notification', 'notifBannerFullRaise', 'If enabled, the app maximizes for notifications instead of only peeking up to reveal the banner')
+            settingsCheckbox('Maximize App on Notification', 'notifBannerFullRaise', 'If enabled, maximizes the app for notifications instead of only raising it enough to show the banner')
 
-            if not settings.notifBannerFullRaise then settingsCheckbox('Adaptive Peek Distance', 'notifBannerAdaptivePeek', 'If enabled, the app peeks up only as far as the banner needs\nSingle line notifications peek less than two line ones') end
+            if not settings.notifBannerFullRaise then settingsCheckbox('Adaptive Peek Distance', 'notifBannerAdaptivePeek', 'If enabled, raises the app only far enough to show the banner') end
 
-            settingsCheckbox('Prioritize Server Messages', 'notifBannerServerPriority', 'If enabled, queued user chat notifications get skipped so server messages play back to back')
+            settingsCheckbox('Prioritize Server Messages', 'notifBannerServerPriority', 'If enabled, shows server notifications before queued chat notifications')
 
             ui.unindent(app.settingsIndentOffset)
           end
@@ -3685,12 +3747,12 @@ function script.windowMainSettings()
     end)
 
     ui.tabItem('Audio', function()
-      settingsCheckbox('Enable Audio', 'enableAudio', 'Toggles all app audio')
+      settingsCheckbox('Enable Audio', 'enableAudio', 'Enables or disables all app audio')
 
       if settings.enableAudio then
         ui.tabBar('AudioTabs', function()
           ui.tabItem('Typing', function()
-            settingsCheckbox('Enable Keystroke Audio', 'enableKeyboard', 'If enabled, the app will play keystroke sounds when typing')
+            settingsCheckbox('Enable Keystroke Audio', 'enableKeyboard', 'If enabled, plays keystroke sounds while typing')
             if settings.enableKeyboard then
               ui.indent(app.settingsIndentOffset)
               settingsSlider('volumeKeyboard', 0.1, 10, 'Keystroke Volume: %.1f')
@@ -3700,30 +3762,30 @@ function script.windowMainSettings()
           end)
 
           ui.tabItem('Messages', function()
-            settingsCheckbox('Enable Message Audio', 'enableMessage', 'If enabled, the app will play message received sounds')
+            settingsCheckbox('Enable Message Audio', 'enableMessage', 'If enabled, plays sounds for received messages')
             if settings.enableMessage then
               ui.indent(app.settingsIndentOffset)
               settingsSlider('volumeMessage', 0.1, 10, 'Message Volume: %.1f')
               if ui.modernButton('Play Test Message', 0, ui.ButtonFlags.None, nil, app.modernButtonOffset, nil) then playTestAudio(audio.message) end
 
-              settingsCheckbox('Friend Only', 'messagesFriendsOnly', 'If enabled, the app will only play the message received sound for player messages from friends')
+              settingsCheckbox('Friends Only', 'messagesFriendsOnly', 'If enabled, plays the message sound only for messages from friends')
 
-              settingsCheckbox('Server Messages', 'messagesServer', 'If enabled, the app will play the message received sound for messages from the server')
+              settingsCheckbox('Server Messages', 'messagesServer', 'If enabled, plays the message sound for messages from the server')
               ui.unindent(app.settingsIndentOffset)
             end
           end)
 
           ui.tabItem('Notifications', function()
-            settingsCheckbox('Enable Notification Audio', 'enableNotification', 'If enabled, the app will play notification sounds')
+            settingsCheckbox('Enable Notification Audio', 'enableNotification', 'If enabled, plays notification sounds')
             if settings.enableNotification then
               ui.indent(app.settingsIndentOffset)
               settingsSlider('volumeNotification', 0.1, 10, 'Notification Volume: %.1f')
               if ui.modernButton('Play Test Notification', 0, ui.ButtonFlags.None, nil, app.modernButtonOffset, nil) then playTestAudio(audio.notification) end
 
-              settingsCheckbox('@' .. player.driverName .. ' mentions', 'notificationsMentions', 'If enabled, the app will play the notification sound when you are mentioned in chat')
+              settingsCheckbox('@' .. player.driverName .. ' Mentions', 'notificationsMentions', 'If enabled, plays a notification sound when you are mentioned in chat')
 
-              settingsCheckbox('Friend Messages', 'notificationsFriendMessages', 'If enabled, the app will play the notification sound when a friend sends a chat message')
-              if settings.connectionEvents then settingsCheckbox('Friend Join/Leave', 'notificationsFriendConnections', 'If enabled, the app will play the notification sound when a friend joins/leaves the server') end
+              settingsCheckbox('Friend Messages', 'notificationsFriendMessages', 'If enabled, plays a notification sound when a friend sends a chat message')
+              if settings.connectionEvents then settingsCheckbox('Friend Join/Leave', 'notificationsFriendConnections', 'If enabled, plays a notification sound when a friend joins or leaves the server') end
               ui.unindent(app.settingsIndentOffset)
             end
           end)
@@ -3733,8 +3795,8 @@ function script.windowMainSettings()
 
     if hasCarKey then
       ui.tabItem('Focus Mode', function()
-        ui.textColored('IF YOU ENABLE THIS I WILL TAKE NO RESPONSIBILITY\nWHEN YOU IGNORE ADMIN MESSAGES AND GET BANNED', rgbm.colors.red)
-        settingsCheckbox('Enable Focus Mode', 'focusMode', 'If enabled, only displays messages from yourself, friends and the server', function() chat.msgCacheGen = chat.msgCacheGen + 1 end)
+        ui.textColored('IF YOU ENABLE THIS, I TAKE NO RESPONSIBILITY\nIF YOU IGNORE ADMIN MESSAGES AND GET BANNED', rgbm.colors.red)
+        settingsCheckbox('Enable Focus Mode', 'focusMode', 'If enabled, shows messages from you, friends, and the server only', function() chat.msgCacheGen = chat.msgCacheGen + 1 end)
       end)
     end
   end)
