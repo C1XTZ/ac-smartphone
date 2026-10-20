@@ -102,6 +102,12 @@ local colors = {
   iMessageBlue = rgbm(0, 0.49, 1, 1),
   iMessageLightGray = rgbm(0.85, 0.85, 0.85, 1),
   iMessageDarkGray = rgbm(0.15, 0.15, 0.15, 1),
+  inputBackgroundLight = rgbm(0.94, 0.94, 0.94, 1),
+  inputBackgroundDark = rgbm(0.1, 0.1, 0.1, 1),
+  inputOutlineLight = rgbm(0.82, 0.82, 0.82, 1),
+  inputOutlineDark = rgbm(0.2, 0.2, 0.2, 1),
+  inputPlaceholderLight = rgbm(0.75, 0.75, 0.75, 1),
+  inputPlaceholderDark = rgbm(0.42, 0.42, 0.42, 1),
   iMessageGreen = rgbm(0.2, 0.75, 0.3, 1),
   iMessageSelected = rgbm(0, 0.49, 1, 0.33),
   emojiPickerButtonLight = rgbm(0, 0, 0, 0.33),
@@ -126,7 +132,9 @@ local colors = {
     messageOwnText = rgbm(),
     messageFriend = rgbm(),
     messageFriendText = rgbm(),
-    input = rgbm(),
+    inputBackground = rgbm(),
+    inputOutline = rgbm(),
+    inputPlaceholder = rgbm(),
     emojiPicker = rgbm(),
     emojiPickerOutline = rgbm(),
     emojiPickerActive = rgbm(),
@@ -243,13 +251,16 @@ local chat = {
     active = false,
     hovered = false,
     sendHovered = false,
+    mouseSelecting = false,
     placeholder = 'iMessage',
     text = '',
+    caret = 0,
+    selectionAnchor = nil,
+    rows = nil,
     offset = 0,
-    selected = nil,
     history = {},
     historyIndex = 0,
-    mentioned = '',
+    historyDraft = nil,
     sendCooldown = false,
   },
   hideStrings = {
@@ -275,7 +286,7 @@ local chat = {
   scroll = {
     stickyHeight = 0,
     wasAtBottom = true,
-    lastTotalHeight = 0,
+    lastContentHeight = 0,
     forceAutoscroll = false,
   },
   userNameColors = {},
@@ -326,6 +337,10 @@ local glass = {
   blurLevels = 2,
   blurSpread = 0.1,
   tint = 0.6,
+  inputLightTint = 0.7,
+  inputLightRimStrength = 0.5,
+  lightHairStrength = 0.25,
+  lightEdgeColor = rgbm(0, 0, 0, 1),
   notifTintBoost = 0.1,
   edgeWidth = 1.5,
   cacheGen = 0,
@@ -440,6 +455,33 @@ local function scaleNum(x, smooth) return math.ceil(app.scale * x) + (smooth and
 ---Scales, Ceils and converts two numbers into a vec2(). Optionally adds the app's movement offset.
 local function scaleVec2(x, y, smooth) return vec2(math.ceil(app.scale * x), math.ceil(app.scale * y) + (smooth and movement.smooth or 0)) end
 
+---@return table @scaled positions and sizes shared by the chat input controls
+---Returns shared geometry for the chat input controls.
+local function getChatInputLayout()
+  local buttonRadius = scaleNum(16)
+  local buttonInset = scaleNum(5)
+  local buttonGap = scaleNum(5)
+  local pillSize = scaleVec2(218, 32 + chat.input.offset / app.scale)
+  local pillOrigin = vec2(buttonInset + buttonRadius * 2 + buttonGap, scaleNum(2))
+  local windowSize = vec2(pillOrigin.x + pillSize.x + buttonInset, scaleNum(38 + chat.input.offset / app.scale))
+  local windowPosition = vec2((scaleNum(app.size.x) - windowSize.x) / 2, scaleNum(app.size.y) - scaleNum(40) - chat.input.offset + movement.smooth)
+  local emojiButtonCenter = vec2(buttonInset + buttonRadius, pillOrigin.y + pillSize.y - buttonRadius)
+
+  return {
+    windowSize = windowSize,
+    pillSize = pillSize,
+    fontSize = scaleNum(settings.chatFontSize),
+    textOrigin = pillOrigin + scaleVec2(10, 7),
+    wrapWidth = pillSize.x - scaleNum(46),
+    windowPosition = windowPosition,
+    pillOrigin = pillOrigin,
+    sendButtonCenter = vec2(pillOrigin.x + pillSize.x - scaleNum(17), pillOrigin.y + pillSize.y - scaleNum(16)),
+    sendButtonRadius = scaleNum(12),
+    emojiButtonCenter = emojiButtonCenter,
+    emojiButtonRadius = buttonRadius,
+  }
+end
+
 ---@param x number @x to ceil
 ---@param y number @y to ceil
 ---@return vec2 @ceiled vec2()
@@ -505,7 +547,9 @@ local function updateColors()
   colors.final.displayTransp:set(pickThemeColor(colors.transparent.displayLight, colors.transparent.displayDark))
   colors.final.elements:set(pickThemeColor(colors.displayColorDark, colors.displayColorLight))
   colors.final.outline:set(pickThemeColor(colors.outlineColorLight, colors.outlineColorDark))
-  colors.final.input:set(pickThemeColor(colors.transparent.black50, colors.transparent.white50))
+  colors.final.inputBackground:set(pickThemeColor(colors.inputBackgroundLight, colors.inputBackgroundDark))
+  colors.final.inputOutline:set(pickThemeColor(colors.inputOutlineLight, colors.inputOutlineDark))
+  colors.final.inputPlaceholder:set(pickThemeColor(colors.inputPlaceholderLight, colors.inputPlaceholderDark))
   colors.final.message:set(pickThemeColor(colors.iMessageLightGray, colors.iMessageDarkGray))
   colors.final.contactPill:set(pickThemeColor(colors.displayColorLight, colors.iMessageDarkGray))
   colors.final.contactOutline:set(pickThemeColor(colors.outlineColorLight, colors.outlineColorMedium))
@@ -1097,6 +1141,147 @@ end
 ---Chat input max length to keep chatbox from growing too tall.
 local function getInputMaxLength() return math.floor(490 * (13 / settings.chatFontSize) ^ 2) end
 
+---@return number|nil @start character boundary, or nil when there is no selection
+---@return number|nil @end character boundary, or nil when there is no selection
+---Returns the current selection boundaries.
+local function getInputSelection()
+  local anchor = chat.input.selectionAnchor
+  if anchor == nil or anchor == chat.input.caret then return nil end
+
+  return math.min(anchor, chat.input.caret), math.max(anchor, chat.input.caret)
+end
+
+---@param insertText string @text to insert in place of the selection
+---@return boolean @whether the updated text fits within the input length limit
+---Replaces the active selection, or inserts at the caret when there is no selection.
+local function replaceInputSelection(insertText)
+  local text = chat.input.text
+  local selectionStart, selectionEnd = getInputSelection()
+  selectionStart = selectionStart or chat.input.caret
+  selectionEnd = selectionEnd or chat.input.caret
+
+  local newLength = utf8len(text) - (selectionEnd - selectionStart) + utf8len(insertText)
+  if newLength > getInputMaxLength() then return false end
+
+  chat.input.text = utf8sub(text, 1, selectionStart) .. insertText .. utf8sub(text, selectionEnd + 1)
+  chat.input.caret = selectionStart + utf8len(insertText)
+  chat.input.selectionAnchor = nil
+  chat.input.historyDraft = nil
+  chat.input.historyIndex = 0
+
+  return true
+end
+
+---@param position number @character boundary to move the caret to
+---@param extendSelection boolean @whether to keep the current caret position as the selection anchor
+---Moves the caret while optionally extending the selection.
+local function moveInputCaret(position, extendSelection)
+  local textLength = utf8len(chat.input.text)
+  local newPosition = math.max(0, math.min(position, textLength))
+
+  if extendSelection then
+    if chat.input.selectionAnchor == nil then chat.input.selectionAnchor = chat.input.caret end
+  else
+    chat.input.selectionAnchor = nil
+  end
+
+  chat.input.caret = newPosition
+end
+
+---@param text string? @text to set, or nil to clear the input
+---Sets input text and places the caret at the end.
+local function setInputText(text)
+  chat.input.text = text or ''
+  chat.input.caret = utf8len(chat.input.text)
+  chat.input.selectionAnchor = nil
+  chat.input.mouseSelecting = false
+end
+
+---@param cutSelection boolean @whether to remove the selected text after copying it
+---Copies the active selection, optionally removing it after copying.
+local function copyInputSelection(cutSelection)
+  local selectionStart, selectionEnd = getInputSelection()
+  if not selectionStart then return end
+
+  ac.setClipboardText(utf8sub(chat.input.text, selectionStart + 1, selectionEnd))
+  if cutSelection then replaceInputSelection('') end
+end
+
+---@param direction number @negative to move to older messages, positive to move toward the draft
+---Moves through sent messages and restores the unsent draft when moving back down.
+local function navigateInputHistory(direction)
+  if direction < 0 then
+    if chat.input.historyIndex >= #chat.input.history then return end
+
+    if chat.input.historyIndex == 0 then chat.input.historyDraft = chat.input.text end
+    chat.input.historyIndex = chat.input.historyIndex + 1
+    setInputText(chat.input.history[#chat.input.history - chat.input.historyIndex + 1][3])
+  elseif chat.input.historyIndex > 1 then
+    chat.input.historyIndex = chat.input.historyIndex - 1
+    setInputText(chat.input.history[#chat.input.history - chat.input.historyIndex + 1][3])
+  elseif chat.input.historyIndex == 1 then
+    chat.input.historyIndex = 0
+    setInputText(chat.input.historyDraft or '')
+    chat.input.historyDraft = nil
+  end
+end
+
+---@param backward boolean @whether to delete before the caret; false deletes after it
+---Deletes the selection or the character adjacent to the caret.
+local function deleteInputText(backward)
+  if getInputSelection() then
+    replaceInputSelection('')
+  elseif backward and chat.input.caret > 0 then
+    chat.input.selectionAnchor = chat.input.caret - 1
+    replaceInputSelection('')
+  elseif not backward and chat.input.caret < utf8len(chat.input.text) then
+    chat.input.selectionAnchor = chat.input.caret + 1
+    replaceInputSelection('')
+  end
+end
+
+---@param direction number @negative for the previous boundary, positive for the next
+---@return number @character boundary of the adjacent word
+---Moves to the previous or next whitespace-delimited word boundary.
+local function getInputWordBoundary(direction)
+  local text = chat.input.text
+  local position = chat.input.caret
+  local textLength = utf8len(text)
+
+  if direction < 0 then
+    while position > 0 and utf8sub(text, position, position):match('%s') do
+      position = position - 1
+    end
+    while position > 0 and not utf8sub(text, position, position):match('%s') do
+      position = position - 1
+    end
+  else
+    while position < textLength and not utf8sub(text, position + 1, position + 1):match('%s') do
+      position = position + 1
+    end
+    while position < textLength and utf8sub(text, position + 1, position + 1):match('%s') do
+      position = position + 1
+    end
+  end
+
+  return position
+end
+
+---@param direction number @negative to delete the previous word, positive to delete the next
+---Deletes the selection or the whitespace-delimited word beside the caret.
+local function deleteInputWord(direction)
+  if getInputSelection() then
+    replaceInputSelection('')
+    return
+  end
+
+  local wordBoundary = getInputWordBoundary(direction)
+  if wordBoundary == chat.input.caret then return end
+
+  chat.input.selectionAnchor = wordBoundary
+  replaceInputSelection('')
+end
+
 ---@param text string @Text to search in.
 ---@param word string @Word to search for, matched case-insensitively as a whole word.
 ---@return boolean
@@ -1153,14 +1338,11 @@ local function sendChatMessage(message)
 
     chat.input.sendCooldown = true
 
-    if chat.input.hovered then
-      chat.input.text = ''
-    else
-      if chat.input.mentioned ~= '' then chat.input.mentioned = '' end
-      chat.input.active = false
-    end
+    if not chat.input.hovered then chat.input.active = false end
+    setInputText('')
 
     chat.input.historyIndex = 0
+    chat.input.historyDraft = nil
     chat.scroll.forceAutoscroll = true
     setTimeout(function() chat.scroll.forceAutoscroll = false end, 0.1)
     setTimeout(function() chat.input.sendCooldown = false end, 1)
@@ -1236,7 +1418,8 @@ local function handleKeyboardInput()
   local keyboardInput = ui.captureKeyboard(false, true)
   local msgLen = utf8len(chat.input.text) > 0
   local typed = keyboardInput:queue()
-  local inputMaxLength = getInputMaxLength()
+  local controlDown = ui.keyboardButtonDown(ui.KeyIndex.Control)
+  local shiftDown = ui.keyboardButtonDown(ui.KeyIndex.Shift)
 
   if ui.keyPressed(ui.Key.Backspace) or ui.keyPressed(ui.Key.Delete) then
     playAudio(audio.keyboard.delete)
@@ -1246,67 +1429,78 @@ local function handleKeyboardInput()
     playAudio(audio.keyboard.keystroke)
   end
 
-  if (ui.keyPressed(ui.Key.Backspace) or ui.keyPressed(ui.Key.Delete)) and msgLen then
-    if chat.input.selected then
-      chat.input.text = ''
-      chat.input.selected = nil
+  if ui.keyPressed(ui.Key.Backspace) then
+    if controlDown then
+      deleteInputWord(-1)
+    else
+      deleteInputText(true)
     end
-    chat.input.text = utf8sub(chat.input.text, 1, utf8len(chat.input.text) - 1)
+    return
+  elseif ui.keyPressed(ui.Key.Delete) then
+    if controlDown then
+      deleteInputWord(1)
+    else
+      deleteInputText(false)
+    end
     return
   elseif ui.keyPressed(ui.Key.Enter) and msgLen then
     sendChatMessage()
     emoji.picker = false
     return
-  elseif ui.keyboardButtonDown(ui.KeyIndex.Control) and ui.keyboardButtonPressed(ui.KeyIndex.V, true) then
+  elseif controlDown and ui.keyboardButtonPressed(ui.KeyIndex.V, true) then
     local clipboardText = (ui.getClipboardText() or ''):gsub('[%c]', '')
-    local inputText = chat.input.selected and '' or chat.input.text
-    if utf8len(inputText .. clipboardText) > inputMaxLength then return end
-    chat.input.text = inputText .. clipboardText
-    chat.input.selected = nil
+    replaceInputSelection(clipboardText)
     return
-  elseif ui.keyboardButtonDown(ui.KeyIndex.Control) and ui.keyboardButtonPressed(ui.KeyIndex.A) and msgLen then
-    if chat.input.selected then chat.input.selected = nil end
-    chat.input.selected = chat.input.text
+  elseif controlDown and ui.keyboardButtonPressed(ui.KeyIndex.A) and msgLen then
+    chat.input.selectionAnchor = 0
+    chat.input.caret = utf8len(chat.input.text)
     return
-  elseif ui.keyboardButtonDown(ui.KeyIndex.Control) and ui.keyboardButtonPressed(ui.KeyIndex.C) and chat.input.selected then
-    ac.setClipboardText(chat.input.selected)
+  elseif controlDown and ui.keyboardButtonPressed(ui.KeyIndex.C) then
+    copyInputSelection(false)
     return
-  elseif ui.keyboardButtonDown(ui.KeyIndex.Control) and ui.keyboardButtonPressed(ui.KeyIndex.X) and chat.input.selected then
-    ac.setClipboardText(chat.input.selected)
-    chat.input.text = ''
-    chat.input.selected = nil
+  elseif controlDown and ui.keyboardButtonPressed(ui.KeyIndex.X) then
+    copyInputSelection(true)
+    return
+  elseif controlDown and ui.keyPressed(ui.Key.Left) then
+    moveInputCaret(getInputWordBoundary(-1), shiftDown)
+    return
+  elseif controlDown and ui.keyPressed(ui.Key.Right) then
+    moveInputCaret(getInputWordBoundary(1), shiftDown)
+    return
+  elseif ui.keyPressed(ui.Key.Left) then
+    local selectionStart = getInputSelection()
+    if selectionStart and not shiftDown then
+      moveInputCaret(selectionStart, false)
+    else
+      moveInputCaret(chat.input.caret - 1, shiftDown)
+    end
+    return
+  elseif ui.keyPressed(ui.Key.Right) then
+    local _, selectionEnd = getInputSelection()
+    if selectionEnd and not shiftDown then
+      moveInputCaret(selectionEnd, false)
+    else
+      moveInputCaret(chat.input.caret + 1, shiftDown)
+    end
+    return
+  elseif ui.keyPressed(ui.Key.Home) then
+    moveInputCaret(0, shiftDown)
+    return
+  elseif ui.keyPressed(ui.Key.End) then
+    moveInputCaret(utf8len(chat.input.text), shiftDown)
     return
   elseif ui.keyPressed(ui.Key.Up) and chat.input.active then
-    if chat.input.historyIndex < #chat.input.history then
-      chat.input.selected = nil
-      chat.input.historyIndex = chat.input.historyIndex + 1
-      chat.input.text = chat.input.history[#chat.input.history - chat.input.historyIndex + 1][3]
-    end
+    navigateInputHistory(-1)
     return
   elseif ui.keyPressed(ui.Key.Down) and chat.input.active then
-    if chat.input.historyIndex > 1 then
-      chat.input.selected = nil
-      chat.input.historyIndex = chat.input.historyIndex - 1
-      chat.input.text = chat.input.history[#chat.input.history - chat.input.historyIndex + 1][3]
-    elseif chat.input.historyIndex == 1 then
-      chat.input.selected = nil
-      chat.input.historyIndex = 0
-      chat.input.text = ''
-    end
+    navigateInputHistory(1)
     return
   end
 
   if typed == '' then return end
   typed = typed:gsub('[%c]', '')
 
-  if typed ~= '' and chat.input.selected then
-    chat.input.selected = nil
-    chat.input.text = ''
-  end
-
-  if utf8len(chat.input.text .. typed) > inputMaxLength then return end
-
-  chat.input.text = chat.input.text .. typed
+  if typed ~= '' then replaceInputSelection(typed) end
 end
 
 ---@param userIndex number @Car index of the message sender
@@ -1331,9 +1525,8 @@ local function chatPlayerPopup(userIndex, userName)
 
     if ui.modernMenuItem('Tag in chat', ui.Icons.Tag, false, ui.SelectableFlags.None, false) then
       playAudio(audio.keyboard.keystroke)
-      if chat.input.text == chat.input.placeholder then chat.input.text = '' end
       chat.input.active = true
-      chat.input.text = chat.input.text .. '@' .. userName
+      replaceInputSelection('@' .. userName)
       ui.closePopup()
     end
 
@@ -2181,21 +2374,25 @@ local function drawMessageEntry(entry, layout, offset, interactive)
   end
 end
 
+---@param inputLayout table @shared geometry for the chat input controls
 ---Draws the chat messages.
-local function drawMessages()
+local function drawMessages(inputLayout)
   if not player.isOnline then return end
 
   local clipTop = scaleVec2(0, 0, true)
-  local clipBottom = scaleVec2(app.size.x, 501, true)
+  local clipBottom = scaleVec2(app.size.x, app.size.y, true)
   ui.pushClipRect(clipTop, clipBottom)
 
   local messagesPos = scaleVec2(10, 18, true)
-  local childSize = scaleVec2(270, 483 - chat.input.offset / app.scale)
+  local childSize = scaleVec2(270, app.size.y - 18)
   local entries, entryCount, totalHeight = buildMessageLayout()
   local chatSizing = getChatSizing()
+  local inputTop = inputLayout.windowPosition.y + scaleNum(2)
+  local bottomPadding = math.max(0, scaleNum(app.size.y, true) - inputTop)
   ui.setCursor(messagesPos)
   local lastMessagePadding = (entryCount > 0 and entries[entryCount].userIndex == -1) and 0 or scaleNum(8)
-  ui.setNextWindowContentSize(vec2(0, totalHeight - lastMessagePadding))
+  local contentHeight = totalHeight - lastMessagePadding + bottomPadding
+  ui.setNextWindowContentSize(vec2(0, contentHeight))
   ui.childWindow('Messages', childSize, false, flags.window, function()
     local winWidth = ui.windowWidth()
     local winHalfWidth = winWidth / 2
@@ -2212,11 +2409,11 @@ local function drawMessages()
       local winHeight = ui.windowHeight()
       local scrollBuffer = scaleNum(200)
 
-      local totalHeightChanged = totalHeight ~= chat.scroll.lastTotalHeight
-      chat.scroll.lastTotalHeight = totalHeight
+      local contentHeightChanged = contentHeight ~= chat.scroll.lastContentHeight
+      chat.scroll.lastContentHeight = contentHeight
 
       local hoveredAutoscroll = (not app.hovered or chat.scroll.forceAutoscroll) or ((chat.input.active and chat.input.hovered) and ui.getScrollY() ~= ui.getScrollMaxY())
-      local shouldPin = (chat.scroll.wasAtBottom and totalHeightChanged) or hoveredAutoscroll
+      local shouldPin = (chat.scroll.wasAtBottom and contentHeightChanged) or hoveredAutoscroll
       local revealHeight = totalHeight
 
       if shouldPin then
@@ -2304,18 +2501,20 @@ glass.shader = {
     glassSize = vec2(),
     glassRadius = 0,
     edgeWidth = 1,
+    rimStrength = 1,
+    shadeStrength = 1,
+    hairStrength = 0.12,
     lineColor = rgbm(),
   },
   shader = [[
     static const float2 LIGHT_DIR = float2(-0.6, -0.8);
     static const float SPEC_POWER = 3.0;
     static const float LIT_STRENGTH = 0.4;
-    static const float FAR_STRENGTH = 0.05;
+    static const float FAR_STRENGTH = 0.4;
     static const float RIM_FALLOFF = 1.2;
     static const float HAIR_FALLOFF = 0.5;
-    static const float HAIR_STRENGTH = 0.12;
     static const float INNER_GLOW = 0.05;
-    static const float FAR_SHADE = 0.18;
+    static const float FAR_SHADE = 0.15;
 
     float roundedBoxDistance(float2 localPosition, float2 boxHalfSize, float cornerRadius) {
       float2 corner = abs(localPosition) - boxHalfSize + cornerRadius;
@@ -2343,9 +2542,9 @@ glass.shader = {
       float hairBand = smoothstep(edgeWidth * HAIR_FALLOFF, 0.0, rimDepth);
       float specular = (pow(saturate(lightFacing), SPEC_POWER) * LIT_STRENGTH + pow(saturate(-lightFacing), SPEC_POWER) * FAR_STRENGTH) * rimBand;
 
-      float hairAlpha = hairBand * HAIR_STRENGTH;
-      float lightAlpha = saturate(specular + rim * INNER_GLOW);
-      float shadeAlpha = FAR_SHADE * pow(saturate(-lightFacing), 2.0) * rim;
+      float hairAlpha = hairBand * hairStrength;
+      float lightAlpha = saturate(specular + rim * INNER_GLOW) * rimStrength;
+      float shadeAlpha = FAR_SHADE * pow(saturate(-lightFacing), 2.0) * rim * rimStrength * shadeStrength;
       float totalAlpha = hairAlpha + lightAlpha + shadeAlpha;
       float3 color = (lineColor.rgb * hairAlpha + float3(1, 1, 1) * lightAlpha) / max(totalAlpha, 1e-4);
       return float4(color, coverage * saturate(totalAlpha));
@@ -2353,12 +2552,13 @@ glass.shader = {
   ]],
 }
 
----@param topLeft vec2 @top left of the first shape
----@param bottomRight vec2 @bottom right of the first shape
----@param rounding number @corner radius of the first shape
----@param padding number @margin around the shapes in px
+---@param topLeft vec2 @top left of the shape
+---@param bottomRight vec2 @bottom right of the shape
+---@param rounding number @corner radius of the shape
+---@param padding number @margin around the shape in px
+---@param options? table @optional rim strength, hair strength and edge color overrides
 ---Draws the glass rim around a rounded shape.
-local function drawGlassEdges(topLeft, bottomRight, rounding, padding)
+local function drawGlassEdges(topLeft, bottomRight, rounding, padding, options)
   local pixelScale = math.max(1, app.scale)
 
   local quadPosition = topLeft - padding
@@ -2371,7 +2571,12 @@ local function drawGlassEdges(topLeft, bottomRight, rounding, padding)
   shaderValues.glassSize:set(bottomRight - topLeft)
   shaderValues.glassRadius = rounding
   shaderValues.edgeWidth = glass.edgeWidth * pixelScale
-  shaderValues.lineColor:set(colors.final.contactOutline)
+  shaderValues.rimStrength = options and options.rimStrength or 1
+  shaderValues.shadeStrength = options and options.shadeStrength or 1
+  shaderValues.hairStrength = options and options.hairStrength or ((settings.darkMode or player.phoneMode) and 0.12 or glass.lightHairStrength)
+  local edgeColor = options and options.edgeColor
+  if not edgeColor then edgeColor = (settings.darkMode or player.phoneMode) and colors.final.contactOutline or glass.lightEdgeColor end
+  shaderValues.lineColor:set(edgeColor)
   glass.shader.p1 = quadPosition
   glass.shader.p2 = quadPosition + quadSize
   ui.renderShader(glass.shader)
@@ -2381,7 +2586,7 @@ end
 ---@param topLeft vec2 @top left in the current window
 ---@param bottomRight vec2 @bottom right in the current window
 ---@param rounding number @corner radius
----@param options? {origin: vec2?, overlays: boolean?, color: rgb?, tint: number?, capture: {topLeft: vec2, bottomRight: vec2}?} @window origin, whether to capture the fade and contact, tint color and alpha overrides, a fixed capture area for shapes that change size
+---@param options? {origin: vec2?, overlays: boolean?, color: rgb?, tint: number?, rimStrength: number?, shadeStrength: number?, hairStrength: number?, edgeColor: rgbm?, capture: {topLeft: vec2, bottomRight: vec2}?} @window origin, overlays, tint and rim overrides, and a fixed capture area for shapes that change size
 ---Draws a liquid glass rounded rect.
 local function drawGlass(key, topLeft, bottomRight, rounding, options)
   local messages = glass.messages
@@ -2428,12 +2633,13 @@ local function drawGlass(key, topLeft, bottomRight, rounding, options)
     or signature.generation ~= chat.msgCacheGen
     or signature.revision ~= glass.cacheGen
     or signature.isOnline ~= player.isOnline
+    or signature.picker ~= emoji.picker
     or signature.x ~= capturePosition.x
     or signature.y ~= capturePosition.y
 
   if isDirty then
     signature.scrollY, signature.reveal, signature.winWidth = messages.scrollY, messages.reveal, messages.layout.winWidth
-    signature.generation, signature.revision, signature.isOnline = chat.msgCacheGen, glass.cacheGen, player.isOnline
+    signature.generation, signature.revision, signature.isOnline, signature.picker = chat.msgCacheGen, glass.cacheGen, player.isOnline, emoji.picker
     signature.x, signature.y = capturePosition.x, capturePosition.y
 
     local fade, contact = glass.fade, glass.contact
@@ -2444,7 +2650,7 @@ local function drawGlass(key, topLeft, bottomRight, rounding, options)
       capture:clear(colors.final.display)
 
       local entries, entryCount = buildMessageLayout()
-      if player.isOnline and entryCount > 0 and messages.layout.winWidth then
+      if player.isOnline and not emoji.picker and entryCount > 0 and messages.layout.winWidth then
         local offset = vec2(messagesPosition.x - capturePosition.x, messagesPosition.y - capturePosition.y - messages.scrollY)
         local visibleTop = capturePosition.y - messagesPosition.y + messages.scrollY
         for entryIndex = getFirstVisibleMessageIndex(entries, entryCount, visibleTop), entryCount do
@@ -2520,7 +2726,21 @@ local function drawGlass(key, topLeft, bottomRight, rounding, options)
   local tintColor = options and options.color or colors.final.glassColor
   ui.drawRectFilled(topLeft, bottomRight, rgbm(tintColor.r, tintColor.g, tintColor.b, options and options.tint or glass.tint), rounding)
 
-  drawGlassEdges(topLeft, bottomRight, rounding, padding)
+  drawGlassEdges(topLeft, bottomRight, rounding, padding, options)
+end
+
+---@param origin vec2 @window origin used to sample the glass background
+---@return table @glass options shared by the emoji button and input pill
+---Returns the shared glass style for the emoji button and input pill.
+local function getInputGlassOptions(origin)
+  local options = { origin = origin }
+  if settings.darkMode or player.phoneMode then return options end
+
+  options.tint = glass.inputLightTint
+  options.rimStrength = glass.inputLightRimStrength
+  options.hairStrength = glass.lightHairStrength
+  options.edgeColor = glass.lightEdgeColor
+  return options
 end
 
 --#endregion
@@ -2552,7 +2772,9 @@ local function drawContact()
     local pillRounding = (pillPosBR.y - pillPosTL.y) / 2
 
     if settings.liquidGlass then
-      drawGlass('contact', pillPosTL, pillPosBR, pillRounding)
+      local glassOptions
+      if not (settings.darkMode or player.phoneMode) then glassOptions = { shadeStrength = 0.65 } end
+      drawGlass('contact', pillPosTL, pillPosBR, pillRounding, glassOptions)
     else
       ui.beginOutline()
       ui.drawRectFilled(pillPosTL, pillPosBR, colors.final.contactPill, pillRounding)
@@ -2607,15 +2829,15 @@ local function drawContact()
   end)
 end
 
+---@param inputLayout table @shared geometry for the chat input controls
 ---Draws the emoji picker button and window.
-local function drawEmojiPicker()
-  local buttonPos = scaleVec2(28, app.size.y - 17, true)
-  local buttonSize = scaleVec2(12, 12)
+local function drawEmojiPicker(inputLayout)
   local emojiSizePicker = scaleNum(20)
-  local groupIconDrawSize = scaleVec2(22, 22)
+  local groupIconDrawSize = scaleVec2(24, 24)
   local iconHoverRounding = scaleNum(5)
   local groupCount = #emoji.groups
   local iconStep = 1 / math.max(groupCount, 1)
+  emoji.pickerHovered = false
 
   ui.pushDWriteFont(app.font.regular)
 
@@ -2630,28 +2852,9 @@ local function drawEmojiPicker()
     return
   end
 
-  ui.setCursor(buttonPos)
-  local cursorPos = ui.getCursor()
-  local buttonHovered = player.isOnline and app.hovered and ui.rectHovered(cursorPos - buttonSize, cursorPos + buttonSize)
-  if player.isOnline and app.hovered then emoji.pickerHovered = buttonHovered end
-
-  local spacing = scaleVec2(2, 2)
-  if buttonHovered then ui.drawRectFilled(cursorPos - (buttonSize + spacing), cursorPos + (buttonSize + spacing), colors.iMessageSelected, iconHoverRounding - scaleNum(1)) end
-
-  local emojiPickerIconColor = emoji.picker and colors.final.emojiPickerActive or colors.final.emojiPicker
-  ui.drawImage(app.images.emojiIcons, cursorPos - buttonSize, cursorPos + buttonSize, emojiPickerIconColor, vec2(0, 0), vec2(iconStep, 1))
-
   if not player.isOnline then
     ui.popDWriteFont()
     return
-  end
-
-  if buttonHovered then
-    if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
-    if ui.mouseReleased(ui.MouseButton.Left) then
-      emoji.picker = not emoji.picker
-      playAudio(audio.keyboard.enter)
-    end
   end
 
   if not emoji.picker then
@@ -2660,8 +2863,9 @@ local function drawEmojiPicker()
   end
 
   local groupRowHeight = scaleNum(34)
-  local windowSize = scaleVec2(266, 461 - (chat.input.offset / app.scale))
   local windowPos = scaleVec2(12, 40, true)
+  local inputTop = inputLayout.windowPosition.y + scaleNum(2)
+  local windowSize = vec2(scaleNum(266), inputTop - windowPos.y)
   local gridSize = vec2(windowSize.x, windowSize.y - groupRowHeight)
 
   local activeGroup = emoji.groups[emoji.activeGroup]
@@ -2703,13 +2907,9 @@ local function drawEmojiPicker()
 
         if ui.itemClicked(ui.MouseButton.Left, true) then
           playAudio(audio.keyboard.keystroke)
-          if utf8len(chat.input.text .. emojis[i]) > getInputMaxLength() then goto continue end
           if not chat.input.active then chat.input.active = true end
-          if chat.input.text == chat.input.placeholder then chat.input.text = '' end
-          chat.input.text = chat.input.text .. emojis[i]
+          replaceInputSelection(emojis[i])
         end
-
-        ::continue::
 
         ui.sameLine(0, emojiSpacing)
         if i % emojisPerRow == 0 and i ~= emojiCount then ui.newLine(emojiSpacing) end
@@ -2777,113 +2977,318 @@ local function drawEmojiPicker()
   ui.popDWriteFont()
 end
 
----Draws the custom input box for the chat.
-local function drawCustomChatInput()
-  local inputSize = scaleVec2(235, 32 + chat.input.offset / app.scale)
-  local inputBoxSize = scaleVec2(232, 27 + chat.input.offset / app.scale)
+---@param inputLayout table @input text geometry
+---@return table @{text, fontSize, wrapWidth, characters, starts, lines, tops, heights, markerWidth}
+---Works out where the wrapped input text breaks into rows, cached until the text or layout changes. The input is drawn from these rows, never wrapped by DirectWrite, so the caret and selection always match what is on screen.
+local function getInputRows(inputLayout)
+  local text = chat.input.text
+  local cached = chat.input.rows
+  if cached and cached.text == text and cached.fontSize == inputLayout.fontSize and cached.wrapWidth == inputLayout.wrapWidth then return cached end
 
-  local inputFontSize = scaleNum(settings.chatFontSize)
-  local inputWrap = scaleNum(190)
+  local fontSize, wrapWidth = inputLayout.fontSize, inputLayout.wrapWidth
+  local characters = {}
+  for character in text:gmatch('[\1-\127\194-\244][\128-\191]*') do
+    characters[#characters + 1] = character
+  end
 
-  local winHeight = scaleNum(app.size.y)
-  local posX = scaleNum(42)
-  local posY = winHeight - scaleNum(32) - chat.input.offset + movement.smooth
-
-  ui.setCursor(vec2(posX, posY))
-  ui.childWindow('ChatInput', inputSize, false, flags.input, function()
-    ui.beginOutline()
-    ui.drawRectFilled(scaleVec2(2, 2), inputBoxSize, colors.final.display, scaleNum(10))
-    ui.endOutline(colors.final.outline, math.max(1, math.round(1 * app.scale, 1)))
-
-    local displayText
-    ui.pushDWriteFont(app.font.regular)
-
-    if player.isOnline then
-      chat.input.hovered = ui.windowHovered(ui.HoveredFlags.RectOnly)
-      local inputClicked = chat.input.hovered and ui.mouseClicked(ui.MouseButton.Left)
-
-      if chat.input.hovered then ui.setMouseCursor(ui.MouseCursor.TextInput) end
-
-      if not chat.input.sendHovered then
-        if inputClicked or chat.input.mentioned ~= '' then
-          if not chat.input.active then chat.input.text = '' end
-          chat.input.active = true
-          if emoji.picker then emoji.picker = false end
-        elseif ui.mouseClicked(ui.MouseButton.Left) and not emoji.pickerHovered and not chat.input.hovered then
-          chat.input.active = false
-          chat.input.text = chat.input.placeholder
-          chat.input.selected = nil
-          chat.input.historyIndex = 0
-          emoji.picker = false
-        end
-      end
-
-      if chat.input.active then
-        handleKeyboardInput()
-        colors.final.input:set(pickThemeColor(rgbm.colors.black, rgbm.colors.white))
-        if chat.input.mentioned ~= '' and chat.input.text ~= chat.input.mentioned then chat.input.mentioned = '' end
+  local starts = { 0 }
+  local rowText, pendingSpaces = '', ''
+  local index = 1
+  while index <= #characters do
+    if characters[index]:match('%s') then
+      if ui.measureDWriteText(rowText .. pendingSpaces, fontSize).x > wrapWidth then
+        starts[#starts + 1] = index - 1
+        rowText, pendingSpaces = characters[index], ''
       else
-        chat.input.text = chat.input.placeholder
-        colors.final.input:set(pickThemeColor(colors.transparent.black50, colors.transparent.white50))
+        pendingSpaces = pendingSpaces .. characters[index]
       end
-
-      displayText = chat.input.text
-
-      if chat.input.active and math.floor(os.clock() * 2) % 2 == 0 then
-        local textSize = ui.measureDWriteText(displayText, inputFontSize, inputWrap).y
-        local withCaret = ui.measureDWriteText(displayText .. '|', inputFontSize, inputWrap).y
-
-        if withCaret > textSize then inputWrap = inputWrap + scaleNum(4) end
-
-        displayText = displayText .. '|'
-      end
+      index = index + 1
     else
-      displayText = chat.input.placeholder
-    end
+      local wordStart, wordEnd = index, index
+      while wordEnd <= #characters and not characters[wordEnd]:match('%s') do
+        wordEnd = wordEnd + 1
+      end
 
-    if chat.input.selected then
-      local selectedTextSize = ui.measureDWriteText(chat.input.text, inputFontSize, inputWrap) + scaleVec2(4, 0)
-      ui.setCursor(scaleVec2(8, 6))
-      ui.drawRectFilled(ui.getCursor(), ui.getCursor() + selectedTextSize, colors.iMessageSelected)
-    end
+      local wordText = table.concat(characters, '', wordStart, wordEnd - 1)
+      local candidate = rowText .. pendingSpaces .. wordText
+      local overflows = ui.measureDWriteText(candidate, fontSize).x > wrapWidth
+      local wordFits = ui.measureDWriteText(wordText, fontSize).x <= wrapWidth
 
-    local inputTextSize = ui.measureDWriteText(displayText, inputFontSize, inputWrap):max(vec2(0, scaleNum(17.291)))
-    ui.setCursor(scaleVec2(10, 5))
-    ui.pushClipRect(ui.getCursor(), ui.getCursor() + inputBoxSize - scaleVec2(0, 9, true))
-    ui.dwriteTextAligned(displayText, inputFontSize, ui.Alignment.Start, ui.Alignment.End, inputTextSize, true, colors.final.input)
-    ui.popDWriteFont()
-    ui.popClipRect()
-
-    if not player.isOnline then return end
-
-    if chat.input.text ~= chat.input.placeholder and chat.input.text ~= '' then
-      local circleRad = scaleNum(10)
-      local circlePadding = circleRad + scaleNum(2)
-      local arrowRad = scaleVec2(7, 7)
-      local buttonColor = rgbm():set(colors.iMessageBlue)
-
-      ui.setCursor(vec2(inputBoxSize.x - circlePadding, inputBoxSize.y - circlePadding))
-
-      if app.hovered then
-        chat.input.sendHovered = ui.rectHovered(ui.getCursor() - vec2(circleRad, circleRad), ui.getCursor() + vec2(circleRad, circleRad))
-
-        if chat.input.sendHovered then
-          ui.setMouseCursor(ui.MouseCursor.Hand)
-          buttonColor:mul(rgbm(0.6, 0.6, 0.8, 1))
-
-          if ui.mouseClicked(ui.MouseButton.Left) then
-            sendChatMessage()
-            emoji.picker = false
-            chat.input.sendHovered = false
+      if overflows and rowText ~= '' and wordFits then
+        starts[#starts + 1] = wordStart - 1
+        rowText = wordText
+      elseif overflows and not wordFits then
+        rowText = rowText .. pendingSpaces
+        for wordIndex = wordStart, wordEnd - 1 do
+          local nextRowText = rowText .. characters[wordIndex]
+          if rowText ~= '' and ui.measureDWriteText(nextRowText, fontSize).x > wrapWidth then
+            starts[#starts + 1] = wordIndex - 1
+            rowText = characters[wordIndex]
+          else
+            rowText = nextRowText
           end
         end
+      else
+        rowText = candidate
       end
 
-      ui.drawCircleFilled(ui.getCursor(), circleRad, buttonColor, 25)
-      ui.drawIcon(ui.Icons.ArrowUp, ui.getCursor() - arrowRad, ui.getCursor() + arrowRad, rgbm.colors.white)
+      pendingSpaces = ''
+      index = wordEnd
+    end
+  end
+
+  local lines, tops, heights = {}, {}, {}
+  local top = 0
+  for rowIndex = 1, #starts do
+    local rowString = table.concat(characters, '', starts[rowIndex] + 1, starts[rowIndex + 1] or #characters)
+    lines[rowIndex], tops[rowIndex], heights[rowIndex] = rowString, top, ui.measureDWriteText(rowString .. '|', fontSize).y
+    top = top + heights[rowIndex]
+  end
+
+  chat.input.rows = {
+    text = text,
+    fontSize = fontSize,
+    wrapWidth = wrapWidth,
+    characters = characters,
+    starts = starts,
+    lines = lines,
+    tops = tops,
+    heights = heights,
+    markerWidth = ui.measureDWriteText('|', fontSize).x,
+  }
+  return chat.input.rows
+end
+
+---@param caret number @character boundary
+---@param inputLayout table @input text geometry
+---@return vec2 @caret position relative to the input text origin
+---@return number @height of the caret's row
+---@return number @index of the caret's row
+---Returns the visual position of a caret boundary within the wrapped input text. A boundary where a row wraps belongs to the end of the row before it.
+local function getInputCaretPosition(caret, inputLayout)
+  local rows = getInputRows(inputLayout)
+  caret = math.max(0, math.min(caret, #rows.characters))
+
+  local rowIndex = 1
+  for index = 2, #rows.starts do
+    if rows.starts[index] < caret then rowIndex = index end
+  end
+
+  local rowText = table.concat(rows.characters, '', rows.starts[rowIndex] + 1, caret)
+  local lineWidth = ui.measureDWriteText(rowText .. '|', inputLayout.fontSize).x - rows.markerWidth
+  return vec2(lineWidth, rows.tops[rowIndex]), rows.heights[rowIndex], rowIndex
+end
+
+---@param mousePosition vec2 @mouse position in the input child window
+---@param inputLayout table @input text geometry
+---@return number @nearest character boundary
+---Finds the nearest caret boundary to a mouse position in the wrapped input.
+local function getInputCaretFromMouse(mousePosition, inputLayout)
+  local rows = getInputRows(inputLayout)
+  local mouseY = mousePosition.y - inputLayout.textOrigin.y
+
+  local rowIndex = 1
+  for index = 2, #rows.tops do
+    if mouseY >= rows.tops[index] then rowIndex = index end
+  end
+
+  local targetX = math.max(0, mousePosition.x - inputLayout.textOrigin.x)
+  local firstCaret = rowIndex == 1 and 0 or rows.starts[rowIndex] + 1
+  local lastCaret = rows.starts[rowIndex + 1] or #rows.characters
+  local closestCaret, closestDistance = firstCaret, math.huge
+
+  for caret = firstCaret, lastCaret do
+    local distance = math.abs(getInputCaretPosition(caret, inputLayout).x - targetX)
+    if distance < closestDistance then
+      closestCaret, closestDistance = caret, distance
+    end
+  end
+
+  return closestCaret
+end
+
+---@param selectionStart number @selection start boundary
+---@param selectionEnd number @selection end boundary
+---@param inputLayout table @input text geometry
+---Draws a selection across the wrapped input text.
+local function drawInputSelection(selectionStart, selectionEnd, inputLayout)
+  local rows = getInputRows(inputLayout)
+  local startPosition, _, startRow = getInputCaretPosition(selectionStart, inputLayout)
+  local endPosition, _, endRow = getInputCaretPosition(selectionEnd, inputLayout)
+  local origin = inputLayout.textOrigin
+
+  for rowIndex = startRow, endRow do
+    local left = origin.x + (rowIndex == startRow and startPosition.x or 0)
+    local right = origin.x + (rowIndex == endRow and endPosition.x or inputLayout.wrapWidth)
+    local top = origin.y + rows.tops[rowIndex]
+    ui.drawRectFilled(vec2(left, top), vec2(math.max(left + scaleNum(2), right), top + rows.heights[rowIndex]), colors.iMessageSelected, scaleNum(2))
+  end
+end
+
+---@param inputLayout table @input pill geometry used for hit testing and caret placement
+---Handles pointer and keyboard input for the chat field.
+local function handleChatInputInteraction(inputLayout)
+  if not player.isOnline then
+    chat.input.active = false
+    return
+  end
+
+  chat.input.hovered = ui.rectHovered(inputLayout.pillOrigin, inputLayout.pillOrigin + inputLayout.pillSize)
+  local inputClicked = chat.input.hovered and ui.mouseClicked(ui.MouseButton.Left)
+  local sendButtonVisible = chat.input.text ~= ''
+  local sendButtonSize = vec2(inputLayout.sendButtonRadius, inputLayout.sendButtonRadius)
+  chat.input.sendHovered = sendButtonVisible and app.hovered and ui.rectHovered(inputLayout.sendButtonCenter - sendButtonSize, inputLayout.sendButtonCenter + sendButtonSize)
+
+  if chat.input.hovered then ui.setMouseCursor(ui.MouseCursor.TextInput) end
+
+  if not chat.input.sendHovered then
+    if inputClicked then
+      chat.input.active = true
+      chat.input.caret = getInputCaretFromMouse(ui.mouseLocalPos(), inputLayout)
+      chat.input.selectionAnchor = chat.input.caret
+      chat.input.mouseSelecting = true
+      if emoji.picker then emoji.picker = false end
+    elseif ui.mouseClicked(ui.MouseButton.Left) and not emoji.pickerHovered and not chat.input.hovered then
+      chat.input.active = false
+      chat.input.selectionAnchor = nil
+      chat.input.mouseSelecting = false
+      chat.input.historyIndex = 0
+      chat.input.historyDraft = nil
+      emoji.picker = false
+    end
+  end
+
+  if chat.input.mouseSelecting then
+    if ui.isMouseDragging(ui.MouseButton.Left, 0) then
+      chat.input.caret = getInputCaretFromMouse(ui.mouseLocalPos(), inputLayout)
+    elseif ui.mouseReleased(ui.MouseButton.Left) then
+      chat.input.mouseSelecting = false
+      if chat.input.selectionAnchor == chat.input.caret then chat.input.selectionAnchor = nil end
+    end
+  end
+
+  if chat.input.active then handleKeyboardInput() end
+end
+
+---@param inputLayout table @shared geometry for the chat input controls
+---Draws the emoji picker button inside the chat input child window.
+local function drawEmojiButton(inputLayout)
+  local buttonSize = vec2(inputLayout.emojiButtonRadius, inputLayout.emojiButtonRadius)
+  local buttonCenter = inputLayout.emojiButtonCenter
+  local buttonHovered = player.isOnline and app.hovered and ui.rectHovered(buttonCenter - buttonSize, buttonCenter + buttonSize)
+  if buttonHovered then emoji.pickerHovered = true end
+
+  local buttonColor = rgbm():set(colors.final.inputBackground)
+  if buttonHovered then buttonColor:mul(rgbm(1, 1, 1, 0.75)) end
+  local buttonTopLeft, buttonBottomRight = buttonCenter - buttonSize, buttonCenter + buttonSize
+  if settings.liquidGlass then
+    drawGlass('emojiButton', buttonTopLeft, buttonBottomRight, buttonSize.x, getInputGlassOptions(inputLayout.windowPosition))
+  else
+    ui.drawCircleFilled(buttonCenter, buttonSize.x, buttonColor, 32)
+    ui.drawCircle(buttonCenter, buttonSize.x, colors.final.inputOutline, 32, math.max(1, scaleNum(1)))
+  end
+
+  if buttonHovered then
+    ui.drawCircleFilled(buttonCenter, buttonSize.x, colors.iMessageSelected, 32)
+    if not ui.isMouseDragging(ui.MouseButton.Left, 0) then ui.setMouseCursor(ui.MouseCursor.Hand) end
+    if ui.mouseReleased(ui.MouseButton.Left) then
+      emoji.picker = not emoji.picker
+      playAudio(audio.keyboard.enter)
+    end
+  end
+
+  local emojiIconSize = scaleVec2(26, 26)
+  local emojiIconColor = emoji.picker and colors.final.emojiPickerActive or colors.final.elements
+  ui.drawImage(app.images.emojiIcons, buttonCenter - emojiIconSize / 2, buttonCenter + emojiIconSize / 2, emojiIconColor, vec2(0, 0), vec2(1 / math.max(#emoji.groups, 1), 1))
+end
+
+---@param inputLayout table @input geometry, wrapping width and font size
+---@return number @height of the displayed input text
+---Draws the input text, placeholder, selection, and caret.
+local function drawChatInputText(inputLayout)
+  local rows = getInputRows(inputLayout)
+  local isPlaceholder = chat.input.text == ''
+  local inputTextColor = isPlaceholder and colors.final.inputPlaceholder or colors.final.elements
+  local textHeight = rows.tops[#rows.tops] + rows.heights[#rows.heights]
+  local textAreaSize = vec2(inputLayout.pillSize.x - scaleNum(42), math.max(inputLayout.pillSize.y - scaleNum(10), textHeight))
+
+  local selectionStart, selectionEnd = getInputSelection()
+  if selectionStart and selectionEnd and chat.input.active then drawInputSelection(selectionStart, selectionEnd, inputLayout) end
+
+  ui.pushClipRect(inputLayout.textOrigin, inputLayout.textOrigin + textAreaSize)
+
+  if isPlaceholder then
+    ui.dwriteDrawText(chat.input.placeholder, inputLayout.fontSize, inputLayout.textOrigin, inputTextColor)
+  else
+    for rowIndex = 1, #rows.lines do
+      ui.dwriteDrawText(rows.lines[rowIndex], inputLayout.fontSize, inputLayout.textOrigin + vec2(0, rows.tops[rowIndex]), inputTextColor)
+    end
+  end
+
+  if chat.input.active and math.floor(os.clock() * 2) % 2 == 0 then
+    local caretPosition, lineHeight = getInputCaretPosition(chat.input.caret, inputLayout)
+    local caretTop = inputLayout.textOrigin + caretPosition
+    ui.drawRectFilled(caretTop, caretTop + vec2(math.max(1, scaleNum(1)), lineHeight), colors.final.elements)
+  end
+
+  ui.popClipRect()
+
+  return textHeight
+end
+
+---@param inputLayout table @send button geometry inside the chat input child window
+---Draws and handles the chat send button.
+local function drawChatSendButton(inputLayout)
+  if not player.isOnline then return end
+
+  if chat.input.text ~= '' then
+    local arrowRad = scaleVec2(8, 8)
+    local buttonColor = rgbm():set(colors.iMessageBlue)
+
+    if chat.input.sendHovered then
+      ui.setMouseCursor(ui.MouseCursor.Hand)
+      buttonColor:mul(rgbm(0.75, 0.75, 0.85, 1))
+      if ui.mouseClicked(ui.MouseButton.Left) then
+        sendChatMessage()
+        emoji.picker = false
+        chat.input.sendHovered = false
+      end
     end
 
-    chat.input.offset = math.min(math.floor(inputTextSize.y - scaleNum(17)), scaleNum(390))
+    ui.drawCircleFilled(inputLayout.sendButtonCenter, inputLayout.sendButtonRadius, buttonColor, 25)
+    ui.drawIcon(ui.Icons.ArrowUp, inputLayout.sendButtonCenter - arrowRad, inputLayout.sendButtonCenter + arrowRad, rgbm.colors.white)
+  else
+    chat.input.sendHovered = false
+  end
+end
+
+---@param inputLayout table @shared geometry for the chat input controls
+---Draws the custom input box for the chat.
+local function drawCustomChatInput(inputLayout)
+  ui.setCursor(inputLayout.windowPosition)
+  ui.childWindow('ChatInput', inputLayout.windowSize, false, flags.input, function()
+    drawEmojiButton(inputLayout)
+
+    local cornerRounding = math.min(scaleNum(16), inputLayout.pillSize.y / 2)
+    local pillTopLeft = inputLayout.pillOrigin
+    local pillBottomRight = pillTopLeft + inputLayout.pillSize
+    if settings.liquidGlass then
+      drawGlass('chatInput', pillTopLeft, pillBottomRight, cornerRounding, getInputGlassOptions(inputLayout.windowPosition))
+    else
+      ui.beginOutline()
+      ui.drawRectFilled(pillTopLeft, pillBottomRight, colors.final.inputBackground, cornerRounding)
+      ui.endOutline(colors.final.inputOutline, math.max(1, math.round(1 * app.scale, 1)))
+    end
+
+    ui.pushDWriteFont(app.font.regular)
+
+    handleChatInputInteraction(inputLayout)
+    local textHeight = drawChatInputText(inputLayout)
+
+    ui.popDWriteFont()
+    drawChatSendButton(inputLayout)
+
+    chat.input.offset = math.min(math.max(0, math.floor(textHeight - scaleNum(17))), scaleNum(390))
   end)
 end
 
@@ -3869,17 +4274,18 @@ function script.windowMain(dt)
 
   ui.childWindow('Phone', vec2(app.images.phoneAtlasSize.x / 2, app.images.phoneAtlasSize.y), false, flags.window, function()
     drawDisplay()
+    local inputLayout = getChatInputLayout()
 
     glass.fade, glass.contact = nil, nil
     if not emoji.picker then
-      drawMessages()
+      drawMessages(inputLayout)
       drawContact()
+      drawNotifications()
     end
 
-    drawNotifications()
     drawStatusBar()
-    drawEmojiPicker()
-    drawCustomChatInput()
+    drawEmojiPicker(inputLayout)
+    drawCustomChatInput(inputLayout)
     drawPhone()
   end)
 end
