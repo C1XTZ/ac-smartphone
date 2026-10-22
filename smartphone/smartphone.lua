@@ -164,7 +164,7 @@ local app = {
     phoneCamera = '.\\src\\img\\cam.png',
     pingAtlasPath = '.\\src\\img\\connection.png',
     emojiIcons = '.\\src\\img\\emojipicker.png',
-    defaultCover = '.\\src\\img\\player.png',
+    defaultCover = '.\\src\\img\\music.png',
     defaultMessage = '.\\src\\img\\messages.png',
     ready = false,
   },
@@ -661,20 +661,26 @@ local function getServerCommunity()
   return 'default'
 end
 
+---@return vec2, vec2 @uv1, uv2 of the half of a two-square image that matches the current theme
+---Picks the theme-matching half of an image with a light square on the left and a dark square on the right.
+local function getThemeImageUV()
+  local isDark = settings.darkMode or player.phoneMode
+  return isDark and vec2(0.5, 0) or vec2(0, 0), isDark and vec2(1, 1) or vec2(0.5, 1)
+end
+
 ---@param community table @community entry, with `image` (path) and cached `imageSquare` fields
 ---@return vec2, vec2 @uv1, uv2 for the theme-matching half of `community.image`, or the full image if square
 ---Square community images are used as-is; non-square images are treated as a light half next to a dark half.
 local function getCommunityImageUV(community)
   if community.imageSquare == nil then
     local size = ui.imageSize(community.image)
-    if size.x == 0 or size.y == 0 then return vec2(0, 0), vec2(1, 1) end -- not loaded yet, try again next frame
+    if size.x == 0 or size.y == 0 then return vec2(0, 0), vec2(1, 1) end
     community.imageSquare = size.x == size.y
   end
 
   if community.imageSquare then return vec2(0, 0), vec2(1, 1) end
 
-  local isDark = settings.darkMode or player.phoneMode
-  return isDark and vec2(0.5, 0) or vec2(0, 0), isDark and vec2(1, 1) or vec2(0.5, 1)
+  return getThemeImageUV()
 end
 
 --#endregion
@@ -1834,7 +1840,8 @@ local function drawSongInfo()
         --I'm using --[[@as ui.MediaPlayer]] here because ac.MusicData is not in the valid imageSources for some reason even though lua.lib says to pass ac.MusicData in like this.
         ui.drawImageRounded(ac.currentlyPlaying() --[[@as ui.MediaPlayer]], imgPos, imgPos + coverSize, rounding, ui.CornerFlags.All)
       else
-        ui.drawImageRounded(app.images.defaultCover, imgPos, imgPos + coverSize, rounding, ui.CornerFlags.All)
+        local coverUV1, coverUV2 = getThemeImageUV()
+        ui.drawImageRounded(app.images.defaultCover, imgPos, imgPos + coverSize, rgbm.colors.white, coverUV1, coverUV2, rounding, ui.CornerFlags.All)
       end
     end
 
