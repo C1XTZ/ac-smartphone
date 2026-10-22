@@ -110,8 +110,10 @@ local colors = {
   inputPlaceholderDark = rgbm(0.42, 0.42, 0.42, 1),
   iMessageGreen = rgbm(0.2, 0.75, 0.3, 1),
   iMessageSelected = rgbm(0, 0.49, 1, 0.33),
-  emojiPickerButtonLight = rgbm(0, 0, 0, 0.33),
-  emojiPickerButtonDark = rgbm(1, 1, 1, 0.33),
+  emojiPickerButtonLight = rgbm(0.05, 0.05, 0.05, 1),
+  emojiPickerButtonDark = rgbm(0.95, 0.95, 0.95, 1),
+  emojiPickerGroupsLight = rgbm(0, 0, 0, 0.33),
+  emojiPickerGroupsDark = rgbm(1, 1, 1, 0.33),
   notifBgColorLight = rgbm(0.88, 0.88, 0.88, 1),
   notifBgColorDark = rgbm(0.1, 0.1, 0.1, 1),
   notifTitleColorLight = rgbm(0, 0, 0, 0.66),
@@ -135,7 +137,8 @@ local colors = {
     inputBackground = rgbm(),
     inputOutline = rgbm(),
     inputPlaceholder = rgbm(),
-    emojiPicker = rgbm(),
+    emojiPickerButton = rgbm(),
+    emojiPickerGroups = rgbm(),
     emojiPickerOutline = rgbm(),
     emojiPickerActive = rgbm(),
     notifBg = rgbm(),
@@ -557,7 +560,8 @@ local function updateColors()
   colors.final.glassColor:set(pickThemeColor(colors.glassContactLightColor, colors.glassContactDarkColor))
   colors.final.glassNotifColor:set(pickThemeColor(colors.glassNotifLightColor, colors.glassNotifDarkColor))
 
-  colors.final.emojiPicker:set(pickThemeColor(colors.emojiPickerButtonLight, colors.emojiPickerButtonDark))
+  colors.final.emojiPickerButton:set(pickThemeColor(colors.emojiPickerButtonLight, colors.emojiPickerButtonDark))
+  colors.final.emojiPickerGroups:set(pickThemeColor(colors.emojiPickerGroupsLight, colors.emojiPickerGroupsDark))
   colors.final.emojiPickerOutline:set(pickThemeColor(colors.transparent.black10, colors.transparent.white10))
   colors.final.emojiPickerActive:set(rgbm(0, 0.49, 1, 1))
 
@@ -2836,14 +2840,24 @@ local function drawContact()
   end)
 end
 
+---@param slot number @0 for the emoji button, 1 and up for the group icons
+---@return vec2, vec2 @uv1, uv2 of that square in the emoji icon atlas
+---Gets the UV coordinates for the emoji button or group icon, reusing the first group's icon for the light-mode button.
+local function getEmojiIconUV(slot)
+  local step = 1 / (#emoji.groups + 1)
+  local isDark = settings.darkMode or player.phoneMode
+  local index = slot == 0 and (isDark and 0 or 1) or slot
+
+  return vec2(index * step, 0), vec2((index + 1) * step, 1)
+end
+
 ---@param inputLayout table @shared geometry for the chat input controls
 ---Draws the emoji picker button and window.
 local function drawEmojiPicker(inputLayout)
   local emojiSizePicker = scaleNum(20)
-  local groupIconDrawSize = scaleVec2(24, 24)
+  local groupIconDrawSize = scaleVec2(22, 22)
   local iconHoverRounding = scaleNum(5)
   local groupCount = #emoji.groups
-  local iconStep = 1 / math.max(groupCount, 1)
   emoji.pickerHovered = false
 
   ui.pushDWriteFont(app.font.regular)
@@ -2968,8 +2982,9 @@ local function drawEmojiPicker(inputLayout)
       ui.tooltip(app.tooltipPadding, function() ui.text(emoji.groups[i].name) end)
     end
 
-    local iconColor = i == emoji.activeGroup and colors.final.emojiPickerActive or colors.final.emojiPicker
-    ui.drawImage(app.images.emojiIcons, buttonCenter - (groupIconDrawSize / 2), buttonCenter + (groupIconDrawSize / 2), iconColor, vec2((i - 1) * iconStep, 0), vec2(i * iconStep, 1))
+    local iconColor = i == emoji.activeGroup and colors.final.emojiPickerActive or colors.final.emojiPickerGroups
+    local iconUV1, iconUV2 = getEmojiIconUV(i)
+    ui.drawImage(app.images.emojiIcons, buttonCenter - (groupIconDrawSize / 2), buttonCenter + (groupIconDrawSize / 2), iconColor, iconUV1, iconUV2)
 
     if isGroupHovered then
       emoji.pickerHovered = true
@@ -3204,9 +3219,10 @@ local function drawEmojiButton(inputLayout)
     end
   end
 
-  local emojiIconSize = scaleVec2(26, 26)
-  local emojiIconColor = emoji.picker and colors.final.emojiPickerActive or colors.final.elements
-  ui.drawImage(app.images.emojiIcons, buttonCenter - emojiIconSize / 2, buttonCenter + emojiIconSize / 2, emojiIconColor, vec2(0, 0), vec2(1 / math.max(#emoji.groups, 1), 1))
+  local emojiIconSize = scaleVec2(20, 20)
+  local emojiIconColor = emoji.picker and colors.final.emojiPickerActive or colors.final.emojiPickerButton
+  local emojiIconUV1, emojiIconUV2 = getEmojiIconUV(0)
+  ui.drawImage(app.images.emojiIcons, buttonCenter - emojiIconSize / 2, buttonCenter + emojiIconSize / 2, emojiIconColor, emojiIconUV1, emojiIconUV2)
 end
 
 ---@param inputLayout table @input geometry, wrapping width and font size
