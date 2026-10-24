@@ -1,6 +1,7 @@
 # Smartphone App for AC
 
 [![](https://img.shields.io/github/v/release/c1xtz/ac-smartphone?sort=date&display_name=tag&style=for-the-badge&logo=github&label=Download%20Latest&color=black)](https://github.com/C1XTZ/ac-smartphone/releases/latest)
+[![](https://img.shields.io/badge/Required_CSP-V0.2.3_%283044%29%2B-black?style=for-the-badge)](https://acstuff.club/patch/)
 
 Chat replacement app in the style of an iPhone and iMessage.
 

@@ -9,7 +9,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@master
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -70,26 +70,24 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Archive Release
-        uses: thedoctor0/zip-release@0.7.1
-        with:
-          type: 'zip'
-          filename: 'smartphone.zip'
-          path: './smartphone/'
+        run: zip -r smartphone.zip smartphone/
 
       - name: Create Release
-        uses: ncipollo/release-action@v1.12.0
+        uses: ncipollo/release-action@v1.20.0
         with:
+          immutableCreate: true
           artifacts: 'smartphone.zip'
           tag: ${{ github.ref }}
           name: 'Smartphone ${{ github.ref_name }}'
-          makeLatest: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          makeLatest: ${{ !contains(github.ref_name, '-') }}
           body: |
             <p align="center"><img src="https://github.com/C1XTZ/ac-smartphone/blob/main/.github/img/repopreview.png" width="700"/></p>
 
             ${{ steps.changelog.outputs.ADDED_SECTION }}${{ steps.changelog.outputs.CHANGED_SECTION }}${{ steps.changelog.outputs.DIFF_SECTION }}
 
             ## Updating & Installation:
-            ### Oldest Supported CSP Version: CSP 0.2.3 (3044)
+            ### Required CSP: v0.2.3 (3044)
 
             > [!IMPORTANT]
             > **Manual Update May Be Required**
