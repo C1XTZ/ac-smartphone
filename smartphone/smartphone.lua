@@ -341,11 +341,21 @@ local glass = {
   blurSpread = 0.1,
   tint = 0.6,
   inputLightTint = 0.7,
+  rimStrength = 1,
   inputLightRimStrength = 0.5,
+  shadeStrength = 1,
+  contactLightShadeStrength = 0.65,
+  hairStrength = 0.12,
   lightHairStrength = 0.25,
   lightEdgeColor = rgbm(0, 0, 0, 1),
   notifTintBoost = 0.1,
   edgeWidth = 1.5,
+  edgePadding = 4,
+  styles = {
+    contact = { color = rgb(), tint = 0, rimStrength = 0, shadeStrength = 0, hairStrength = 0, edgeColor = rgbm() },
+    input = { color = rgb(), tint = 0, rimStrength = 0, shadeStrength = 0, hairStrength = 0, edgeColor = rgbm() },
+    notif = { color = rgb(), tint = 0, rimStrength = 0, shadeStrength = 0, hairStrength = 0, edgeColor = rgbm() },
+  },
   cacheGen = 0,
   canvases = {},
   messages = { scrollY = 0, reveal = 0, layout = {} },
@@ -559,6 +569,24 @@ local function updateColors()
 
   colors.final.glassColor:set(pickThemeColor(colors.glassContactLightColor, colors.glassContactDarkColor))
   colors.final.glassNotifColor:set(pickThemeColor(colors.glassNotifLightColor, colors.glassNotifDarkColor))
+
+  local hairStrength = pickThemeColor(glass.lightHairStrength, glass.hairStrength)
+  local edgeColor = pickThemeColor(glass.lightEdgeColor, colors.final.contactOutline)
+  for _, style in pairs(glass.styles) do
+    style.tint = glass.tint
+    style.rimStrength = glass.rimStrength
+    style.shadeStrength = glass.shadeStrength
+    style.hairStrength = hairStrength
+    style.edgeColor:set(edgeColor)
+  end
+
+  glass.styles.contact.color:set(colors.final.glassColor)
+  glass.styles.contact.shadeStrength = pickThemeColor(glass.contactLightShadeStrength, glass.shadeStrength)
+  glass.styles.input.color:set(colors.final.glassColor)
+  glass.styles.input.tint = pickThemeColor(glass.inputLightTint, glass.tint)
+  glass.styles.input.rimStrength = pickThemeColor(glass.inputLightRimStrength, glass.rimStrength)
+  glass.styles.notif.color:set(colors.final.glassNotifColor)
+  glass.styles.notif.tint = glass.tint + glass.notifTintBoost
 
   colors.final.emojiPickerButton:set(pickThemeColor(colors.emojiPickerButtonLight, colors.emojiPickerButtonDark))
   colors.final.emojiPickerGroups:set(pickThemeColor(colors.emojiPickerGroupsLight, colors.emojiPickerGroupsDark))
@@ -2516,9 +2544,11 @@ glass.shader = {
     shadeStrength = 1,
     hairStrength = 0.12,
     lineColor = rgbm(),
+    cutCenter = vec2(),
+    cutRadius = 0,
   },
   shader = [[
-    static const float2 LIGHT_DIR = float2(-0.6, -0.8);
+    static const float2 LIGHT_DIR = float2(0.0, -1.0);
     static const float SPEC_POWER = 3.0;
     static const float LIT_STRENGTH = 0.4;
     static const float FAR_STRENGTH = 0.4;
@@ -2542,6 +2572,9 @@ glass.shader = {
       float coverage = 1.0 - smoothstep(-1.0, 1.0, edgeDistance);
       if (coverage <= 0.001) return float4(0, 0, 0, 0);
 
+      float cutMask = 1.0;
+      if (cutRadius > 0.0) cutMask = smoothstep(cutRadius - 0.5, cutRadius + 0.5, length(localPosition - cutCenter));
+
       float2 gradientStep = float2(0.75, 0);
       float2 edgeNormal = normalize(float2(
         glassDistance(localPosition + gradientStep.xy) - glassDistance(localPosition - gradientStep.xy),
@@ -2558,7 +2591,7 @@ glass.shader = {
       float shadeAlpha = FAR_SHADE * pow(saturate(-lightFacing), 2.0) * rim * rimStrength * shadeStrength;
       float totalAlpha = hairAlpha + lightAlpha + shadeAlpha;
       float3 color = (lineColor.rgb * hairAlpha + float3(1, 1, 1) * lightAlpha) / max(totalAlpha, 1e-4);
-      return float4(color, coverage * saturate(totalAlpha));
+      return float4(color, coverage * saturate(totalAlpha) * cutMask);
     }
   ]],
 }
@@ -2566,11 +2599,12 @@ glass.shader = {
 ---@param topLeft vec2 @top left of the shape
 ---@param bottomRight vec2 @bottom right of the shape
 ---@param rounding number @corner radius of the shape
----@param padding number @margin around the shape in px
----@param options? table @optional rim strength, hair strength and edge color overrides
----Draws the glass rim around a rounded shape.
-local function drawGlassEdges(topLeft, bottomRight, rounding, padding, options)
+---@param style table @entry of glass.styles
+---@param cut? {center: vec2, radius: number} @circle the rim should not paint over
+---Draws the glass rim around a rounded shape, kept apart from drawGlass so it can go after the shape's content, since on older CSP versions anything drawn after ui.renderShader (like images or emoji) loses saturation.
+local function drawGlassEdges(topLeft, bottomRight, rounding, style, cut)
   local pixelScale = math.max(1, app.scale)
+  local padding = math.ceil(glass.edgePadding * pixelScale)
 
   local quadPosition = topLeft - padding
   local quadSize = ceilVec2(bottomRight.x - topLeft.x + padding * 2, bottomRight.y - topLeft.y + padding * 2)
@@ -2582,12 +2616,13 @@ local function drawGlassEdges(topLeft, bottomRight, rounding, padding, options)
   shaderValues.glassSize:set(bottomRight - topLeft)
   shaderValues.glassRadius = rounding
   shaderValues.edgeWidth = glass.edgeWidth * pixelScale
-  shaderValues.rimStrength = options and options.rimStrength or 1
-  shaderValues.shadeStrength = options and options.shadeStrength or 1
-  shaderValues.hairStrength = options and options.hairStrength or ((settings.darkMode or player.phoneMode) and 0.12 or glass.lightHairStrength)
-  local edgeColor = options and options.edgeColor
-  if not edgeColor then edgeColor = (settings.darkMode or player.phoneMode) and colors.final.contactOutline or glass.lightEdgeColor end
-  shaderValues.lineColor:set(edgeColor)
+  shaderValues.rimStrength = style.rimStrength
+  shaderValues.shadeStrength = style.shadeStrength
+  shaderValues.hairStrength = style.hairStrength
+  shaderValues.lineColor:set(style.edgeColor)
+  shaderValues.cutRadius = cut and cut.radius or 0
+  if cut then shaderValues.cutCenter:set(cut.center - quadCenter) end
+
   glass.shader.p1 = quadPosition
   glass.shader.p2 = quadPosition + quadSize
   ui.renderShader(glass.shader)
@@ -2597,17 +2632,18 @@ end
 ---@param topLeft vec2 @top left in the current window
 ---@param bottomRight vec2 @bottom right in the current window
 ---@param rounding number @corner radius
----@param options? {origin: vec2?, overlays: boolean?, color: rgb?, tint: number?, rimStrength: number?, shadeStrength: number?, hairStrength: number?, edgeColor: rgbm?, capture: {topLeft: vec2, bottomRight: vec2}?} @window origin, overlays, tint and rim overrides, and a fixed capture area for shapes that change size
----Draws a liquid glass rounded rect.
-local function drawGlass(key, topLeft, bottomRight, rounding, options)
+---@param style table @entry of glass.styles
+---@param backdrop? {origin: vec2?, overlays: boolean?, capture: {topLeft: vec2, bottomRight: vec2}?} @window origin, overlays, and a fixed capture area for shapes that change size
+---Draws a liquid glass rounded rect without its rim.
+local function drawGlass(key, topLeft, bottomRight, rounding, style, backdrop)
   local messages = glass.messages
 
   local size = bottomRight - topLeft
   local halfShortSide = math.min(size.x, size.y) / 2
 
   local captureTopLeft, captureBottomRight = topLeft, bottomRight
-  if options and options.capture then
-    captureTopLeft, captureBottomRight = options.capture.topLeft, options.capture.bottomRight
+  if backdrop and backdrop.capture then
+    captureTopLeft, captureBottomRight = backdrop.capture.topLeft, backdrop.capture.bottomRight
   end
 
   local captureSize = captureBottomRight - captureTopLeft
@@ -2616,7 +2652,7 @@ local function drawGlass(key, topLeft, bottomRight, rounding, options)
   local padding = math.ceil(blurRadius + 2 ^ glass.blurLevels)
   local quadPosition = captureTopLeft - padding
   local quadSize = ceilVec2(captureSize.x + padding * 2, captureSize.y + padding * 2)
-  local capturePosition = quadPosition + (options and options.origin or vec2())
+  local capturePosition = quadPosition + (backdrop and backdrop.origin or vec2())
 
   local canvasSet = glass.canvases[key]
   if not canvasSet or canvasSet.size.x ~= quadSize.x or canvasSet.size.y ~= quadSize.y then
@@ -2637,7 +2673,7 @@ local function drawGlass(key, topLeft, bottomRight, rounding, options)
   end
 
   local signature = canvasSet.signature
-  local isDirty = (options and options.overlays)
+  local isDirty = (backdrop and backdrop.overlays)
     or signature.scrollY ~= messages.scrollY
     or signature.reveal ~= messages.reveal
     or signature.winWidth ~= messages.layout.winWidth
@@ -2671,7 +2707,7 @@ local function drawGlass(key, topLeft, bottomRight, rounding, options)
         end
       end
 
-      if not (options and options.overlays) then return end
+      if not (backdrop and backdrop.overlays) then return end
 
       if fade and app.canvas.messageFade then
         local offset = messagesPosition - capturePosition
@@ -2734,24 +2770,8 @@ local function drawGlass(key, topLeft, bottomRight, rounding, options)
     )
   end
 
-  local tintColor = options and options.color or colors.final.glassColor
-  ui.drawRectFilled(topLeft, bottomRight, rgbm(tintColor.r, tintColor.g, tintColor.b, options and options.tint or glass.tint), rounding)
-
-  drawGlassEdges(topLeft, bottomRight, rounding, padding, options)
-end
-
----@param origin vec2 @window origin used to sample the glass background
----@return table @glass options shared by the emoji button and input pill
----Returns the shared glass style for the emoji button and input pill.
-local function getInputGlassOptions(origin)
-  local options = { origin = origin }
-  if settings.darkMode or player.phoneMode then return options end
-
-  options.tint = glass.inputLightTint
-  options.rimStrength = glass.inputLightRimStrength
-  options.hairStrength = glass.lightHairStrength
-  options.edgeColor = glass.lightEdgeColor
-  return options
+  local tintColor = style.color
+  ui.drawRectFilled(topLeft, bottomRight, rgbm(tintColor.r, tintColor.g, tintColor.b, style.tint), rounding)
 end
 
 --#endregion
@@ -2783,9 +2803,7 @@ local function drawContact()
     local pillRounding = (pillPosBR.y - pillPosTL.y) / 2
 
     if settings.liquidGlass then
-      local glassOptions
-      if not (settings.darkMode or player.phoneMode) then glassOptions = { shadeStrength = 0.65 } end
-      drawGlass('contact', pillPosTL, pillPosBR, pillRounding, glassOptions)
+      drawGlass('contact', pillPosTL, pillPosBR, pillRounding, glass.styles.contact)
     else
       ui.beginOutline()
       ui.drawRectFilled(pillPosTL, pillPosBR, colors.final.contactPill, pillRounding)
@@ -2804,6 +2822,8 @@ local function drawContact()
     ui.drawImageRounded(community.image, imgPos, imgPos + imgSize, rgbm.colors.white, communityUV1, communityUV2, 999, ui.CornerFlags.All)
 
     if settings.liquidGlass then
+      drawGlassEdges(pillPosTL, pillPosBR, pillRounding, glass.styles.contact, { center = imgPos + imgSize / 2, radius = imgSize.x / 2 })
+
       glass.contact = {
         image = community.image,
         imgPos = imgPos,
@@ -3204,7 +3224,7 @@ local function drawEmojiButton(inputLayout)
   if buttonHovered then buttonColor:mul(rgbm(1, 1, 1, 0.75)) end
   local buttonTopLeft, buttonBottomRight = buttonCenter - buttonSize, buttonCenter + buttonSize
   if settings.liquidGlass then
-    drawGlass('emojiButton', buttonTopLeft, buttonBottomRight, buttonSize.x, getInputGlassOptions(inputLayout.windowPosition))
+    drawGlass('emojiButton', buttonTopLeft, buttonBottomRight, buttonSize.x, glass.styles.input, { origin = inputLayout.windowPosition })
   else
     ui.drawCircleFilled(buttonCenter, buttonSize.x, buttonColor, 32)
     ui.drawCircle(buttonCenter, buttonSize.x, colors.final.inputOutline, 32, math.max(1, scaleNum(1)))
@@ -3233,12 +3253,12 @@ local function drawChatInputText(inputLayout)
   local isPlaceholder = chat.input.text == ''
   local inputTextColor = isPlaceholder and colors.final.inputPlaceholder or colors.final.elements
   local textHeight = rows.tops[#rows.tops] + rows.heights[#rows.heights]
-  local textAreaSize = vec2(inputLayout.pillSize.x - scaleNum(42), math.max(inputLayout.pillSize.y - scaleNum(10), textHeight))
+  local textAreaSize = vec2(inputLayout.pillSize.x - scaleNum(42), inputLayout.pillSize.y - scaleNum(10))
+
+  ui.pushClipRect(inputLayout.textOrigin, inputLayout.textOrigin + textAreaSize)
 
   local selectionStart, selectionEnd = getInputSelection()
   if selectionStart and selectionEnd and chat.input.active then drawInputSelection(selectionStart, selectionEnd, inputLayout) end
-
-  ui.pushClipRect(inputLayout.textOrigin, inputLayout.textOrigin + textAreaSize)
 
   if isPlaceholder then
     ui.dwriteDrawText(chat.input.placeholder, inputLayout.fontSize, inputLayout.textOrigin, inputTextColor)
@@ -3296,7 +3316,7 @@ local function drawCustomChatInput(inputLayout)
     local pillTopLeft = inputLayout.pillOrigin
     local pillBottomRight = pillTopLeft + inputLayout.pillSize
     if settings.liquidGlass then
-      drawGlass('chatInput', pillTopLeft, pillBottomRight, cornerRounding, getInputGlassOptions(inputLayout.windowPosition))
+      drawGlass('chatInput', pillTopLeft, pillBottomRight, cornerRounding, glass.styles.input, { origin = inputLayout.windowPosition })
     else
       ui.beginOutline()
       ui.drawRectFilled(pillTopLeft, pillBottomRight, colors.final.inputBackground, cornerRounding)
@@ -3310,6 +3330,13 @@ local function drawCustomChatInput(inputLayout)
 
     ui.popDWriteFont()
     drawChatSendButton(inputLayout)
+
+    if settings.liquidGlass then
+      local buttonRadius = inputLayout.emojiButtonRadius
+      local buttonOffset = vec2(buttonRadius, buttonRadius)
+      drawGlassEdges(inputLayout.emojiButtonCenter - buttonOffset, inputLayout.emojiButtonCenter + buttonOffset, buttonRadius, glass.styles.input)
+      drawGlassEdges(pillTopLeft, pillBottomRight, cornerRounding, glass.styles.input)
+    end
 
     chat.input.offset = math.min(math.max(0, math.floor(textHeight - scaleNum(17))), scaleNum(390))
   end)
@@ -3357,11 +3384,9 @@ local function drawNotifications()
 
         if settings.liquidGlass then
           local captureTopLeft = windowOrigin + vec2(0, bannerOffsetY)
-          drawGlass('notif' .. entryIndex, bannerTopLeft, bannerBottomRight, bannerRounding, {
+          drawGlass('notif' .. entryIndex, bannerTopLeft, bannerBottomRight, bannerRounding, glass.styles.notif, {
             origin = bannerOrigin,
             overlays = true,
-            color = colors.final.glassNotifColor,
-            tint = glass.tint + glass.notifTintBoost,
             capture = { topLeft = captureTopLeft, bottomRight = captureTopLeft + windowSize },
           })
         else
@@ -3401,6 +3426,8 @@ local function drawNotifications()
         end
 
         ui.popClipRect()
+
+        if settings.liquidGlass then drawGlassEdges(bannerTopLeft, bannerBottomRight, bannerRounding, glass.styles.notif) end
       end)
     end
   end
@@ -4041,7 +4068,7 @@ function script.windowMainSettings()
               settings.messageColorFriend = settings.messageColorFriend:clone()
               updateColors()
             end
-            ui.columns(0)
+            ui.columns(1)
           end
         end)
 
