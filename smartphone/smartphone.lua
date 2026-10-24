@@ -75,8 +75,8 @@ local settings = ac.storage {
 
   liquidGlass = true,
   customColor = false,
-  messageColorSelf = rgbm(0, 0.49, 1, 1),
-  messageColorFriend = rgbm(0.2, 0.75, 0.3, 1),
+  messageColorSelf = rgb(0, 0.49, 1),
+  messageColorFriend = rgb(0.2, 0.75, 0.3),
 }
 
 --#endregion
@@ -94,28 +94,29 @@ local colors = {
   },
   footerText = rgbm(0.5, 0.5, 0.5, 1),
   glowColor = rgbm(1, 1, 1, 0.65),
-  displayColorLight = rgbm.colors.white,
-  displayColorDark = rgbm.colors.black,
-  outlineColorLight = rgbm(0.77, 0.77, 0.77, 1),
-  outlineColorMedium = rgbm(0.27, 0.27, 0.27, 1),
-  outlineColorDark = rgbm(0.2, 0.2, 0.2, 1),
-  iMessageBlue = rgbm(0, 0.49, 1, 1),
-  iMessageLightGray = rgbm(0.85, 0.85, 0.85, 1),
-  iMessageDarkGray = rgbm(0.15, 0.15, 0.15, 1),
-  inputBackgroundLight = rgbm(0.94, 0.94, 0.94, 1),
-  inputBackgroundDark = rgbm(0.1, 0.1, 0.1, 1),
-  inputOutlineLight = rgbm(0.82, 0.82, 0.82, 1),
-  inputOutlineDark = rgbm(0.2, 0.2, 0.2, 1),
-  inputPlaceholderLight = rgbm(0.75, 0.75, 0.75, 1),
-  inputPlaceholderDark = rgbm(0.42, 0.42, 0.42, 1),
-  iMessageGreen = rgbm(0.2, 0.75, 0.3, 1),
+  displayColorLight = rgbm.colors.white:clone(),
+  displayColorDark = rgbm.colors.black:clone(),
+  outlineColorLight = rgb(0.77, 0.77, 0.77),
+  outlineColorMedium = rgb(0.27, 0.27, 0.27),
+  outlineColorDark = rgb(0.2, 0.2, 0.2),
+  iMessageBlue = rgb(0, 0.49, 1),
+  iMessageLightGray = rgb(0.85, 0.85, 0.85),
+  iMessageDarkGray = rgb(0.15, 0.15, 0.15),
+  inputBackgroundLight = rgb(0.94, 0.94, 0.94),
+  inputBackgroundDark = rgb(0.1, 0.1, 0.1),
+  inputOutlineLight = rgb(0.82, 0.82, 0.82),
+  inputOutlineDark = rgb(0.2, 0.2, 0.2),
+  inputPlaceholderLight = rgb(0.75, 0.75, 0.75),
+  inputPlaceholderDark = rgb(0.42, 0.42, 0.42),
+  iMessageGreen = rgb(0.2, 0.75, 0.3),
   iMessageSelected = rgbm(0, 0.49, 1, 0.33),
-  emojiPickerButtonLight = rgbm(0.05, 0.05, 0.05, 1),
-  emojiPickerButtonDark = rgbm(0.95, 0.95, 0.95, 1),
+  emojiPickerButtonLight = rgb(0.05, 0.05, 0.05),
+  emojiPickerButtonDark = rgb(0.95, 0.95, 0.95),
+  emojiPickerActive = rgbm(0, 0.49, 1, 1),
   emojiPickerGroupsLight = rgbm(0, 0, 0, 0.33),
   emojiPickerGroupsDark = rgbm(1, 1, 1, 0.33),
-  notifBgColorLight = rgbm(0.88, 0.88, 0.88, 1),
-  notifBgColorDark = rgbm(0.1, 0.1, 0.1, 1),
+  notifBgColorLight = rgb(0.88, 0.88, 0.88),
+  notifBgColorDark = rgb(0.1, 0.1, 0.1),
   notifTitleColorLight = rgbm(0, 0, 0, 0.66),
   notifTitleColorDark = rgbm(1, 1, 1, 0.33),
   glassContactDarkColor = rgb(0.2, 0.2, 0.2),
@@ -140,7 +141,6 @@ local colors = {
     emojiPickerButton = rgbm(),
     emojiPickerGroups = rgbm(),
     emojiPickerOutline = rgbm(),
-    emojiPickerActive = rgbm(),
     notifBg = rgbm(),
     notifTitle = rgbm(),
     glassColor = rgb(),
@@ -347,7 +347,7 @@ local glass = {
   contactLightShadeStrength = 0.65,
   hairStrength = 0.12,
   lightHairStrength = 0.25,
-  lightEdgeColor = rgbm(0, 0, 0, 1),
+  lightEdgeColor = rgb(0, 0, 0),
   notifTintBoost = 0.1,
   edgeWidth = 1.5,
   edgePadding = 4,
@@ -591,7 +591,6 @@ local function updateColors()
   colors.final.emojiPickerButton:set(pickThemeColor(colors.emojiPickerButtonLight, colors.emojiPickerButtonDark))
   colors.final.emojiPickerGroups:set(pickThemeColor(colors.emojiPickerGroupsLight, colors.emojiPickerGroupsDark))
   colors.final.emojiPickerOutline:set(pickThemeColor(colors.transparent.black10, colors.transparent.white10))
-  colors.final.emojiPickerActive:set(rgbm(0, 0.49, 1, 1))
 
   colors.final.notifBg:set(pickThemeColor(colors.notifBgColorLight, colors.notifBgColorDark))
   colors.final.notifTitle:set(pickThemeColor(colors.notifTitleColorLight, colors.notifTitleColorDark))
@@ -2344,9 +2343,9 @@ local function drawMessageEntry(entry, layout, offset, interactive)
   local userNameTextSize = sizes.userNameTextSize
   local messageTextSize = sizes.messageTextSize
   local timestampSize = sizes.timestampSize
-  local messageUsernameColor = rgbm.colors.gray
+  local messageUsernameColor = rgbm.colors.gray:clone()
   local bubbleColor, messageTextColor, bubbleRight
-  if settings.chatUsernameColor then messageUsernameColor = chat.userNameColors[entry.userName] or rgbm.colors.gray end
+  if settings.chatUsernameColor then messageUsernameColor = (chat.userNameColors[entry.userName] or rgbm.colors.gray):clone() end
 
   if entry.userIndex == 0 then
     if entry.userNameY or entry.timestampY then
@@ -2390,7 +2389,7 @@ local function drawMessageEntry(entry, layout, offset, interactive)
       ui.popDWriteFont()
     end
 
-    bubbleColor, messageTextColor = colors.final.message, pickThemeColor(rgbm.colors.black, rgbm.colors.white)
+    bubbleColor, messageTextColor = colors.final.message, pickThemeColor(rgbm.colors.black, rgbm.colors.white):clone()
     if checkIfFriend(entry.userName) then
       bubbleColor = colors.final.messageFriend
       messageTextColor = colors.final.messageFriendText
@@ -3002,7 +3001,7 @@ local function drawEmojiPicker(inputLayout)
       ui.tooltip(app.tooltipPadding, function() ui.text(emoji.groups[i].name) end)
     end
 
-    local iconColor = i == emoji.activeGroup and colors.final.emojiPickerActive or colors.final.emojiPickerGroups
+    local iconColor = i == emoji.activeGroup and colors.emojiPickerActive or colors.final.emojiPickerGroups
     local iconUV1, iconUV2 = getEmojiIconUV(i)
     ui.drawImage(app.images.emojiIcons, buttonCenter - (groupIconDrawSize / 2), buttonCenter + (groupIconDrawSize / 2), iconColor, iconUV1, iconUV2)
 
@@ -3240,7 +3239,7 @@ local function drawEmojiButton(inputLayout)
   end
 
   local emojiIconSize = scaleVec2(20, 20)
-  local emojiIconColor = emoji.picker and colors.final.emojiPickerActive or colors.final.emojiPickerButton
+  local emojiIconColor = emoji.picker and colors.emojiPickerActive or colors.final.emojiPickerButton
   local emojiIconUV1, emojiIconUV2 = getEmojiIconUV(0)
   ui.drawImage(app.images.emojiIcons, buttonCenter - emojiIconSize / 2, buttonCenter + emojiIconSize / 2, emojiIconColor, emojiIconUV1, emojiIconUV2)
 end
