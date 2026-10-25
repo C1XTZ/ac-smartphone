@@ -5,8 +5,6 @@
 
 Chat replacement app in the style of an iPhone and iMessage.
 
-If you're looking for a more "oldschool" feel, try my [Mobilephone](https://github.com/C1XTZ/ac-mobilephone/) app.
-
 ### Current Features:
 
 - **Light / Dark Mode**
@@ -26,7 +24,7 @@ If you're looking for a more "oldschool" feel, try my [Mobilephone](https://gith
   ```ini
   Server IPs:     ;IP addresses of your servers.
   Contact Name:   ;Name displayed below the Contact image and in notifications.
-  Contact Images: ;Images used as the Contact picture. Two images can be specified for light/dark mode.
+  Contact Images: ;Images used as the Contact picture. One image for both modes, or separate images for light and dark mode.
   URL:            ;URL opened in the user's browser when the Contact is clicked.
   Tooltip Text:   ;Text displayed when hovering over the Contact.
   ```
@@ -65,7 +63,7 @@ You can also reach me here:
 
 ## Disclaimer
 
-This project is not affiliated with, endorsed by, sponsored by, or otherwise associated with Apple Inc. "Apple", "iPhone", "iOS", and "iMessage" are trademarks of Apple Inc. This app is a fan-made recreation for use within Assetto Corsa, and any visual or audio similarities to iOS are purely stylistic homage.
+This project is not affiliated with, endorsed by, sponsored by, or otherwise associated with Apple Inc. "Apple", "iPhone", "iOS", and "iMessage" are trademarks of Apple Inc. This app is a recreation for use within Assetto Corsa, and any visual or audio similarities to iOS are purely stylistic homage.
 
 # License
 
